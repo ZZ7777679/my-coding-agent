@@ -1,0 +1,19 @@
+{
+  "app_name": "My Coding Agent",
+  "stage": "M0",
+  "protocol_version": 1,
+  "data_schema_version": 1,
+  "data_dir": "E:\\MyCodingAgentData",
+  "data_dir_env": "MY_AGENT_DATA_DIR",
+  "development_project_dir": "E:\\claude_code\\my-coding-agent-test",
+  "project_dir_env": "MY_AGENT_PROJECT_DIR",
+  "max_frame_bytes": 1048576,
+  "model": {
+    "provider": "opencode-go",
+    "base_url": "https://opencode.ai/zen/go/v1",
+    "api": "chat_completions",
+    "model_id": "glm-5.3-flash",
+    "allowed_models": ["glm-5.3-flash", "deepseek-v4.1-flash"],
+    "api_key_env": "OPENCODE_API_KEY"
+  }
+}

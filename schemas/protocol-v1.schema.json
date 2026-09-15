@@ -1,0 +1,1092 @@
+{
+  "$defs": {
+    "AppInfo": {
+      "additionalProperties": false,
+      "description": "展示应用版本、协议版本与当前实现阶段。\n\nExpose the application version, protocol version and implemented stage.",
+      "properties": {
+        "app_version": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "App Version",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": 1,
+          "title": "Protocol Version",
+          "type": "integer"
+        },
+        "stage": {
+          "const": "M0",
+          "title": "Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "app_version",
+        "protocol_version",
+        "stage"
+      ],
+      "title": "AppInfo",
+      "type": "object"
+    },
+    "ChooseDirectoryParams": {
+      "additionalProperties": false,
+      "description": "限定受信目录选择器的用途，不接受任意系统操作。\n\nLimit the trusted directory picker to its declared purpose.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "data",
+            "project"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ChooseDirectoryParams",
+      "type": "object"
+    },
+    "CredentialInfo": {
+      "additionalProperties": false,
+      "description": "仅公开凭据来源与存在状态；null 表示读取受限。\n\nExpose only credential source and presence; null means access was restricted.",
+      "properties": {
+        "env_var": {
+          "const": "OPENCODE_API_KEY",
+          "title": "Env Var",
+          "type": "string"
+        },
+        "present": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Present"
+        },
+        "source": {
+          "enum": [
+            "process",
+            "windows_user",
+            "none",
+            "restricted"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "env_var",
+        "source",
+        "present"
+      ],
+      "title": "CredentialInfo",
+      "type": "object"
+    },
+    "DiagnosticCheck": {
+      "additionalProperties": false,
+      "description": "单项诊断的公开结论、影响与脱敏证据。\n\nPublic outcome, impact and sanitized evidence for one diagnostic check.",
+      "properties": {
+        "blocking": {
+          "title": "Blocking",
+          "type": "boolean"
+        },
+        "check_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Check Id",
+          "type": "string"
+        },
+        "code": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "evidence": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Evidence",
+          "type": "object"
+        },
+        "remediation": {
+          "title": "Remediation",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "warning",
+            "error",
+            "not_checked"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "check_id",
+        "status",
+        "code",
+        "summary",
+        "remediation",
+        "blocking",
+        "evidence"
+      ],
+      "title": "DiagnosticCheck",
+      "type": "object"
+    },
+    "DiagnosticReport": {
+      "additionalProperties": false,
+      "description": "区分凭据存在与目录可达；M0 尚未验证认证或真实工具回合。\n\nSeparate key presence and catalog access from auth and tool calls, unverified in M0.",
+      "properties": {
+        "app_version": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "App Version",
+          "type": "string"
+        },
+        "authentication_verified": {
+          "const": "not_checked",
+          "title": "Authentication Verified",
+          "type": "string"
+        },
+        "catalog_reachable": {
+          "enum": [
+            "ok",
+            "error",
+            "not_checked"
+          ],
+          "title": "Catalog Reachable",
+          "type": "string"
+        },
+        "checked_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+          "title": "Checked At",
+          "type": "string"
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/DiagnosticCheck"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "credential_present": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Present"
+        },
+        "mode": {
+          "items": {
+            "enum": [
+              "local",
+              "dev",
+              "network",
+              "write_probe"
+            ],
+            "type": "string"
+          },
+          "title": "Mode",
+          "type": "array"
+        },
+        "report_schema_version": {
+          "const": 1,
+          "title": "Report Schema Version",
+          "type": "integer"
+        },
+        "tool_roundtrip_verified": {
+          "const": "not_checked",
+          "title": "Tool Roundtrip Verified",
+          "type": "string"
+        }
+      },
+      "required": [
+        "report_schema_version",
+        "checked_at",
+        "app_version",
+        "mode",
+        "checks",
+        "credential_present",
+        "catalog_reachable",
+        "authentication_verified",
+        "tool_roundtrip_verified"
+      ],
+      "title": "DiagnosticReport",
+      "type": "object"
+    },
+    "DiagnosticsParams": {
+      "additionalProperties": false,
+      "description": "显式声明额外诊断选项，避免隐式联网或写入。\n\nDeclare optional probes explicitly to prevent implicit networking or writes.",
+      "properties": {
+        "dev": {
+          "title": "Dev",
+          "type": "boolean"
+        },
+        "network": {
+          "title": "Network",
+          "type": "boolean"
+        },
+        "write_probe": {
+          "title": "Write Probe",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "dev",
+        "network",
+        "write_probe"
+      ],
+      "title": "DiagnosticsParams",
+      "type": "object"
+    },
+    "DirectorySelection": {
+      "additionalProperties": false,
+      "description": "返回已选择目录；null 明确表示取消选择。\n\nReturn the selected directory, with null explicitly representing cancellation.",
+      "properties": {
+        "path": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Path"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "DirectorySelection",
+      "type": "object"
+    },
+    "EmptyParams": {
+      "additionalProperties": false,
+      "description": "表示不接受参数的方法，拒绝任何额外字段。\n\nRepresent parameterless methods and reject every extra field.",
+      "properties": {},
+      "title": "EmptyParams",
+      "type": "object"
+    },
+    "ErrorData": {
+      "additionalProperties": false,
+      "description": "RPC 错误的稳定业务码与修复说明。\n\nStable application error code and remediation inside an RPC error.",
+      "properties": {
+        "code": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "remediation": {
+          "title": "Remediation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "remediation"
+      ],
+      "title": "ErrorData",
+      "type": "object"
+    },
+    "ExportParams": {
+      "additionalProperties": false,
+      "description": "限定导出的公开文档类型，内容由后端提供。\n\nSelect a public export category whose content comes from the backend.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "config",
+            "projects",
+            "diagnostics"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ExportParams",
+      "type": "object"
+    },
+    "ExportResult": {
+      "additionalProperties": false,
+      "description": "返回成功导出的文件位置；null 表示用户取消。\n\nReturn the exported file location, or null when the user cancels.",
+      "properties": {
+        "path": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Path"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "ExportResult",
+      "type": "object"
+    },
+    "InitializeParams": {
+      "additionalProperties": false,
+      "description": "前端声明的兼容性信息；应用版本与协议版本分别处理。\n\nClient compatibility information, keeping app and protocol versions distinct.",
+      "properties": {
+        "app_version": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "App Version",
+          "type": "string"
+        },
+        "data_schema_version": {
+          "const": 1,
+          "title": "Data Schema Version",
+          "type": "integer"
+        },
+        "protocol_version": {
+          "const": 1,
+          "title": "Protocol Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "app_version",
+        "protocol_version",
+        "data_schema_version"
+      ],
+      "title": "InitializeParams",
+      "type": "object"
+    },
+    "InitializeResult": {
+      "additionalProperties": false,
+      "description": "返回初始化后的公开状态与当前实际支持的方法。\n\nReturn initialized public state and the methods currently supported.",
+      "properties": {
+        "app": {
+          "$ref": "#/$defs/AppInfo"
+        },
+        "capabilities": {
+          "items": {
+            "enum": [
+              "initialize",
+              "projects.open",
+              "projects.list",
+              "config.get",
+              "config.update",
+              "diagnostics.get",
+              "shutdown"
+            ],
+            "type": "string"
+          },
+          "title": "Capabilities",
+          "type": "array"
+        },
+        "config": {
+          "$ref": "#/$defs/PublicConfig"
+        },
+        "projects": {
+          "$ref": "#/$defs/ProjectsView"
+        },
+        "storage": {
+          "$ref": "#/$defs/StorageInfo"
+        }
+      },
+      "required": [
+        "app",
+        "storage",
+        "config",
+        "projects",
+        "capabilities"
+      ],
+      "title": "InitializeResult",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "OpenProjectById": {
+      "additionalProperties": false,
+      "description": "通过已有项目标识恢复选择，并由服务重新验证目录。\n\nRestore a recorded project by ID and let the service revalidate its directory.",
+      "properties": {
+        "project_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Project Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id"
+      ],
+      "title": "OpenProjectById",
+      "type": "object"
+    },
+    "OpenProjectByPath": {
+      "additionalProperties": false,
+      "description": "通过用户选择的目录路径打开项目。\n\nOpen a project using a user-selected directory path.",
+      "properties": {
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "OpenProjectByPath",
+      "type": "object"
+    },
+    "OpenProjectParams": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OpenProjectByPath"
+        },
+        {
+          "$ref": "#/$defs/OpenProjectById"
+        }
+      ],
+      "description": "路径与已有标识二选一，禁止同时提交两种定位方式。\n\nRequire either a path or an existing ID, never both.",
+      "title": "OpenProjectParams"
+    },
+    "OperationError": {
+      "additionalProperties": false,
+      "description": "桌面操作使用的公开错误，不包含原始异常堆栈。\n\nPublic desktop-operation error without a raw exception traceback.",
+      "properties": {
+        "code": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "remediation": {
+          "title": "Remediation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "remediation"
+      ],
+      "title": "OperationError",
+      "type": "object"
+    },
+    "ProjectSummary": {
+      "additionalProperties": false,
+      "description": "公开项目记录及当前可用性，隐藏内部文件系统身份字段。\n\nExpose project metadata and availability without internal filesystem identity fields.",
+      "properties": {
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "canonical_path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Canonical Path",
+          "type": "string"
+        },
+        "last_opened_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+          "title": "Last Opened At",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "project_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Project Id",
+          "type": "string"
+        },
+        "unavailable_code": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Unavailable Code"
+        }
+      },
+      "required": [
+        "project_id",
+        "name",
+        "path",
+        "canonical_path",
+        "last_opened_at",
+        "available",
+        "unavailable_code"
+      ],
+      "title": "ProjectSummary",
+      "type": "object"
+    },
+    "ProjectsView": {
+      "additionalProperties": false,
+      "description": "同时返回当前项目与最近记录，允许初次启动为空。\n\nReturn active and recent projects, allowing an empty first-launch state.",
+      "properties": {
+        "active_project": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProjectSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recent_projects": {
+          "items": {
+            "$ref": "#/$defs/ProjectSummary"
+          },
+          "title": "Recent Projects",
+          "type": "array"
+        }
+      },
+      "required": [
+        "active_project",
+        "recent_projects"
+      ],
+      "title": "ProjectsView",
+      "type": "object"
+    },
+    "PublicConfig": {
+      "additionalProperties": false,
+      "description": "前端可见的模型配置，不携带凭据原值。\n\nRenderer-visible model configuration without credential values.",
+      "properties": {
+        "allowed_models": {
+          "items": {
+            "enum": [
+              "glm-5.3-flash",
+              "deepseek-v4.1-flash"
+            ],
+            "type": "string"
+          },
+          "title": "Allowed Models",
+          "type": "array"
+        },
+        "api": {
+          "const": "chat_completions",
+          "title": "Api",
+          "type": "string"
+        },
+        "base_url": {
+          "const": "https://opencode.ai/zen/go/v1",
+          "title": "Base Url",
+          "type": "string"
+        },
+        "config_path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Config Path",
+          "type": "string"
+        },
+        "credential": {
+          "$ref": "#/$defs/CredentialInfo"
+        },
+        "model_id": {
+          "enum": [
+            "glm-5.3-flash",
+            "deepseek-v4.1-flash"
+          ],
+          "title": "Model Id",
+          "type": "string"
+        },
+        "model_source": {
+          "enum": [
+            "default",
+            "user",
+            "cli"
+          ],
+          "title": "Model Source",
+          "type": "string"
+        },
+        "provider": {
+          "const": "opencode-go",
+          "title": "Provider",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "base_url",
+        "api",
+        "model_id",
+        "allowed_models",
+        "credential",
+        "config_path",
+        "model_source"
+      ],
+      "title": "PublicConfig",
+      "type": "object"
+    },
+    "RpcError": {
+      "additionalProperties": false,
+      "description": "将 JSON-RPC 数字错误码与应用错误信息分开表达。\n\nKeep JSON-RPC numeric codes distinct from application error information.",
+      "properties": {
+        "code": {
+          "maximum": 2147483647,
+          "minimum": -2147483648,
+          "title": "Code",
+          "type": "integer"
+        },
+        "data": {
+          "$ref": "#/$defs/ErrorData"
+        },
+        "message": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data"
+      ],
+      "title": "RpcError",
+      "type": "object"
+    },
+    "RpcFailure": {
+      "additionalProperties": false,
+      "description": "关联请求与公开错误；无法确定请求标识时允许 null。\n\nAssociate a request with a public error, allowing null when its ID is unknown.",
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/RpcError"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "jsonrpc": {
+          "const": "2.0",
+          "title": "Jsonrpc",
+          "type": "string"
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "id",
+        "error"
+      ],
+      "title": "RpcFailure",
+      "type": "object"
+    },
+    "RpcNotification": {
+      "additionalProperties": false,
+      "description": "不要求回复的 JSON-RPC 通知，不能与带标识请求混淆。\n\nJSON-RPC notification requiring no reply, distinct from an identified request.",
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0",
+          "title": "Jsonrpc",
+          "type": "string"
+        },
+        "method": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Method",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Params",
+          "type": "object"
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "title": "RpcNotification",
+      "type": "object"
+    },
+    "RpcRequest": {
+      "additionalProperties": false,
+      "description": "带关联标识的 JSON-RPC 请求；参数在方法分发时继续校验。\n\nJSON-RPC request with a correlation ID; method dispatch validates parameters further.",
+      "properties": {
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "jsonrpc": {
+          "const": "2.0",
+          "title": "Jsonrpc",
+          "type": "string"
+        },
+        "method": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Method",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Params",
+          "type": "object"
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "RpcRequest",
+      "type": "object"
+    },
+    "RpcResponse": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RpcSuccess"
+        },
+        {
+          "$ref": "#/$defs/RpcFailure"
+        }
+      ],
+      "description": "成功与失败响应的严格联合，不接受混合结构。\n\nStrict union of success and failure responses, rejecting mixed envelopes.",
+      "title": "RpcResponse"
+    },
+    "RpcSuccess": {
+      "additionalProperties": false,
+      "description": "关联请求标识与成功结果；具体结果仍需按方法校验。\n\nAssociate a request ID with its result, which still needs method-specific validation.",
+      "properties": {
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "jsonrpc": {
+          "const": "2.0",
+          "title": "Jsonrpc",
+          "type": "string"
+        },
+        "result": {
+          "$ref": "#/$defs/JsonValue"
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "id",
+        "result"
+      ],
+      "title": "RpcSuccess",
+      "type": "object"
+    },
+    "StartupPaths": {
+      "additionalProperties": false,
+      "description": "区分已保存的下次启动设置与本次实际数据根。\n\nDistinguish saved next-launch paths from the current effective data root.",
+      "properties": {
+        "config_path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Config Path",
+          "type": "string"
+        },
+        "current_data_dir": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Current Data Dir",
+          "type": "string"
+        },
+        "data_dir": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Data Dir",
+          "type": "string"
+        },
+        "project_dir": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Project Dir",
+          "type": "string"
+        }
+      },
+      "required": [
+        "data_dir",
+        "project_dir",
+        "config_path",
+        "current_data_dir"
+      ],
+      "title": "StartupPaths",
+      "type": "object"
+    },
+    "StartupPathsParams": {
+      "additionalProperties": false,
+      "description": "描述下次启动的目录设置，不触发数据迁移或项目登记。\n\nDescribe next-launch directories without migrating data or registering projects.",
+      "properties": {
+        "data_dir": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Data Dir",
+          "type": "string"
+        },
+        "project_dir": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Project Dir",
+          "type": "string"
+        }
+      },
+      "required": [
+        "data_dir",
+        "project_dir"
+      ],
+      "title": "StartupPathsParams",
+      "type": "object"
+    },
+    "StorageInfo": {
+      "additionalProperties": false,
+      "description": "展示实际数据根、配置来源和存储可用状态。\n\nExpose the effective data root, its source and storage availability.",
+      "properties": {
+        "data_dir": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Data Dir",
+          "type": "string"
+        },
+        "data_schema_version": {
+          "const": 1,
+          "title": "Data Schema Version",
+          "type": "integer"
+        },
+        "source": {
+          "enum": [
+            "cli",
+            "environment",
+            "default"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ready",
+            "not_initialized",
+            "unavailable",
+            "busy"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "data_dir",
+        "source",
+        "data_schema_version",
+        "status"
+      ],
+      "title": "StorageInfo",
+      "type": "object"
+    },
+    "UpdateConfigParams": {
+      "additionalProperties": false,
+      "description": "仅允许保存一个受支持的默认模型标识。\n\nAllow saving only one supported default model ID.",
+      "properties": {
+        "model_id": {
+          "enum": [
+            "glm-5.3-flash",
+            "deepseek-v4.1-flash"
+          ],
+          "title": "Model Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model_id"
+      ],
+      "title": "UpdateConfigParams",
+      "type": "object"
+    }
+  },
+  "$id": "https://my-coding-agent.local/protocol-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "AppInfo": {
+      "$ref": "#/$defs/AppInfo"
+    },
+    "ChooseDirectoryParams": {
+      "$ref": "#/$defs/ChooseDirectoryParams"
+    },
+    "CredentialInfo": {
+      "$ref": "#/$defs/CredentialInfo"
+    },
+    "DiagnosticCheck": {
+      "$ref": "#/$defs/DiagnosticCheck"
+    },
+    "DiagnosticReport": {
+      "$ref": "#/$defs/DiagnosticReport"
+    },
+    "DiagnosticsParams": {
+      "$ref": "#/$defs/DiagnosticsParams"
+    },
+    "DirectorySelection": {
+      "$ref": "#/$defs/DirectorySelection"
+    },
+    "EmptyParams": {
+      "$ref": "#/$defs/EmptyParams"
+    },
+    "ErrorData": {
+      "$ref": "#/$defs/ErrorData"
+    },
+    "ExportParams": {
+      "$ref": "#/$defs/ExportParams"
+    },
+    "ExportResult": {
+      "$ref": "#/$defs/ExportResult"
+    },
+    "InitializeParams": {
+      "$ref": "#/$defs/InitializeParams"
+    },
+    "InitializeResult": {
+      "$ref": "#/$defs/InitializeResult"
+    },
+    "OpenProjectParams": {
+      "$ref": "#/$defs/OpenProjectParams"
+    },
+    "OperationError": {
+      "$ref": "#/$defs/OperationError"
+    },
+    "ProjectSummary": {
+      "$ref": "#/$defs/ProjectSummary"
+    },
+    "ProjectsView": {
+      "$ref": "#/$defs/ProjectsView"
+    },
+    "PublicConfig": {
+      "$ref": "#/$defs/PublicConfig"
+    },
+    "RpcNotification": {
+      "$ref": "#/$defs/RpcNotification"
+    },
+    "RpcRequest": {
+      "$ref": "#/$defs/RpcRequest"
+    },
+    "RpcResponse": {
+      "$ref": "#/$defs/RpcResponse"
+    },
+    "StartupPaths": {
+      "$ref": "#/$defs/StartupPaths"
+    },
+    "StartupPathsParams": {
+      "$ref": "#/$defs/StartupPathsParams"
+    },
+    "StorageInfo": {
+      "$ref": "#/$defs/StorageInfo"
+    },
+    "UpdateConfigParams": {
+      "$ref": "#/$defs/UpdateConfigParams"
+    }
+  },
+  "required": [
+    "AppInfo",
+    "CredentialInfo",
+    "PublicConfig",
+    "UpdateConfigParams",
+    "StartupPathsParams",
+    "StartupPaths",
+    "ChooseDirectoryParams",
+    "DirectorySelection",
+    "ExportParams",
+    "ExportResult",
+    "StorageInfo",
+    "ProjectSummary",
+    "ProjectsView",
+    "DiagnosticCheck",
+    "DiagnosticReport",
+    "InitializeParams",
+    "InitializeResult",
+    "OpenProjectParams",
+    "EmptyParams",
+    "DiagnosticsParams",
+    "RpcRequest",
+    "RpcNotification",
+    "RpcResponse",
+    "ErrorData",
+    "OperationError"
+  ],
+  "title": "ProtocolV1",
+  "type": "object"
+}

@@ -1,0 +1,42 @@
+[project]
+name = "my-agent"
+version = "0.0.0"
+description = "Local Python core for My Coding Agent"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "portalocker==4.3.2",
+    "pydantic==2.13.5",
+    "typer==0.27.2",
+]
+
+[project.scripts]
+my-agent = "my_agent.cli:entrypoint"
+
+[build-system]
+requires = ["uv_build==0.11.32"]
+build-backend = "uv_build"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["src/my_agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+cache_dir = ".artifacts/tests/pytest-cache"
+addopts = "-ra"
+
+[dependency-groups]
+dev = [
+    "mypy==2.3.1",
+    "pytest==9.1.1",
+    "ruff==0.16.7",
+]

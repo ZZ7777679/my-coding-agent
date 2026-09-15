@@ -1,0 +1,48 @@
+{
+  "name": "@my-coding-agent/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "main": "out/main/index.js",
+  "engines": {
+    "node": ">=24.16.0 <25"
+  },
+  "scripts": {
+    "dev": "node ../../scripts/dev.mjs",
+    "install:electron": "node --use-system-ca node_modules/electron/install.js",
+    "build": "electron-vite build",
+    "preview": "node ../../scripts/dev.mjs --preview",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write --ignore-path ../../.prettierignore src *.ts *.json ../../scripts/*.mjs ../../scripts/*.mts ../../tests/**/*.mjs ../../tests/**/*.ts",
+    "format:check": "prettier --check --ignore-path ../../.prettierignore src *.ts *.json ../../scripts/*.mjs ../../scripts/*.mts ../../tests/**/*.mjs ../../tests/**/*.ts",
+    "types:generate": "node ../../scripts/generate_types.mjs",
+    "types:check": "node ../../scripts/generate_types.mjs --check",
+    "test:contracts": "node --test ../../tests/contracts/*.test.mjs",
+    "test:launch": "node --test ../../tests/launch/*.test.mjs",
+    "test:desktop": "playwright test",
+    "test:gateway": "node --test ../../tests/gateway/*.test.mjs"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@swc/core": "1.16.2",
+    "@types/node": "24.13.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "ajv": "8.20.0",
+    "electron": "44.3.0",
+    "electron-vite": "5.0.0",
+    "esbuild": "0.28.2",
+    "json-schema-to-typescript": "16.0.0",
+    "prettier": "3.9.6",
+    "typescript": "7.0.2",
+    "vite": "7.3.6"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true,
+    "@swc/core@1.16.2": true
+  }
+}
