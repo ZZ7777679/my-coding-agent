@@ -15,6 +15,7 @@ TEXT_SUFFIXES = {
     ".ts",
     ".tsx",
     ".mjs",
+    ".cjs",
     ".mts",
     ".json",
     ".toml",

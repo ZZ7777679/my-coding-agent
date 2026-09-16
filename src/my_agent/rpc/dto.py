@@ -16,10 +16,24 @@ from pydantic import (
 )
 
 from my_agent.errors import DataSource
+from my_agent.models.connections import (
+    ConnectionProbeParams,
+    ConnectionSettings,
+    ConnectionStatus,
+    ModelConnectionProbeParams,
+)
+from my_agent.models.types import ModelId as ModelId
+from my_agent.runtime.settings import RunLimits
+from my_agent.sessions.types import (
+    SessionId,
+    SessionPage,
+    SessionSignal,
+    SessionSummary,
+    SessionView,
+)
 
 Text = Annotated[str, StringConstraints(min_length=1, max_length=4096)]
 Identifier = Annotated[str, StringConstraints(min_length=1, max_length=128)]
-ModelId = Literal["glm-5.3-flash", "deepseek-v4.1-flash"]
 Timestamp = Annotated[
     str, StringConstraints(pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
 ]
@@ -77,6 +91,8 @@ class PublicConfig(DTO):
     credential: CredentialInfo
     config_path: Text
     model_source: Literal["default", "user", "cli"]
+    run: RunLimits
+    http: ConnectionSettings
 
 
 class UpdateConfigParams(DTO):
@@ -86,6 +102,7 @@ class UpdateConfigParams(DTO):
     """
 
     model_id: ModelId
+    run: RunLimits | None = None
 
 
 class StartupPathsParams(DTO):
@@ -152,8 +169,8 @@ class AppInfo(DTO):
 
     name: Text
     app_version: Text
-    protocol_version: Literal[1]
-    stage: Literal["M0"]
+    protocol_version: Literal[2]
+    stage: Literal["M1"]
 
 
 class StorageInfo(DTO):
@@ -223,6 +240,7 @@ class DiagnosticReport(DTO):
     catalog_reachable: Literal["ok", "error", "not_checked"]
     authentication_verified: Literal["not_checked"]
     tool_roundtrip_verified: Literal["not_checked"]
+    connections: ConnectionStatus | None = None
 
 
 class InitializeParams(DTO):
@@ -232,7 +250,7 @@ class InitializeParams(DTO):
     """
 
     app_version: Text
-    protocol_version: Literal[1]
+    protocol_version: Literal[2]
     data_schema_version: Literal[1]
 
 
@@ -254,7 +272,20 @@ class InitializeResult(DTO):
             "config.get",
             "config.update",
             "diagnostics.get",
+            "connections.get",
+            "connections.configure",
+            "connections.release",
+            "connections.test",
+            "connections.test_model",
             "shutdown",
+            "sessions.create",
+            "sessions.list",
+            "sessions.get",
+            "sessions.attach",
+            "sessions.detach",
+            "runs.start",
+            "runs.cancel",
+            "runs.active",
         ]
     ]
 
@@ -304,6 +335,7 @@ class DiagnosticsParams(DTO):
     dev: bool
     network: bool
     write_probe: bool
+    network_timeout_seconds: Annotated[float, Field(gt=0)] | None = None
 
 
 class ErrorData(DTO):
@@ -392,6 +424,61 @@ class RpcResponse(RootModel[RpcSuccess | RpcFailure]):
     model_config = ConfigDict(strict=True)
 
 
+class CreateSessionParams(DTO):
+    """选择项目与模型，不发起运行。 Select project and model without starting a run."""
+
+    project_id: Identifier
+    model_id: ModelId
+
+
+class ListSessionsParams(DTO):
+    """按项目分页会话列表。 Page sessions by project."""
+
+    project_id: Identifier
+    cursor: SessionId | None
+    limit: Annotated[int, Field(ge=1, le=100)]
+
+
+class SessionParams(DTO):
+    """限定会话身份。 Constrain session identity."""
+
+    session_id: SessionId
+
+
+class GetSessionParams(SessionParams):
+    """显式历史页游标，null 取最近一页。 Explicit history cursor; null loads the latest page."""
+
+    before_seq: Annotated[int, Field(ge=2)] | None
+
+
+class StartRunParams(SessionParams):
+    """幂等操作 ID 独立于 RPC ID。 Idempotent operation identity is separate from RPC identity."""
+
+    operation_id: SessionId
+    prompt: Annotated[str, Field(min_length=1, max_length=64000)]
+    limits: RunLimits | None
+
+
+class CancelRunParams(DTO):
+    """只停止指定运行，不隐式停止其他任务。 Cancel the specified run only."""
+
+    run_id: SessionId
+
+
+class ActiveRunResult(DTO):
+    """公开全局运行状态，切换视图仍能停止。 Global run state remains stoppable across views."""
+
+    session: SessionSummary | None
+
+
+class SessionEventNotification(DTO):
+    """唯一支持的后端事件通知形状。 The sole supported backend notification envelope."""
+
+    jsonrpc: Literal["2.0"]
+    method: Literal["session.event"]
+    params: SessionSignal
+
+
 PUBLIC_TYPES: dict[str, type[BaseModel]] = {
     model.__name__: model
     for model in (
@@ -410,6 +497,10 @@ PUBLIC_TYPES: dict[str, type[BaseModel]] = {
         ProjectsView,
         DiagnosticCheck,
         DiagnosticReport,
+        ConnectionSettings,
+        ConnectionProbeParams,
+        ModelConnectionProbeParams,
+        ConnectionStatus,
         InitializeParams,
         InitializeResult,
         OpenProjectParams,
@@ -420,5 +511,18 @@ PUBLIC_TYPES: dict[str, type[BaseModel]] = {
         RpcResponse,
         ErrorData,
         OperationError,
+        RunLimits,
+        CreateSessionParams,
+        ListSessionsParams,
+        SessionParams,
+        GetSessionParams,
+        StartRunParams,
+        CancelRunParams,
+        ActiveRunResult,
+        SessionEventNotification,
+        SessionSummary,
+        SessionView,
+        SessionPage,
+        SessionSignal,
     )
 }

@@ -6,7 +6,7 @@
 
 ## 1. 工作依据与任务范围
 
-- [总规划](docs/plan/coding-agent-from-zero-plan.md) 定义产品目标与阶段依赖；[M0 实施细化](docs/plan/m0-implementation-plan.md) 定义已有工程基线、项目选择、E 盘数据保存与最小 stdio；[M1 实施细化](docs/plan/m1-implementation-plan.md) 定义下一阶段拟实现的桌面只读闭环。当前状态以进度文件为准，阶段方案不构成自动开始实施的授权。
+- [总规划](docs/plan/coding-agent-from-zero-plan.md) 定义产品目标与阶段依赖；[M0 实施细化](docs/plan/m0-implementation-plan.md) 定义已有工程基线、项目选择、E 盘数据保存与最小 stdio；[M1 实施细化](docs/plan/m1-implementation-plan.md) 定义桌面只读闭环。当前状态以进度文件为准，阶段方案不构成自动开始实施的授权。
 - 开始前检查工作区、Git 状态、相关代码和已有检查入口；保留用户与其他任务留下的修改。规划中的能力不能视为已经实现。
 - 用户要求规划、审查或写文档时，完成相应产物；用户要求实现时，持续完成必要代码、验证与说明，不以只交付方案代替实现。
 - 修改前简述目标、涉及边界和验证方法；日常函数拆分、缺陷修复、项目内依赖配置等按已授权范围自主推进，不逐文件请求确认。

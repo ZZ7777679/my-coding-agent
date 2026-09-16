@@ -1,0 +1,2467 @@
+{
+  "$defs": {
+    "ActiveRunResult": {
+      "additionalProperties": false,
+      "description": "公开全局运行状态，切换视图仍能停止。 Global run state remains stoppable across views.",
+      "properties": {
+        "session": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "session"
+      ],
+      "title": "ActiveRunResult",
+      "type": "object"
+    },
+    "AppInfo": {
+      "additionalProperties": false,
+      "description": "展示应用版本、协议版本与当前实现阶段。\n\nExpose the application version, protocol version and implemented stage.",
+      "properties": {
+        "app_version": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "App Version",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": 2,
+          "title": "Protocol Version",
+          "type": "integer"
+        },
+        "stage": {
+          "const": "M1",
+          "title": "Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "app_version",
+        "protocol_version",
+        "stage"
+      ],
+      "title": "AppInfo",
+      "type": "object"
+    },
+    "CancelRunParams": {
+      "additionalProperties": false,
+      "description": "只停止指定运行，不隐式停止其他任务。 Cancel the specified run only.",
+      "properties": {
+        "run_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id"
+      ],
+      "title": "CancelRunParams",
+      "type": "object"
+    },
+    "ChatEntry": {
+      "additionalProperties": false,
+      "description": "显式投影的可公开历史记录。 Explicitly projected public history record.",
+      "properties": {
+        "call": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolCall"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "enum": [
+            "user",
+            "assistant",
+            "tool.started",
+            "tool.completed",
+            "run.finished"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "message_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message Id"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        },
+        "seq": {
+          "title": "Seq",
+          "type": "integer"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "run_id",
+        "message_id",
+        "kind",
+        "text",
+        "call",
+        "result"
+      ],
+      "title": "ChatEntry",
+      "type": "object"
+    },
+    "ChooseDirectoryParams": {
+      "additionalProperties": false,
+      "description": "限定受信目录选择器的用途，不接受任意系统操作。\n\nLimit the trusted directory picker to its declared purpose.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "data",
+            "project"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ChooseDirectoryParams",
+      "type": "object"
+    },
+    "ConnectionObservation": {
+      "additionalProperties": false,
+      "description": "最近一次操作的脱敏结果；历史成功不保证当前在线。\n\nA sanitized observation of one operation, never a guarantee of current connectivity.",
+      "properties": {
+        "code": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "finished_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+          "title": "Finished At",
+          "type": "string"
+        },
+        "http_status": {
+          "anyOf": [
+            {
+              "maximum": 599,
+              "minimum": 100,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Http Status"
+        },
+        "model_id": {
+          "anyOf": [
+            {
+              "enum": [
+                "glm-5.3-flash",
+                "deepseek-v4.1-flash"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Id"
+        },
+        "models_confirmed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Models Confirmed"
+        },
+        "progress": {
+          "$ref": "#/$defs/ModelProgress"
+        }
+      },
+      "required": [
+        "finished_at",
+        "code",
+        "http_status",
+        "models_confirmed",
+        "progress"
+      ],
+      "title": "ConnectionObservation",
+      "type": "object"
+    },
+    "ConnectionProbeParams": {
+      "additionalProperties": false,
+      "description": "每次手动探测明确指定总等待时间。 Specify the total timeout for one manual probe.",
+      "properties": {
+        "timeout_seconds": {
+          "exclusiveMinimum": 0,
+          "title": "Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "timeout_seconds"
+      ],
+      "title": "ConnectionProbeParams",
+      "type": "object"
+    },
+    "ConnectionSettings": {
+      "additionalProperties": false,
+      "description": "持久化复用偏好与手动探测等待时间。 Persist reuse preference and manual probe timeout.",
+      "properties": {
+        "probe_timeout_seconds": {
+          "exclusiveMinimum": 0,
+          "title": "Probe Timeout Seconds",
+          "type": "number"
+        },
+        "reuse_enabled": {
+          "title": "Reuse Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "reuse_enabled",
+        "probe_timeout_seconds"
+      ],
+      "title": "ConnectionSettings",
+      "type": "object"
+    },
+    "ConnectionStatus": {
+      "additionalProperties": false,
+      "description": "后端自身管理状态，不把客户端个数冒充在线套接字数。\n\nBackend-owned lifecycle state, without claiming a count of live sockets.",
+      "properties": {
+        "active_requests": {
+          "minimum": 0,
+          "title": "Active Requests",
+          "type": "integer"
+        },
+        "client_created": {
+          "title": "Client Created",
+          "type": "boolean"
+        },
+        "last_probe": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConnectionObservation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_request": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConnectionObservation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "models": {
+          "items": {
+            "$ref": "#/$defs/ModelConnectionState"
+          },
+          "title": "Models",
+          "type": "array"
+        },
+        "pending_release": {
+          "title": "Pending Release",
+          "type": "boolean"
+        },
+        "reuse_enabled": {
+          "title": "Reuse Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "reuse_enabled",
+        "client_created",
+        "active_requests",
+        "pending_release",
+        "last_request",
+        "last_probe"
+      ],
+      "title": "ConnectionStatus",
+      "type": "object"
+    },
+    "CreateSessionParams": {
+      "additionalProperties": false,
+      "description": "选择项目与模型，不发起运行。 Select project and model without starting a run.",
+      "properties": {
+        "model_id": {
+          "enum": [
+            "glm-5.3-flash",
+            "deepseek-v4.1-flash"
+          ],
+          "title": "Model Id",
+          "type": "string"
+        },
+        "project_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Project Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "model_id"
+      ],
+      "title": "CreateSessionParams",
+      "type": "object"
+    },
+    "CredentialInfo": {
+      "additionalProperties": false,
+      "description": "仅公开凭据来源与存在状态；null 表示读取受限。\n\nExpose only credential source and presence; null means access was restricted.",
+      "properties": {
+        "env_var": {
+          "const": "OPENCODE_API_KEY",
+          "title": "Env Var",
+          "type": "string"
+        },
+        "present": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Present"
+        },
+        "source": {
+          "enum": [
+            "process",
+            "windows_user",
+            "none",
+            "restricted"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "env_var",
+        "source",
+        "present"
+      ],
+      "title": "CredentialInfo",
+      "type": "object"
+    },
+    "DiagnosticCheck": {
+      "additionalProperties": false,
+      "description": "单项诊断的公开结论、影响与脱敏证据。\n\nPublic outcome, impact and sanitized evidence for one diagnostic check.",
+      "properties": {
+        "blocking": {
+          "title": "Blocking",
+          "type": "boolean"
+        },
+        "check_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Check Id",
+          "type": "string"
+        },
+        "code": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "evidence": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Evidence",
+          "type": "object"
+        },
+        "remediation": {
+          "title": "Remediation",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "warning",
+            "error",
+            "not_checked"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "check_id",
+        "status",
+        "code",
+        "summary",
+        "remediation",
+        "blocking",
+        "evidence"
+      ],
+      "title": "DiagnosticCheck",
+      "type": "object"
+    },
+    "DiagnosticReport": {
+      "additionalProperties": false,
+      "description": "区分凭据存在与目录可达；M0 尚未验证认证或真实工具回合。\n\nSeparate key presence and catalog access from auth and tool calls, unverified in M0.",
+      "properties": {
+        "app_version": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "App Version",
+          "type": "string"
+        },
+        "authentication_verified": {
+          "const": "not_checked",
+          "title": "Authentication Verified",
+          "type": "string"
+        },
+        "catalog_reachable": {
+          "enum": [
+            "ok",
+            "error",
+            "not_checked"
+          ],
+          "title": "Catalog Reachable",
+          "type": "string"
+        },
+        "checked_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+          "title": "Checked At",
+          "type": "string"
+        },
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/DiagnosticCheck"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "connections": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConnectionStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "credential_present": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Credential Present"
+        },
+        "mode": {
+          "items": {
+            "enum": [
+              "local",
+              "dev",
+              "network",
+              "write_probe"
+            ],
+            "type": "string"
+          },
+          "title": "Mode",
+          "type": "array"
+        },
+        "report_schema_version": {
+          "const": 1,
+          "title": "Report Schema Version",
+          "type": "integer"
+        },
+        "tool_roundtrip_verified": {
+          "const": "not_checked",
+          "title": "Tool Roundtrip Verified",
+          "type": "string"
+        }
+      },
+      "required": [
+        "report_schema_version",
+        "checked_at",
+        "app_version",
+        "mode",
+        "checks",
+        "credential_present",
+        "catalog_reachable",
+        "authentication_verified",
+        "tool_roundtrip_verified"
+      ],
+      "title": "DiagnosticReport",
+      "type": "object"
+    },
+    "DiagnosticsParams": {
+      "additionalProperties": false,
+      "description": "显式声明额外诊断选项，避免隐式联网或写入。\n\nDeclare optional probes explicitly to prevent implicit networking or writes.",
+      "properties": {
+        "dev": {
+          "title": "Dev",
+          "type": "boolean"
+        },
+        "network": {
+          "title": "Network",
+          "type": "boolean"
+        },
+        "network_timeout_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Network Timeout Seconds"
+        },
+        "write_probe": {
+          "title": "Write Probe",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "dev",
+        "network",
+        "write_probe"
+      ],
+      "title": "DiagnosticsParams",
+      "type": "object"
+    },
+    "DirectorySelection": {
+      "additionalProperties": false,
+      "description": "返回已选择目录；null 明确表示取消选择。\n\nReturn the selected directory, with null explicitly representing cancellation.",
+      "properties": {
+        "path": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Path"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "DirectorySelection",
+      "type": "object"
+    },
+    "EmptyParams": {
+      "additionalProperties": false,
+      "description": "表示不接受参数的方法，拒绝任何额外字段。\n\nRepresent parameterless methods and reject every extra field.",
+      "properties": {},
+      "title": "EmptyParams",
+      "type": "object"
+    },
+    "ErrorData": {
+      "additionalProperties": false,
+      "description": "RPC 错误的稳定业务码与修复说明。\n\nStable application error code and remediation inside an RPC error.",
+      "properties": {
+        "code": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "remediation": {
+          "title": "Remediation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "remediation"
+      ],
+      "title": "ErrorData",
+      "type": "object"
+    },
+    "ExportParams": {
+      "additionalProperties": false,
+      "description": "限定导出的公开文档类型，内容由后端提供。\n\nSelect a public export category whose content comes from the backend.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "config",
+            "projects",
+            "diagnostics"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ExportParams",
+      "type": "object"
+    },
+    "ExportResult": {
+      "additionalProperties": false,
+      "description": "返回成功导出的文件位置；null 表示用户取消。\n\nReturn the exported file location, or null when the user cancels.",
+      "properties": {
+        "path": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Path"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "ExportResult",
+      "type": "object"
+    },
+    "GetSessionParams": {
+      "additionalProperties": false,
+      "description": "显式历史页游标，null 取最近一页。 Explicit history cursor; null loads the latest page.",
+      "properties": {
+        "before_seq": {
+          "anyOf": [
+            {
+              "minimum": 2,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Before Seq"
+        },
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "before_seq"
+      ],
+      "title": "GetSessionParams",
+      "type": "object"
+    },
+    "InitializeParams": {
+      "additionalProperties": false,
+      "description": "前端声明的兼容性信息；应用版本与协议版本分别处理。\n\nClient compatibility information, keeping app and protocol versions distinct.",
+      "properties": {
+        "app_version": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "App Version",
+          "type": "string"
+        },
+        "data_schema_version": {
+          "const": 1,
+          "title": "Data Schema Version",
+          "type": "integer"
+        },
+        "protocol_version": {
+          "const": 2,
+          "title": "Protocol Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "app_version",
+        "protocol_version",
+        "data_schema_version"
+      ],
+      "title": "InitializeParams",
+      "type": "object"
+    },
+    "InitializeResult": {
+      "additionalProperties": false,
+      "description": "返回初始化后的公开状态与当前实际支持的方法。\n\nReturn initialized public state and the methods currently supported.",
+      "properties": {
+        "app": {
+          "$ref": "#/$defs/AppInfo"
+        },
+        "capabilities": {
+          "items": {
+            "enum": [
+              "initialize",
+              "projects.open",
+              "projects.list",
+              "config.get",
+              "config.update",
+              "diagnostics.get",
+              "connections.get",
+              "connections.configure",
+              "connections.release",
+              "connections.test",
+              "connections.test_model",
+              "shutdown",
+              "sessions.create",
+              "sessions.list",
+              "sessions.get",
+              "sessions.attach",
+              "sessions.detach",
+              "runs.start",
+              "runs.cancel",
+              "runs.active"
+            ],
+            "type": "string"
+          },
+          "title": "Capabilities",
+          "type": "array"
+        },
+        "config": {
+          "$ref": "#/$defs/PublicConfig"
+        },
+        "projects": {
+          "$ref": "#/$defs/ProjectsView"
+        },
+        "storage": {
+          "$ref": "#/$defs/StorageInfo"
+        }
+      },
+      "required": [
+        "app",
+        "storage",
+        "config",
+        "projects",
+        "capabilities"
+      ],
+      "title": "InitializeResult",
+      "type": "object"
+    },
+    "JsonObject": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "type": "object"
+    },
+    "JsonValue": {},
+    "ListSessionsParams": {
+      "additionalProperties": false,
+      "description": "按项目分页会话列表。 Page sessions by project.",
+      "properties": {
+        "cursor": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cursor"
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "project_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Project Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "cursor",
+        "limit"
+      ],
+      "title": "ListSessionsParams",
+      "type": "object"
+    },
+    "ModelConnectionProbeParams": {
+      "additionalProperties": false,
+      "description": "显式选择被测模型，不沿用当前会话选择。 Select the tested model explicitly.",
+      "properties": {
+        "model_id": {
+          "enum": [
+            "glm-5.3-flash",
+            "deepseek-v4.1-flash"
+          ],
+          "title": "Model Id",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "exclusiveMinimum": 0,
+          "title": "Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "timeout_seconds",
+        "model_id"
+      ],
+      "title": "ModelConnectionProbeParams",
+      "type": "object"
+    },
+    "ModelConnectionResult": {
+      "additionalProperties": false,
+      "description": "单次真实模型测试的公开结果，不包含提示或回答。\n\nPublic facts from one real model test, excluding prompts and responses.",
+      "properties": {
+        "code": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "finished_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+          "title": "Finished At",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "progress": {
+          "$ref": "#/$defs/ModelProgress"
+        },
+        "remediation": {
+          "title": "Remediation",
+          "type": "string"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TokenUsage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "finished_at",
+        "code",
+        "message",
+        "remediation",
+        "progress",
+        "usage"
+      ],
+      "title": "ModelConnectionResult",
+      "type": "object"
+    },
+    "ModelConnectionState": {
+      "additionalProperties": false,
+      "description": "按模型保存正在测试的进度和最近结果；不代表独立套接字。\n\nPer-model test progress and last result, not a separate physical connection.",
+      "properties": {
+        "last_test": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelConnectionResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model_id": {
+          "enum": [
+            "glm-5.3-flash",
+            "deepseek-v4.1-flash"
+          ],
+          "title": "Model Id",
+          "type": "string"
+        },
+        "progress": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelProgress"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "testing": {
+          "title": "Testing",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "model_id",
+        "testing",
+        "progress",
+        "last_test"
+      ],
+      "title": "ModelConnectionState",
+      "type": "object"
+    },
+    "ModelProgress": {
+      "additionalProperties": false,
+      "description": "请求阶段与单调时钟耗时，不包含网络原文。 Request phases and timings without raw payloads.",
+      "properties": {
+        "connect_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Connect Ms"
+        },
+        "elapsed_ms": {
+          "minimum": 0,
+          "title": "Elapsed Ms",
+          "type": "number"
+        },
+        "first_event_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Event Ms"
+        },
+        "first_text_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Text Ms"
+        },
+        "phase": {
+          "enum": [
+            "preparing",
+            "connecting",
+            "tls",
+            "waiting",
+            "receiving",
+            "reasoning",
+            "text",
+            "completed"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "response_complete": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Response Complete"
+        },
+        "response_headers_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Response Headers Ms"
+        },
+        "tls_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tls Ms"
+        }
+      },
+      "required": [
+        "phase",
+        "elapsed_ms"
+      ],
+      "title": "ModelProgress",
+      "type": "object"
+    },
+    "OpenProjectById": {
+      "additionalProperties": false,
+      "description": "通过已有项目标识恢复选择，并由服务重新验证目录。\n\nRestore a recorded project by ID and let the service revalidate its directory.",
+      "properties": {
+        "project_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Project Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id"
+      ],
+      "title": "OpenProjectById",
+      "type": "object"
+    },
+    "OpenProjectByPath": {
+      "additionalProperties": false,
+      "description": "通过用户选择的目录路径打开项目。\n\nOpen a project using a user-selected directory path.",
+      "properties": {
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "OpenProjectByPath",
+      "type": "object"
+    },
+    "OpenProjectParams": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OpenProjectByPath"
+        },
+        {
+          "$ref": "#/$defs/OpenProjectById"
+        }
+      ],
+      "description": "路径与已有标识二选一，禁止同时提交两种定位方式。\n\nRequire either a path or an existing ID, never both.",
+      "title": "OpenProjectParams"
+    },
+    "OperationError": {
+      "additionalProperties": false,
+      "description": "桌面操作使用的公开错误，不包含原始异常堆栈。\n\nPublic desktop-operation error without a raw exception traceback.",
+      "properties": {
+        "code": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "remediation": {
+          "title": "Remediation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "remediation"
+      ],
+      "title": "OperationError",
+      "type": "object"
+    },
+    "ProjectSummary": {
+      "additionalProperties": false,
+      "description": "公开项目记录及当前可用性，隐藏内部文件系统身份字段。\n\nExpose project metadata and availability without internal filesystem identity fields.",
+      "properties": {
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "canonical_path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Canonical Path",
+          "type": "string"
+        },
+        "last_opened_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+          "title": "Last Opened At",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "project_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Project Id",
+          "type": "string"
+        },
+        "unavailable_code": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Unavailable Code"
+        }
+      },
+      "required": [
+        "project_id",
+        "name",
+        "path",
+        "canonical_path",
+        "last_opened_at",
+        "available",
+        "unavailable_code"
+      ],
+      "title": "ProjectSummary",
+      "type": "object"
+    },
+    "ProjectsView": {
+      "additionalProperties": false,
+      "description": "同时返回当前项目与最近记录，允许初次启动为空。\n\nReturn active and recent projects, allowing an empty first-launch state.",
+      "properties": {
+        "active_project": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProjectSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recent_projects": {
+          "items": {
+            "$ref": "#/$defs/ProjectSummary"
+          },
+          "title": "Recent Projects",
+          "type": "array"
+        }
+      },
+      "required": [
+        "active_project",
+        "recent_projects"
+      ],
+      "title": "ProjectsView",
+      "type": "object"
+    },
+    "PublicConfig": {
+      "additionalProperties": false,
+      "description": "前端可见的模型配置，不携带凭据原值。\n\nRenderer-visible model configuration without credential values.",
+      "properties": {
+        "allowed_models": {
+          "items": {
+            "enum": [
+              "glm-5.3-flash",
+              "deepseek-v4.1-flash"
+            ],
+            "type": "string"
+          },
+          "title": "Allowed Models",
+          "type": "array"
+        },
+        "api": {
+          "const": "chat_completions",
+          "title": "Api",
+          "type": "string"
+        },
+        "base_url": {
+          "const": "https://opencode.ai/zen/go/v1",
+          "title": "Base Url",
+          "type": "string"
+        },
+        "config_path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Config Path",
+          "type": "string"
+        },
+        "credential": {
+          "$ref": "#/$defs/CredentialInfo"
+        },
+        "http": {
+          "$ref": "#/$defs/ConnectionSettings"
+        },
+        "model_id": {
+          "enum": [
+            "glm-5.3-flash",
+            "deepseek-v4.1-flash"
+          ],
+          "title": "Model Id",
+          "type": "string"
+        },
+        "model_source": {
+          "enum": [
+            "default",
+            "user",
+            "cli"
+          ],
+          "title": "Model Source",
+          "type": "string"
+        },
+        "provider": {
+          "const": "opencode-go",
+          "title": "Provider",
+          "type": "string"
+        },
+        "run": {
+          "$ref": "#/$defs/RunLimits"
+        }
+      },
+      "required": [
+        "provider",
+        "base_url",
+        "api",
+        "model_id",
+        "allowed_models",
+        "credential",
+        "config_path",
+        "model_source",
+        "run",
+        "http"
+      ],
+      "title": "PublicConfig",
+      "type": "object"
+    },
+    "RpcError": {
+      "additionalProperties": false,
+      "description": "将 JSON-RPC 数字错误码与应用错误信息分开表达。\n\nKeep JSON-RPC numeric codes distinct from application error information.",
+      "properties": {
+        "code": {
+          "maximum": 2147483647,
+          "minimum": -2147483648,
+          "title": "Code",
+          "type": "integer"
+        },
+        "data": {
+          "$ref": "#/$defs/ErrorData"
+        },
+        "message": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data"
+      ],
+      "title": "RpcError",
+      "type": "object"
+    },
+    "RpcFailure": {
+      "additionalProperties": false,
+      "description": "关联请求与公开错误；无法确定请求标识时允许 null。\n\nAssociate a request with a public error, allowing null when its ID is unknown.",
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/RpcError"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Id"
+        },
+        "jsonrpc": {
+          "const": "2.0",
+          "title": "Jsonrpc",
+          "type": "string"
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "id",
+        "error"
+      ],
+      "title": "RpcFailure",
+      "type": "object"
+    },
+    "RpcNotification": {
+      "additionalProperties": false,
+      "description": "不要求回复的 JSON-RPC 通知，不能与带标识请求混淆。\n\nJSON-RPC notification requiring no reply, distinct from an identified request.",
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0",
+          "title": "Jsonrpc",
+          "type": "string"
+        },
+        "method": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Method",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Params",
+          "type": "object"
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "title": "RpcNotification",
+      "type": "object"
+    },
+    "RpcRequest": {
+      "additionalProperties": false,
+      "description": "带关联标识的 JSON-RPC 请求；参数在方法分发时继续校验。\n\nJSON-RPC request with a correlation ID; method dispatch validates parameters further.",
+      "properties": {
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "jsonrpc": {
+          "const": "2.0",
+          "title": "Jsonrpc",
+          "type": "string"
+        },
+        "method": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Method",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Params",
+          "type": "object"
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "RpcRequest",
+      "type": "object"
+    },
+    "RpcResponse": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RpcSuccess"
+        },
+        {
+          "$ref": "#/$defs/RpcFailure"
+        }
+      ],
+      "description": "成功与失败响应的严格联合，不接受混合结构。\n\nStrict union of success and failure responses, rejecting mixed envelopes.",
+      "title": "RpcResponse"
+    },
+    "RpcSuccess": {
+      "additionalProperties": false,
+      "description": "关联请求标识与成功结果；具体结果仍需按方法校验。\n\nAssociate a request ID with its result, which still needs method-specific validation.",
+      "properties": {
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "jsonrpc": {
+          "const": "2.0",
+          "title": "Jsonrpc",
+          "type": "string"
+        },
+        "result": {
+          "$ref": "#/$defs/JsonValue"
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "id",
+        "result"
+      ],
+      "title": "RpcSuccess",
+      "type": "object"
+    },
+    "RunLimits": {
+      "additionalProperties": false,
+      "description": "受信设置中的可调整限额，不代表模型能力。 Adjustable limits, not model capabilities.",
+      "properties": {
+        "exclude_globs": {
+          "items": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Exclude Globs",
+          "type": "array"
+        },
+        "include_ignored": {
+          "title": "Include Ignored",
+          "type": "boolean"
+        },
+        "max_context_bytes": {
+          "minimum": 4096,
+          "title": "Max Context Bytes",
+          "type": "integer"
+        },
+        "max_depth": {
+          "maximum": 256,
+          "minimum": 1,
+          "title": "Max Depth",
+          "type": "integer"
+        },
+        "max_file_bytes": {
+          "minimum": 1024,
+          "title": "Max File Bytes",
+          "type": "integer"
+        },
+        "max_output_tokens": {
+          "minimum": 1,
+          "title": "Max Output Tokens",
+          "type": "integer"
+        },
+        "max_requests": {
+          "minimum": 1,
+          "title": "Max Requests",
+          "type": "integer"
+        },
+        "max_response_bytes": {
+          "maximum": 262144,
+          "minimum": 1024,
+          "title": "Max Response Bytes",
+          "type": "integer"
+        },
+        "max_scan_files": {
+          "minimum": 1,
+          "title": "Max Scan Files",
+          "type": "integer"
+        },
+        "max_seconds": {
+          "minimum": 1,
+          "title": "Max Seconds",
+          "type": "integer"
+        },
+        "max_tool_bytes": {
+          "maximum": 131072,
+          "minimum": 1024,
+          "title": "Max Tool Bytes",
+          "type": "integer"
+        },
+        "max_tools": {
+          "minimum": 1,
+          "title": "Max Tools",
+          "type": "integer"
+        },
+        "request_timeout_seconds": {
+          "minimum": 1,
+          "title": "Request Timeout Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_requests",
+        "max_tools",
+        "max_seconds",
+        "request_timeout_seconds",
+        "max_output_tokens",
+        "max_context_bytes",
+        "max_response_bytes",
+        "max_file_bytes",
+        "max_tool_bytes",
+        "max_scan_files",
+        "max_depth",
+        "include_ignored",
+        "exclude_globs"
+      ],
+      "title": "RunLimits",
+      "type": "object"
+    },
+    "RunView": {
+      "additionalProperties": false,
+      "description": "公开运行计数；未知用量与未结束清理明确呈现。 Public counts and explicit unknown usage.",
+      "properties": {
+        "code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Code"
+        },
+        "input_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Input Tokens"
+        },
+        "limits": {
+          "$ref": "#/$defs/RunLimits"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message"
+        },
+        "output_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Output Tokens"
+        },
+        "requests": {
+          "title": "Requests",
+          "type": "integer"
+        },
+        "run_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "running",
+            "stopping",
+            "completed",
+            "failed",
+            "cancelled",
+            "budget_exceeded",
+            "interrupted"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "tools": {
+          "title": "Tools",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "run_id",
+        "status",
+        "requests",
+        "tools",
+        "input_tokens",
+        "output_tokens",
+        "limits",
+        "code",
+        "message"
+      ],
+      "title": "RunView",
+      "type": "object"
+    },
+    "SessionEventNotification": {
+      "additionalProperties": false,
+      "description": "唯一支持的后端事件通知形状。 The sole supported backend notification envelope.",
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0",
+          "title": "Jsonrpc",
+          "type": "string"
+        },
+        "method": {
+          "const": "session.event",
+          "title": "Method",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/SessionSignal"
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "title": "SessionEventNotification",
+      "type": "object"
+    },
+    "SessionPage": {
+      "additionalProperties": false,
+      "description": "项目会话的游标页。 Cursor page of project sessions.",
+      "properties": {
+        "active_session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Active Session Id"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        },
+        "sessions": {
+          "items": {
+            "$ref": "#/$defs/SessionSummary"
+          },
+          "title": "Sessions",
+          "type": "array"
+        },
+        "unavailable_count": {
+          "minimum": 0,
+          "title": "Unavailable Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sessions",
+        "next_cursor",
+        "active_session_id",
+        "unavailable_count"
+      ],
+      "title": "SessionPage",
+      "type": "object"
+    },
+    "SessionParams": {
+      "additionalProperties": false,
+      "description": "限定会话身份。 Constrain session identity.",
+      "properties": {
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "title": "SessionParams",
+      "type": "object"
+    },
+    "SessionSignal": {
+      "additionalProperties": false,
+      "description": "轻量通知：持久变更需要重取快照，文本按增量顺序接收。\n\nLightweight notifications: resync durable changes and order transient text deltas.",
+      "properties": {
+        "delta_index": {
+          "title": "Delta Index",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "changed",
+            "text.delta",
+            "model.progress",
+            "resync"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "message_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Message Id"
+        },
+        "model_progress": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelProgress"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "process_epoch": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Process Epoch",
+          "type": "string"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        },
+        "seq": {
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "run_id",
+        "process_epoch",
+        "kind",
+        "seq",
+        "message_id",
+        "delta_index",
+        "text"
+      ],
+      "title": "SessionSignal",
+      "type": "object"
+    },
+    "SessionSummary": {
+      "additionalProperties": false,
+      "description": "会话列表条目，不泄露原生模型状态。 Session list entry without native provider state.",
+      "properties": {
+        "can_continue": {
+          "title": "Can Continue",
+          "type": "boolean"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "issue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Issue"
+        },
+        "model_id": {
+          "enum": [
+            "glm-5.3-flash",
+            "deepseek-v4.1-flash"
+          ],
+          "title": "Model Id",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "run": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "project_id",
+        "model_id",
+        "title",
+        "created_at",
+        "updated_at",
+        "can_continue",
+        "issue",
+        "run"
+      ],
+      "title": "SessionSummary",
+      "type": "object"
+    },
+    "SessionView": {
+      "additionalProperties": false,
+      "description": "有界快照含历史水位与实时预览。 Bounded snapshot with history watermark and live preview.",
+      "properties": {
+        "before_seq": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Before Seq"
+        },
+        "delta_index": {
+          "title": "Delta Index",
+          "type": "integer"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/ChatEntry"
+          },
+          "title": "Entries",
+          "type": "array"
+        },
+        "model_progress": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelProgress"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "process_epoch": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Process Epoch",
+          "type": "string"
+        },
+        "stream_message_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stream Message Id"
+        },
+        "stream_text": {
+          "title": "Stream Text",
+          "type": "string"
+        },
+        "summary": {
+          "$ref": "#/$defs/SessionSummary"
+        },
+        "watermark": {
+          "title": "Watermark",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "summary",
+        "entries",
+        "before_seq",
+        "watermark",
+        "process_epoch",
+        "stream_message_id",
+        "stream_text",
+        "delta_index"
+      ],
+      "title": "SessionView",
+      "type": "object"
+    },
+    "StartRunParams": {
+      "additionalProperties": false,
+      "description": "幂等操作 ID 独立于 RPC ID。 Idempotent operation identity is separate from RPC identity.",
+      "properties": {
+        "limits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunLimits"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operation_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "prompt": {
+          "maxLength": 64000,
+          "minLength": 1,
+          "title": "Prompt",
+          "type": "string"
+        },
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "operation_id",
+        "prompt",
+        "limits"
+      ],
+      "title": "StartRunParams",
+      "type": "object"
+    },
+    "StartupPaths": {
+      "additionalProperties": false,
+      "description": "区分已保存的下次启动设置与本次实际数据根。\n\nDistinguish saved next-launch paths from the current effective data root.",
+      "properties": {
+        "config_path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Config Path",
+          "type": "string"
+        },
+        "current_data_dir": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Current Data Dir",
+          "type": "string"
+        },
+        "data_dir": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Data Dir",
+          "type": "string"
+        },
+        "project_dir": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Project Dir",
+          "type": "string"
+        }
+      },
+      "required": [
+        "data_dir",
+        "project_dir",
+        "config_path",
+        "current_data_dir"
+      ],
+      "title": "StartupPaths",
+      "type": "object"
+    },
+    "StartupPathsParams": {
+      "additionalProperties": false,
+      "description": "描述下次启动的目录设置，不触发数据迁移或项目登记。\n\nDescribe next-launch directories without migrating data or registering projects.",
+      "properties": {
+        "data_dir": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Data Dir",
+          "type": "string"
+        },
+        "project_dir": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Project Dir",
+          "type": "string"
+        }
+      },
+      "required": [
+        "data_dir",
+        "project_dir"
+      ],
+      "title": "StartupPathsParams",
+      "type": "object"
+    },
+    "StorageInfo": {
+      "additionalProperties": false,
+      "description": "展示实际数据根、配置来源和存储可用状态。\n\nExpose the effective data root, its source and storage availability.",
+      "properties": {
+        "data_dir": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Data Dir",
+          "type": "string"
+        },
+        "data_schema_version": {
+          "const": 1,
+          "title": "Data Schema Version",
+          "type": "integer"
+        },
+        "source": {
+          "enum": [
+            "cli",
+            "environment",
+            "default"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ready",
+            "not_initialized",
+            "unavailable",
+            "busy"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "data_dir",
+        "source",
+        "data_schema_version",
+        "status"
+      ],
+      "title": "StorageInfo",
+      "type": "object"
+    },
+    "TokenUsage": {
+      "additionalProperties": false,
+      "description": "服务实际返回的用量；未知保留 null。 Reported usage; unknown remains null.",
+      "properties": {
+        "input_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Input Tokens"
+        },
+        "output_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Output Tokens"
+        }
+      },
+      "required": [
+        "input_tokens",
+        "output_tokens"
+      ],
+      "title": "TokenUsage",
+      "type": "object"
+    },
+    "ToolCall": {
+      "additionalProperties": false,
+      "description": "完整参数对象，仍需工具权限校验。 Complete arguments still requiring tool policy checks.",
+      "properties": {
+        "arguments": {
+          "$ref": "#/$defs/JsonObject"
+        },
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "tool_call_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Tool Call Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool_call_id",
+        "name",
+        "arguments"
+      ],
+      "title": "ToolCall",
+      "type": "object"
+    },
+    "ToolResult": {
+      "additionalProperties": false,
+      "description": "按调用标识关联可公开工具结果。 Associate public tool output with its call ID.",
+      "properties": {
+        "content": {
+          "title": "Content",
+          "type": "string"
+        },
+        "is_error": {
+          "title": "Is Error",
+          "type": "boolean"
+        },
+        "tool_call_id": {
+          "title": "Tool Call Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool_call_id",
+        "content",
+        "is_error"
+      ],
+      "title": "ToolResult",
+      "type": "object"
+    },
+    "UpdateConfigParams": {
+      "additionalProperties": false,
+      "description": "仅允许保存一个受支持的默认模型标识。\n\nAllow saving only one supported default model ID.",
+      "properties": {
+        "model_id": {
+          "enum": [
+            "glm-5.3-flash",
+            "deepseek-v4.1-flash"
+          ],
+          "title": "Model Id",
+          "type": "string"
+        },
+        "run": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunLimits"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "model_id"
+      ],
+      "title": "UpdateConfigParams",
+      "type": "object"
+    }
+  },
+  "$id": "https://my-coding-agent.local/protocol-v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "ActiveRunResult": {
+      "$ref": "#/$defs/ActiveRunResult"
+    },
+    "AppInfo": {
+      "$ref": "#/$defs/AppInfo"
+    },
+    "CancelRunParams": {
+      "$ref": "#/$defs/CancelRunParams"
+    },
+    "ChooseDirectoryParams": {
+      "$ref": "#/$defs/ChooseDirectoryParams"
+    },
+    "ConnectionProbeParams": {
+      "$ref": "#/$defs/ConnectionProbeParams"
+    },
+    "ConnectionSettings": {
+      "$ref": "#/$defs/ConnectionSettings"
+    },
+    "ConnectionStatus": {
+      "$ref": "#/$defs/ConnectionStatus"
+    },
+    "CreateSessionParams": {
+      "$ref": "#/$defs/CreateSessionParams"
+    },
+    "CredentialInfo": {
+      "$ref": "#/$defs/CredentialInfo"
+    },
+    "DiagnosticCheck": {
+      "$ref": "#/$defs/DiagnosticCheck"
+    },
+    "DiagnosticReport": {
+      "$ref": "#/$defs/DiagnosticReport"
+    },
+    "DiagnosticsParams": {
+      "$ref": "#/$defs/DiagnosticsParams"
+    },
+    "DirectorySelection": {
+      "$ref": "#/$defs/DirectorySelection"
+    },
+    "EmptyParams": {
+      "$ref": "#/$defs/EmptyParams"
+    },
+    "ErrorData": {
+      "$ref": "#/$defs/ErrorData"
+    },
+    "ExportParams": {
+      "$ref": "#/$defs/ExportParams"
+    },
+    "ExportResult": {
+      "$ref": "#/$defs/ExportResult"
+    },
+    "GetSessionParams": {
+      "$ref": "#/$defs/GetSessionParams"
+    },
+    "InitializeParams": {
+      "$ref": "#/$defs/InitializeParams"
+    },
+    "InitializeResult": {
+      "$ref": "#/$defs/InitializeResult"
+    },
+    "ListSessionsParams": {
+      "$ref": "#/$defs/ListSessionsParams"
+    },
+    "ModelConnectionProbeParams": {
+      "$ref": "#/$defs/ModelConnectionProbeParams"
+    },
+    "OpenProjectParams": {
+      "$ref": "#/$defs/OpenProjectParams"
+    },
+    "OperationError": {
+      "$ref": "#/$defs/OperationError"
+    },
+    "ProjectSummary": {
+      "$ref": "#/$defs/ProjectSummary"
+    },
+    "ProjectsView": {
+      "$ref": "#/$defs/ProjectsView"
+    },
+    "PublicConfig": {
+      "$ref": "#/$defs/PublicConfig"
+    },
+    "RpcNotification": {
+      "$ref": "#/$defs/RpcNotification"
+    },
+    "RpcRequest": {
+      "$ref": "#/$defs/RpcRequest"
+    },
+    "RpcResponse": {
+      "$ref": "#/$defs/RpcResponse"
+    },
+    "RunLimits": {
+      "$ref": "#/$defs/RunLimits"
+    },
+    "SessionEventNotification": {
+      "$ref": "#/$defs/SessionEventNotification"
+    },
+    "SessionPage": {
+      "$ref": "#/$defs/SessionPage"
+    },
+    "SessionParams": {
+      "$ref": "#/$defs/SessionParams"
+    },
+    "SessionSignal": {
+      "$ref": "#/$defs/SessionSignal"
+    },
+    "SessionSummary": {
+      "$ref": "#/$defs/SessionSummary"
+    },
+    "SessionView": {
+      "$ref": "#/$defs/SessionView"
+    },
+    "StartRunParams": {
+      "$ref": "#/$defs/StartRunParams"
+    },
+    "StartupPaths": {
+      "$ref": "#/$defs/StartupPaths"
+    },
+    "StartupPathsParams": {
+      "$ref": "#/$defs/StartupPathsParams"
+    },
+    "StorageInfo": {
+      "$ref": "#/$defs/StorageInfo"
+    },
+    "UpdateConfigParams": {
+      "$ref": "#/$defs/UpdateConfigParams"
+    }
+  },
+  "required": [
+    "AppInfo",
+    "CredentialInfo",
+    "PublicConfig",
+    "UpdateConfigParams",
+    "StartupPathsParams",
+    "StartupPaths",
+    "ChooseDirectoryParams",
+    "DirectorySelection",
+    "ExportParams",
+    "ExportResult",
+    "StorageInfo",
+    "ProjectSummary",
+    "ProjectsView",
+    "DiagnosticCheck",
+    "DiagnosticReport",
+    "ConnectionSettings",
+    "ConnectionProbeParams",
+    "ModelConnectionProbeParams",
+    "ConnectionStatus",
+    "InitializeParams",
+    "InitializeResult",
+    "OpenProjectParams",
+    "EmptyParams",
+    "DiagnosticsParams",
+    "RpcRequest",
+    "RpcNotification",
+    "RpcResponse",
+    "ErrorData",
+    "OperationError",
+    "RunLimits",
+    "CreateSessionParams",
+    "ListSessionsParams",
+    "SessionParams",
+    "GetSessionParams",
+    "StartRunParams",
+    "CancelRunParams",
+    "ActiveRunResult",
+    "SessionEventNotification",
+    "SessionSummary",
+    "SessionView",
+    "SessionPage",
+    "SessionSignal"
+  ],
+  "title": "ProtocolV2",
+  "type": "object"
+}

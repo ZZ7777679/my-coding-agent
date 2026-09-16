@@ -41,7 +41,7 @@ def initialize():
         "initialize",
         {
             "app_version": "0.0.0",
-            "protocol_version": 1,
+            "protocol_version": 2,
             "data_schema_version": 1,
         },
     )
@@ -109,7 +109,7 @@ def test_eof_releases_writer_and_protocol_mismatch_does_not_initialize(tmp_path)
             "initialize",
             {
                 "app_version": "0.0.0",
-                "protocol_version": 2,
+                "protocol_version": 1,
                 "data_schema_version": 1,
             },
         ),
@@ -192,11 +192,12 @@ def test_failed_initialize_keeps_read_only_diagnostics_available(tmp_path):
         + frame("diagnostics.get", {"dev": False, "network": False, "write_probe": False}, "d")
         + frame("config.update", {"model_id": "glm-5.3-flash"}, "blocked"),
     )
-    assert replies[0]["error"]["data"]["code"] == "CONFIG_INVALID"
-    report = replies[1]["result"]
+    by_id = {reply["id"]: reply for reply in replies}
+    assert by_id["r1"]["error"]["data"]["code"] == "CONFIG_INVALID"
+    report = by_id["d"]["result"]
     assert any(check["code"] == "CONFIG_INVALID" for check in report["checks"])
     assert report["authentication_verified"] == "not_checked"
-    assert replies[2]["error"]["data"]["code"] == "NOT_INITIALIZED"
+    assert by_id["blocked"]["error"]["data"]["code"] == "NOT_INITIALIZED"
     assert config.read_text(encoding="utf-8") == "invalid="
     assert sorted(file.name for file in root.iterdir()) == ["config.toml"]
 
@@ -220,7 +221,7 @@ def test_diagnostic_flags_are_explicit_and_credential_refresh_is_public(tmp_path
         calls.append((kwargs["dev"], kwargs["network"], kwargs["write_probe"]))
         return report
 
-    monkeypatch.setattr("my_agent.rpc.server.diagnose", fake_diagnose)
+    monkeypatch.setattr("my_agent.rpc.application.diagnose", fake_diagnose)
     monkeypatch.setattr("my_agent.credentials.read_windows_user", lambda _: "user-sentinel")
     credential = resolve_credential({}, lambda _: None, "win32")
     writer = BytesIO()
@@ -230,17 +231,22 @@ def test_diagnostic_flags_are_explicit_and_credential_refresh_is_public(tmp_path
             initialize()
             + frame("diagnostics.get", {"dev": True, "network": True, "write_probe": True}, "d")
             + frame("config.get", {}, "refresh")
-            + frame("diagnostics.get", {"dev": "false", "network": False, "write_probe": False})
+            + frame(
+                "diagnostics.get",
+                {"dev": "false", "network": False, "write_probe": False},
+                "invalid",
+            )
         ),
         writer,
         credential,
     )
     replies = [json.loads(line) for line in writer.getvalue().splitlines()]
+    by_id = {reply["id"]: reply for reply in replies}
     assert calls == [(True, True, True)]
-    assert replies[2]["result"]["credential"] == {
+    assert by_id["refresh"]["result"]["credential"] == {
         "env_var": "OPENCODE_API_KEY",
         "source": "windows_user" if sys.platform == "win32" else "none",
         "present": sys.platform == "win32",
     }
-    assert replies[3]["error"]["code"] == -32602
+    assert by_id["invalid"]["error"]["code"] == -32602
     assert b"user-sentinel" not in writer.getvalue()

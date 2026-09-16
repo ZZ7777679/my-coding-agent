@@ -3,6 +3,7 @@
 CLI adapter sharing configuration, diagnostics and project services with desktop RPC.
 """
 
+import asyncio
 import io
 import json
 import sys
@@ -10,11 +11,13 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Annotated
+from uuid import uuid4
 
 import typer
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from my_agent import __version__
+from my_agent.bootstrap import build_sessions
 from my_agent.config import load_config, resolve_data_dir
 from my_agent.credentials import resolve_credential
 from my_agent.diagnostics import diagnose
@@ -22,13 +25,18 @@ from my_agent.errors import AgentError
 from my_agent.projects import ProjectService
 from my_agent.rpc.server import read_parent_credential
 from my_agent.rpc.server import serve as run_server
+from my_agent.runtime.settings import RunLimits
+from my_agent.sessions.types import SessionSignal
 from my_agent.storage import Storage
+from my_agent.worker import BusinessWorker
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
 config_app = typer.Typer(no_args_is_help=True)
 projects_app = typer.Typer(no_args_is_help=True)
+sessions_app = typer.Typer(no_args_is_help=True)
 app.add_typer(config_app, name="config")
 app.add_typer(projects_app, name="projects")
+app.add_typer(sessions_app, name="sessions")
 
 
 def entrypoint() -> None:
@@ -222,3 +230,136 @@ def serve(
             )
         except BrokenPipeError:
             return
+
+
+def limit_override(defaults: RunLimits, value: str | None) -> RunLimits | None:
+    """在明确装配步骤合并 CLI 预算，拒绝未知字段。 Merge CLI budgets with strict validation."""
+    if value is None:
+        return None
+    try:
+        partial = json.loads(value)
+        if not isinstance(partial, dict):
+            raise ValueError("Object required")
+        return RunLimits.model_validate({**defaults.model_dump(), **partial})
+    except (ValueError, ValidationError) as exc:
+        raise AgentError("CONFIG_INVALID", "--run-json 必须是合法的运行配置 JSON 对象。") from exc
+
+
+@app.command("ask")
+def ask(
+    ctx: typer.Context,
+    prompt: Annotated[str, typer.Argument()],
+    project: Annotated[
+        str | None, typer.Option("--project", help="Explicit project directory")
+    ] = None,
+    session: Annotated[str | None, typer.Option("--session", help="Existing session ID")] = None,
+    run_json: Annotated[
+        str | None, typer.Option("--run-json", help="Budget overrides as JSON")
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """在明确项目或已有会话中运行只读 Agent；Ctrl+C 停止。
+
+    Run the read-only agent in an explicit project or session; Ctrl+C stops it.
+    """
+    with report_errors(as_json):
+        if (project is None) == (session is None):
+            raise AgentError("INVALID_PARAMS", "指定 --project 或 --session 其中一项。")
+        args = options(ctx)
+        storage = Storage(resolve_data_dir(args.data_dir))
+        config = load_config(storage.location, args.model)
+        limits = limit_override(config.run, run_json)
+        worker = BusinessWorker()
+
+        async def execute() -> None:
+            """与桌面装配同一服务，并在取消时等到清理完成。
+
+            Use the desktop service and await cleanup.
+            """
+            service = build_sessions(storage, worker, resolve_credential())
+
+            def display(signal: SessionSignal) -> None:
+                """仅显示公开事件，原生 provider 记录不输出。 Display public events only."""
+                if as_json:
+                    typer.echo(signal.model_dump_json())
+                elif signal.kind == "text.delta":
+                    typer.echo(signal.text, nl=False)
+
+            unsubscribe = service.subscribe(display)
+            try:
+                session_id = session
+                if project is not None:
+                    from pathlib import Path
+
+                    if not Path(project).is_absolute():
+                        raise AgentError("PROJECT_PATH_INVALID", "--project 需要完整绝对目录。")
+                    view = await worker.call(ProjectService(storage).open, path=project)
+                    if view.active_project is None:
+                        raise AgentError("PROJECT_NOT_FOUND", "未能打开项目。")
+                    created = await service.create(
+                        view.active_project.project_id, config.model.model_id
+                    )
+                    session_id = created.session_id
+                assert session_id is not None  # 参数二选一 / exclusive arguments
+                if session is not None and args.model is not None:
+                    existing = await service.view(session_id)
+                    if existing.summary.model_id != config.model.model_id:
+                        raise AgentError(
+                            "SESSION_MODEL_MISMATCH", "已有会话固定模型；切换模型请新建会话。"
+                        )
+                await service.start(session_id, str(uuid4()), prompt, limits)
+                if service.active and service.active.task:
+                    await asyncio.shield(service.active.task)
+                final = await service.view(session_id)
+                if not as_json:
+                    typer.echo()
+                output(final, as_json)
+                if final.summary.run and final.summary.run.status != "completed":
+                    raise typer.Exit(1)
+            finally:
+                await service.close()
+                unsubscribe()
+
+        try:
+            with storage.writer():
+                storage.initialize()
+                asyncio.run(execute())
+        except KeyboardInterrupt:
+            typer.echo("运行已停止 / Stopped", err=True)
+            raise typer.Exit(130) from None
+        finally:
+            worker.close()
+
+
+@sessions_app.command("get")
+def session_get(
+    ctx: typer.Context,
+    session_id: str,
+    before_seq: Annotated[int | None, typer.Option("--before-seq", min=2)] = None,
+) -> None:
+    """只读查看历史，不申请写锁或调用模型。 View history without a writer lock or model call."""
+    with report_errors(True):
+        storage = Storage(resolve_data_dir(options(ctx).data_dir))
+        worker = BusinessWorker()
+        try:
+            service = build_sessions(storage, worker, resolve_credential())
+            output(asyncio.run(service.view(session_id, before_seq)), True)
+        finally:
+            worker.close()
+
+
+@sessions_app.command("list")
+def session_list(
+    ctx: typer.Context,
+    project_id: str,
+    cursor: Annotated[str | None, typer.Option("--cursor")] = None,
+) -> None:
+    """按项目标识分页查看会话。 List a project's sessions using cursor pagination."""
+    with report_errors(True):
+        storage = Storage(resolve_data_dir(options(ctx).data_dir))
+        worker = BusinessWorker()
+        try:
+            service = build_sessions(storage, worker, resolve_credential())
+            output(asyncio.run(service.list(project_id, cursor, 20)), True)
+        finally:
+            worker.close()

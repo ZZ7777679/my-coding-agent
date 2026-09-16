@@ -24,7 +24,9 @@ from my_agent.config import (
     model_config_text,
 )
 from my_agent.errors import AgentError
+from my_agent.models.connections import ConnectionSettings
 from my_agent.rpc.dto import DTO, ModelId, StorageInfo, Timestamp
+from my_agent.runtime.settings import RunLimits
 
 
 def utc_now() -> str:
@@ -231,7 +233,7 @@ class Storage:
         except OSError as exc:
             raise AgentError("ENVIRONMENT_RESTRICTED", "无法检查应用写入锁。") from exc
 
-    def save_model(self, model_id: ModelId) -> None:
+    def save_model(self, model_id: ModelId, run: RunLimits | None = None) -> None:
         """持锁修改默认模型，保留其他已验证配置并原子保存。
 
         Update the default model under the lock, preserving other validated settings atomically.
@@ -241,7 +243,13 @@ class Storage:
         current = load_config(self.location)
         updated = ModelConfig.model_validate({**current.model.model_dump(), "model_id": model_id})
         self.initialize()
-        atomic_write(current.path, model_config_text(updated))
+        atomic_write(current.path, model_config_text(updated, run or current.run, current.http))
+
+    def save_connections(self, settings: ConnectionSettings) -> None:
+        """原子保存连接设置，同时保留模型与运行预算。 Save connection settings atomically."""
+        self.require_writer()
+        current = load_config(self.location)
+        atomic_write(current.path, model_config_text(current.model, current.run, settings))
 
     def info(self) -> StorageInfo:
         """返回公开存储状态；不初始化目录或篡改记录。

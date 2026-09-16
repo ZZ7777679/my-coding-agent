@@ -12,7 +12,8 @@ import type {
   DiagnosticsParams,
   InitializeResult,
   OperationError,
-  ProtocolV1
+  ProtocolV2,
+  SessionSignal
 } from '../generated/protocol'
 import { validate } from '../shared/validation'
 import { terminateProcessTree } from './processes'
@@ -64,6 +65,15 @@ export class Backend {
   private stopping = false
   private termination: Promise<void> | undefined
   private diagnostic: Promise<DiagnosticReport> | undefined
+  private listeners = new Set<(signal: SessionSignal) => void>()
+
+  /** 注册公开会话通知，返回清理入口。 Subscribe to public session notifications. */
+  subscribe(listener: (signal: SessionSignal) => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
 
   /**
    * 只保存连接参数；实际进程在 start 时创建。
@@ -221,7 +231,17 @@ export class Backend {
       this.assertHealthy()
     }
     if (this.diagnostic) throw error('DIAGNOSTICS_BUSY', '已有诊断正在运行，请等待完成。')
-    this.diagnostic = this.call('diagnostics.get', params, 'DiagnosticReport', 60000)
+    // 本机诊断原有预算之外，保留用户选择的网络等待时间。
+    // Keep the existing local diagnostic allowance plus the chosen network deadline.
+    const networkWait = params.network
+      ? (params.network_timeout_seconds ?? defaults.http.probe_timeout_seconds) * 1000
+      : 0
+    this.diagnostic = this.call(
+      'diagnostics.get',
+      params,
+      'DiagnosticReport',
+      Math.min(2 ** 31 - 1, 60000 + networkWait)
+    )
     try {
       return await this.diagnostic
     } finally {
@@ -230,18 +250,17 @@ export class Backend {
   }
 
   /**
-   * 按方法校验结果；排队等待诊断完成后再开始普通请求计时。
-   * Validate the method result and start ordinary timeouts only after diagnostics finish.
+   * 按方法校验短控制响应，诊断与运行使用独立等待。
+   * Validate short control responses independently of diagnostic and run waiting.
    */
-  async call<K extends keyof ProtocolV1>(
+  async call<K extends keyof ProtocolV2>(
     method: string,
     params: object,
     resultType: K,
     timeoutMs = 8000
-  ): Promise<ProtocolV1[K]> {
-    // M0 顺序处理请求，长诊断排队时间不能占用普通请求的响应预算。
-    // M0 serializes requests; diagnostic queue time must not consume an ordinary response budget.
-    if (method !== 'diagnostics.get' && this.diagnostic) await this.diagnostic
+  ): Promise<ProtocolV2[K]> {
+    // M1 的诊断与模型运行独立，取消请求立即进入控制通道。
+    // M1 diagnostics and model runs are independent; cancellation goes directly to control.
     const value = await this.request(method, params, timeoutMs)
     try {
       return validate(resultType, value)
@@ -306,6 +325,11 @@ export class Backend {
       }
       try {
         const data: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(line))
+        if (typeof data === 'object' && data !== null && 'method' in data) {
+          const notification = validate('SessionEventNotification', data)
+          for (const listener of this.listeners) listener(notification.params)
+          continue
+        }
         const response = validate('RpcResponse', data)
         const pending = response.id === null ? undefined : this.pending.get(response.id)
         if (!pending || response.id === null) throw new Error('Unmatched RPC response')

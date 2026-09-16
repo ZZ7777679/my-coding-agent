@@ -1,22 +1,25 @@
-"""事件身份与顺序草案，尚未实现事件存储或实时流。
+"""运行时输出契约，不导入 CLI / RPC 或具体存储。
 
-Draft event identity and ordering, without an event store or live stream.
+Runtime output contracts independent of adapters.
 """
 
-from dataclasses import dataclass
-from typing import Literal
+from typing import Protocol
+
+from my_agent.models.types import ModelProgress
+from my_agent.sessions.types import FactData
 
 
-@dataclass(frozen=True)
-class SessionEvent:
-    """预留会话、运行与序号字段；持久化与顺序保证留待运行时实现。
+class RunSink(Protocol):
+    """关键事实与瞬时文本分开提交。 Submit critical facts separately from transient text."""
 
-    Reserve session, run and sequence fields; persistence and ordering remain unimplemented.
-    """
+    async def commit(self, data: FactData) -> None:
+        """保存完整事实，失败必须向运行时传播。 Persist a complete fact and propagate failure."""
+        ...
 
-    session_id: str
-    run_id: str
-    # 预留会话内持久单调序号，区别于 RPC ID；保证尚待运行时实现。
-    # Reserve a durable session sequence distinct from RPC IDs; guarantees are not implemented yet.
-    seq: int
-    kind: Literal["run.started", "run.completed", "run.failed"]
+    async def text(self, message_id: str, delta: str) -> None:
+        """发布带消息身份的瞬时文本。 Publish transient text associated with its message."""
+        ...
+
+    async def progress(self, message_id: str, progress: ModelProgress) -> None:
+        """发布实际请求阶段，不包含原生模型内容。 Publish actual phases without native content."""
+        ...

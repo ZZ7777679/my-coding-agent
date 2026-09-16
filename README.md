@@ -1,8 +1,8 @@
 # My Coding Agent
 
-Windows 优先的个人 coding agent，使用独立 Python 核心与 Electron / React 桌面。M0 提供项目目录选择、最近项目与重启恢复、应用数据保存，以及桌面的模型设置、目录配置、环境诊断和 JSON 导出。对话与工具循环将在 M1 开始实现。
+Windows 优先的个人 coding agent，使用独立 Python 核心与 Electron / React 桌面。当前已实现项目选择、设置与诊断，以及 M1 的只读对话：通过 OpenCode Go 读取和搜索代码，显示工具过程、支持停止和追问，并在本地保存历史。当前不修改项目文件、不执行项目命令。
 
-开发前阅读 [AGENTS.md](AGENTS.md) 与 [进度总览](docs/progress/README.md)。现有基线见 [M0 方案](docs/plan/m0-implementation-plan.md) 和 [M0 进度](docs/progress/m0.md)；下一阶段见 [M1 方案](docs/plan/m1-implementation-plan.md) 与 [M1 进度](docs/progress/m1.md)。M1 目前仅完成规划，拟提供桌面对话、三个只读工具和会话历史。
+开发前阅读 [AGENTS.md](AGENTS.md) 与 [进度总览](docs/progress/README.md)。工程基线见 [M0 方案](docs/plan/m0-implementation-plan.md) 和 [M0 进度](docs/progress/m0.md)；当前功能与验证见 [M1 方案](docs/plan/m1-implementation-plan.md) 与 [M1 进度](docs/progress/m1.md)。
 
 ## 安装与启动
 
@@ -10,7 +10,7 @@ Windows 优先的个人 coding agent，使用独立 Python 核心与 Electron / 
 
 双击入口默认使用 `E:\MyCodingAgentData\dev`，项目选择器默认打开 `E:\claude_code\my-coding-agent-test`。可以通过下文的本机路径文件或环境变量覆盖；脚本不会自动安装依赖。
 
-在仓库根目录的 PowerShell 中执行。使用 Node.js **24.16.0**、uv **0.11.32** 和常规 CPython **3.13.14**；Git、ripgrep 需在 PATH 中。Python 使用仓库 `.venv`，不使用全局 Anaconda。准确版本分别保存在 `.node-version`、`.python-version` 和依赖锁文件中。
+在仓库根目录的 PowerShell 中执行。使用 Node.js **24.16.0**、uv **0.11.32** 和常规 CPython **3.13.14**。Python 使用仓库 `.venv`，不使用全局 Anaconda。准确版本分别保存在 `.node-version`、`.python-version` 和依赖锁文件中。Git 用于仓库开发；只读 Agent 不要求项目已有 Git 提交。搜索优先使用 PATH 中的 ripgrep，缺失时使用同策略的 Python 搜索，不阻止启动。
 
 ```powershell
 uv python install
@@ -50,10 +50,11 @@ npm.cmd --prefix apps/desktop run install:electron
 
 ```text
 <data-dir>/
-├── config.toml       # 模型选项与环境变量名称，不含密钥
+├── config.toml       # 模型、运行预算和连接偏好，不含密钥
 ├── storage.json      # 数据版本、初始化时间
 ├── projects.json     # 项目身份、路径、最近记录和当前选择
 ├── .runtime.lock     # Python 业务数据单写者锁
+├── sessions/         # 每会话一个目录，其 events.jsonl 保存版本化事实
 ├── electron/         # Electron 用户状态
 ├── cache/electron/   # Chromium 缓存
 └── logs/             # 只记录固定错误码的应用日志
@@ -119,11 +120,18 @@ npm.cmd --prefix apps/desktop run dev
 | 公开配置 | 查看服务地址、模型、配置文件位置及凭据来源；“刷新配置”重新读取后端，不展示密钥 |
 | 启动目录 | 输入完整路径或打开系统选择器，保存到仓库的 `agent.paths.local.json`；下次通过双击 / dev / preview 启动生效，参数与环境变量优先级不变 |
 | 环境诊断 | 默认只检查本机；按需勾选开发工具、网络连通性或写入探测，结果列出状态、原因、修正提示和详情 |
+| 模型连接池 | GLM / DeepSeek 独立列出模型名、测试结果、首字耗时与测试时间，各自按钮实际请求对应模型；集中管理共享池的复用开关、超时和释放 |
 | JSON 导出 | 用系统保存对话框导出公开配置、项目列表或本次诊断报告；包含目录信息，不包含密钥，禁止覆盖应用记录 |
 
 修改启动目录不会搬迁历史数据或立即改变当前项目。数据目录可指定可用磁盘上尚未创建的位置；项目选择器起始目录须已存在，两者不能相同或互相包含。设置页保存完整绝对路径；需要随仓库搬动的相对路径仍可按上面的文件格式手动配置。已有本机文件损坏时会保留并提示修正。
 
-诊断期间页面显示等待状态并暂停其他业务操作；后端等待上限为 60 秒。配置损坏或数据根被占用时仍可进入诊断页查看原因；修正文件或关闭占用实例后重新启动。模型认证与工具回合在 M0 始终显示未验证。
+诊断期间设置页显示等待状态，本机诊断的传输等待为 60 秒；勾选网络时额外保留已保存的连接测试等待时间，模型任务和全局停止入口使用独立通道。配置损坏或数据根被占用时仍可查看诊断；修正文件或关闭占用实例后重新启动。诊断本身不调用模型，报告中的认证 / 工具回合仍为未检查；实际会话的结果单独显示。
+
+“模型连接池”的复用开关默认开启，关闭后仍能聊天，但每次请求结束会关闭所属客户端；偏好保存在当前数据根 `config.toml` 的 `[http]` 表中，旧配置缺少该表时使用集中默认值。手动测试等待默认 20 秒，可在页面调整并保存；环境诊断的网络选项也采用已保存值。查看 / 刷新状态及开启开关不联网，不发送心跳。切换开关或“释放已有连接”不会打断当前回答，旧客户端等活动请求结束后关闭，新请求按最新策略建立连接。
+
+“测试 GLM”与“测试 DeepSeek”分别向对应模型发送一条固定短消息，使用现有凭据和生产客户端，会消耗模型额度；不发送项目内容或会话历史，不创建会话、不执行工具、不重试或更换模型。每个模型独立保留成功 / 失败、首个正文时间、分段耗时与测试时间；等待期间读取本地进度。测试使用页面当前填写的超时，保存后下次启动仍保留。两个模型共用一个 HTTP 池，列表表示模型测试结果，不表示两个独立物理连接或持续在线。
+
+折叠项“网关目录探测与最近请求”及环境诊断的网络选项仍通过当前池请求 Go 的 `/models`，不发送 API key 或生成请求；这只能探测目录，不能证明某个模型可用。最近模型请求附带具体模型名称，最近测试结果只保留在当前后端内存中、重启清空，已保存开关仍保留。所有探测沿用当前网络环境，不修改 VPN / 系统网络；单独运行的 CLI 不管理桌面进程的池。
 
 以下命令默认离线；`config show`、`projects list` 与普通 `doctor` 不初始化应用记录。
 
@@ -142,9 +150,39 @@ uv run --locked my-agent --data-dir E:\MyCodingAgentData\dev projects open --roo
 
 若手动配置 `allowed_models`，须完整包含上述两个不同模型，允许调整显示顺序；初始选中项仍由 `model_id` 决定。缺项、重复和其他模型仍会报错。
 
-凭据只引用 `OPENCODE_API_KEY`：优先读取当前进程的非空值，Windows 上缺失时再读取当前用户同名变量。密钥不复制到配置、日志或 renderer；桌面通过专用启动帧传给 Python，并从后端子进程的继承环境中移除。M0 只报告凭据来源和是否存在，不发起模型调用，也不会把存在密钥显示成认证成功。
+凭据只引用 `OPENCODE_API_KEY`：优先读取当前进程的非空值，Windows 上缺失时再读取当前用户同名变量。密钥不复制到配置、日志或 renderer；桌面通过专用启动帧传给 Python，并从后端子进程的继承环境中移除。打开应用、项目或历史不调用模型；只有明确发送问题才发起请求，凭据存在不等于认证已通过。
 
-`doctor --network` 显式执行一次不携带凭据的模型目录 GET；`--write-probe` 显式创建并清理独立探测文件。默认报告区分凭据存在、目录可达、认证和工具回合；后两项在 M0 始终为 `not_checked`。Docker 不可用会显示警告，不阻塞 M0。
+`doctor --network` 显式执行一次不携带凭据的模型目录 GET；`--write-probe` 显式创建并清理独立探测文件。报告区分凭据存在、目录可达、认证和工具回合；后两项保持 `not_checked`。Docker 不可用会显示警告，不阻塞只读 Agent。
+
+## 使用只读 Agent
+
+双击 `StartAgent.cmd`，选择项目后进入左侧“只读对话”，选择新会话模型并点击“新建会话”，即可发送问题。例如：“找到启动入口，解释配置如何加载，并标出文件和行号。”
+
+- 工具支持 `list_files`、`read_file`、`search`。展开记录查看实际内容、相对路径、行号和文件版本；模型回答按安全纯文本显示，不自动打开模型给出的链接。
+- 一个后端同时运行一个任务。顶部“停止运行”在切换项目或设置页后仍可用；“正在停止”表示正在清理资源。切换视图或重载窗口不会自动重发问题。
+- 对话状态显示实际连接、等待响应、思考和正文阶段。“本次请求首字”从 Python 模型调用入口计到首个非空正文，思考状态不算首字，也不包含点击、存储和界面渲染时间。工具续答会开始下一次请求并重新计时；历史保留最近请求的耗时，旧会话没有指标时不补造。
+- 会话固定项目和模型，默认模型变更只影响新会话。完整历史允许追问和显式重试；有未配对工具或损坏记录的会话保留可读内容，并提示新建会话。
+- 历史保存在当前应用数据根下，重启后从会话列表打开，更早记录支持分页。原生模型续接字段仅在 Python 内保存。当前不提供历史自动修复、数据迁移或从半途自动执行。
+- “设置与诊断 → 高级运行预算与读取规则”可调整请求、工具、时间、上下文 / 输出 / 文件容量与扫描范围。初值为 25 请求、60 工具、10 分钟，每次运行取独立快照。上下文使用字节估算；未返回的 token 用量和现金费用显示未知。
+- 默认遵守嵌套 `.gitignore`，排除常见凭据、Git 元数据、依赖和构建目录；可显式允许普通忽略文件，凭据保护仍保留。读取前检查真实路径和链接，目前读取可靠 UTF-8 源码；无法解码或过大时返回局部工具错误。
+
+CLI 的 `ask` 使用同一运行服务和工具，以下命令会调用模型。使用与桌面相同的数据根前须关闭桌面，或显式选择独立数据根；项目参数必须是完整绝对路径。
+
+```powershell
+uv run --locked my-agent --data-dir E:\MyCodingAgentData\cli ask "解释项目启动流程" --project E:\claude_code\my-coding-agent-test
+
+# 预算仅覆盖本次运行；Ctrl+C 会停止并等待清理
+uv run --locked my-agent --data-dir E:\MyCodingAgentData\cli ask "找到配置加载入口" --project E:\claude_code\my-coding-agent-test --run-json '{"max_requests":5,"max_seconds":180}'
+
+# 使用输出中的真实标识；查看历史不调用模型
+uv run --locked my-agent --data-dir E:\MyCodingAgentData\cli sessions list <project-id>
+uv run --locked my-agent --data-dir E:\MyCodingAgentData\cli sessions get <session-id>
+uv run --locked my-agent --data-dir E:\MyCodingAgentData\cli ask "继续解释这里的错误处理" --session <session-id>
+```
+
+`sessions list --cursor` 和 `sessions get --before-seq` 可继续分页，游标取前一页结果。`ask --json` 输出公开事件 JSONL 和最终快照；全局 `--model` 用于新会话，已有会话不允许无声更换模型。请求不自动重试、不静默更换模型或 provider。
+
+同一后端默认共用 HTTP 连接池，可在诊断页关闭复用；服务端关闭或连接失效时可能需要重新建连，后端退出统一释放；分别启动的 CLI 进程不会跨进程共享连接。应用沿用当前网络环境，不绑定代理方式。开启复用时，有效连接不因固定空闲秒数被应用主动淘汰；正常 SSE 结束后最多用集中默认值中的 1 秒读取 HTTP 尾部以便复用，超时只放弃连接复用，已经完整校验的回答仍有效。该清理发生在首字之后，不缩短单请求 / 运行预算，不增加隐式重试。
 
 `doctor --dev` 的开发文件检查按后端源码位置定位仓库，不依赖终端当前目录或选中的项目；报告详情包含实际检查位置。独立安装的 wheel 不包含开发仓库文件时会如实报告缺失，只影响显式开发诊断，不成为日常启动条件。
 
@@ -173,7 +211,7 @@ uv run --locked python scripts/export_schemas.py
 npm.cmd --prefix apps/desktop run types:generate
 ```
 
-数据流为 `Pydantic → JSON Schema 2020-12 → TypeScript`，两侧运行时严格校验。最小 JSONL RPC 支持 `initialize`、`projects.open`、`projects.list`、`config.get`、`config.update`、`diagnostics.get`、`shutdown`；stdout 专供协议，1 MiB 单帧上限，收到 stdin EOF 后释放锁退出。内部模型 / 事件类型为 M1 草案，未声明任务执行能力。
+数据流为 `Pydantic → JSON Schema 2020-12 → TypeScript`，两侧运行时严格校验。当前协议 v2 保留项目、配置、诊断和关闭接口，新增 `sessions.create/list/get/attach/detach`、`runs.start/cancel/active` 及 `session.event` 通知。普通控制响应不等待模型完成；stdout 专供协议，1 MiB 单帧上限，收到 stdin EOF 后停止任务、清理资源并释放锁。配置 / 项目数据继续使用版本 1，会话事实单独版本化。
 
 [Windows CI](.github/workflows/check.yml) 使用相同锁定版本与聚合入口，不配置模型密钥、不发布安装包。源码窗口与资源构建属于 M0；包含 Python 后端的桌面安装包在 M2 验证。
 

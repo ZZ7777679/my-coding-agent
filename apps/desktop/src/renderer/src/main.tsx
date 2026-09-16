@@ -9,10 +9,12 @@ import type {
   InitializeResult,
   OperationError,
   ProjectsView,
-  PublicConfig
+  PublicConfig,
+  SessionSummary
 } from '../../generated/protocol'
 import type { Result } from '../../shared/api'
 import { Settings } from './Settings'
+import { Chat } from './Chat'
 import './style.css'
 
 /**
@@ -50,7 +52,8 @@ function App() {
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
-  const [view, setView] = useState<'projects' | 'settings'>('projects')
+  const [view, setView] = useState<'projects' | 'settings' | 'chat'>('projects')
+  const [activeRun, setActiveRun] = useState<SessionSummary | null>(null)
   const generation = useRef(0)
   const occupied = useRef(false)
   const mounted = useRef(true)
@@ -160,6 +163,37 @@ function App() {
     info?.config.model_id === 'deepseek-v4.1-flash' ? 'DeepSeek V4.1 Flash' : 'GLM-5.3-Flash'
   const credential = info?.config.credential
 
+  /** 视图切换不改变活动任务；独立刷新全局停止入口。 Keep global run control across view changes. */
+  const refreshRun = useCallback(async () => {
+    try {
+      const result = await window.agent.getActiveRun()
+      if (mounted.current) {
+        if (result.ok) setActiveRun(result.data.session)
+        else setNotice(errorNotice(result.error))
+      }
+    } catch {
+      if (mounted.current) setNotice('无法刷新运行状态，请检查后端连接。')
+    }
+  }, [])
+  useEffect(() => {
+    if (!connected) return
+    void refreshRun()
+    const timer = setInterval(() => void refreshRun(), 1000)
+    return () => clearInterval(timer)
+  }, [connected, refreshRun])
+
+  /** 停止按钮只确认请求，保持 stopping 直到后端退出任务。 Keep stopping until backend cleanup ends. */
+  const stopRun = async () => {
+    if (!activeRun?.run) return
+    try {
+      const result = await window.agent.cancelRun(activeRun.run.run_id)
+      if (result.ok) setActiveRun(result.data)
+      else setNotice(errorNotice(result.error))
+    } catch {
+      setNotice('停止请求未确认，请检查连接。')
+    }
+  }
+
   return (
     <div className="app">
       <aside className="sidebar">
@@ -188,6 +222,13 @@ function App() {
             ⚙
           </span>
           <span>设置与诊断</span>
+        </button>
+        <button
+          className={'nav-item ' + (view === 'chat' ? 'nav-current' : '')}
+          onClick={() => setView('chat')}
+        >
+          <span aria-hidden="true">◈</span>
+          <span>只读对话</span>
         </button>
         <div className="section-label">
           最近打开<span>{info?.projects.recent_projects.length ?? 0}</span>
@@ -227,7 +268,7 @@ function App() {
           <span data-testid="connection-status">
             {phase === 'loading' ? '正在连接后端' : connected ? '本地后端已连接' : '后端不可用'}
           </span>
-          <small>M0</small>
+          <small>{info?.app.stage ?? 'M1'}</small>
         </div>
       </aside>
 
@@ -236,13 +277,34 @@ function App() {
           <div>
             <span className="breadcrumb">工作台</span>
             <span className="separator">/</span>
-            <strong>{view === 'projects' ? '项目' : '设置与诊断'}</strong>
+            <strong>
+              {view === 'projects' ? '项目' : view === 'chat' ? '只读对话' : '设置与诊断'}
+            </strong>
           </div>
           <span className="local-badge">
             <span />
             本地工作空间
           </span>
         </header>
+        {activeRun?.run && (
+          <div className="global-run" role="status">
+            <span>
+              {activeRun.run.status === 'stopping' ? '正在停止并清理…' : 'Agent 正在运行'} ·{' '}
+              {activeRun.title}
+            </span>
+            <button
+              onClick={() => {
+                setView('chat')
+                if (activeRun.project_id !== project?.project_id) void select(activeRun.project_id)
+              }}
+            >
+              查看运行
+            </button>
+            <button onClick={() => void stopRun()} disabled={activeRun.run.status === 'stopping'}>
+              停止运行
+            </button>
+          </div>
+        )}
         <div hidden={view !== 'projects'}>
           <div className="content">
             <div className="page-heading">
@@ -298,6 +360,9 @@ function App() {
                         ? '项目选择已保存。重新打开应用时，会恢复到这里。'
                         : '原来的记录已保留。请连接磁盘，或重新选择项目目录。'}
                     </p>
+                    <button className="text-button" onClick={() => setView('chat')}>
+                      进入只读对话 →
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -338,7 +403,7 @@ function App() {
                 <div className="credential-status">
                   <span className={credential?.present ? 'tiny-dot present' : 'tiny-dot'} />
                   {credential?.present
-                    ? '凭据已检测，尚未验证调用'
+                    ? '凭据已检测，调用结果以当前运行为准'
                     : credential?.source === 'restricted'
                       ? '凭据读取受限'
                       : '未检测到模型凭据'}
@@ -352,7 +417,7 @@ function App() {
                 <code data-testid="data-dir">
                   {info?.storage.data_dir ?? '等待后端确认保存位置'}
                 </code>
-                <p className="muted">项目记录与应用状态保存在这里。</p>
+                <p className="muted">项目记录、会话历史与应用状态保存在这里。</p>
                 <button
                   className="text-button"
                   onClick={() => void openData()}
@@ -364,10 +429,20 @@ function App() {
             </div>
             <footer className="footer-note">
               <span>◎</span>
-              <p>当前已支持项目选择与本地记录。后续阶段将接入对话、代码修改与验证。</p>
+              <p>已接入只读对话、代码读取与本地历史。代码修改和项目命令在后续阶段实现。</p>
               <span className="version">v{info?.app.app_version ?? '—'}</span>
             </footer>
           </div>
+        </div>
+        <div hidden={view !== 'chat'}>
+          <Chat
+            project={project ?? null}
+            defaultModel={info?.config.model_id ?? 'glm-5.3-flash'}
+            connected={connected}
+            visible={view === 'chat'}
+            active={activeRun}
+            onRunChange={() => void refreshRun()}
+          />
         </div>
         <div hidden={view !== 'settings'}>
           <Settings

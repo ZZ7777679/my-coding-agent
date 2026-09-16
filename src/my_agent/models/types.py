@@ -1,43 +1,93 @@
-"""供后续模型适配使用的内部草案，不属于当前公开 RPC。
+"""模型边界与完整回合；原生续接数据只在 Python 内使用。
 
-Internal drafts for later model adapters, outside the current public RPC.
+Model contracts and complete turns; native continuation stays inside Python.
 """
 
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable
+from typing import Annotated, Literal, Protocol
 
-from pydantic import JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
+from my_agent.runtime.settings import RunLimits
 
-@dataclass(frozen=True)
-class ToolCall:
-    """描述完整工具调用参数；该草案自身不提供执行授权。
-
-    Describe complete tool-call arguments; this draft grants no execution permission.
-    """
-
-    tool_call_id: str
-    name: str
-    arguments: dict[str, JsonValue]
+ModelId = Literal["glm-5.3-flash", "deepseek-v4.1-flash"]
+type JsonObject = dict[str, JsonValue]
+type TextSink = Callable[[str], Awaitable[None]]
 
 
-@dataclass(frozen=True)
-class ToolResult:
-    """按调用标识关联工具结果，区分业务失败与正常内容。
+class ModelData(BaseModel):
+    """内部模型数据的严格基类。 Strict base for internal model data."""
 
-    Associate tool output with its call ID and distinguish errors from normal content.
-    """
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+
+
+class ToolCall(ModelData):
+    """完整参数对象，仍需工具权限校验。 Complete arguments still requiring tool policy checks."""
+
+    tool_call_id: Annotated[str, Field(min_length=1, max_length=128)]
+    name: Annotated[str, Field(min_length=1, max_length=128)]
+    arguments: JsonObject
+
+
+class ToolResult(ModelData):
+    """按调用标识关联可公开工具结果。 Associate public tool output with its call ID."""
 
     tool_call_id: str
     content: str
     is_error: bool
 
 
-@dataclass(frozen=True)
-class ModelTurn:
-    """描述一个模型回合的文本与工具调用，尚未接入执行循环。
+class TokenUsage(ModelData):
+    """服务实际返回的用量；未知保留 null。 Reported usage; unknown remains null."""
 
-    Describe turn text and tool calls; no execution loop is connected yet.
-    """
+    input_tokens: Annotated[int, Field(ge=0)] | None
+    output_tokens: Annotated[int, Field(ge=0)] | None
+
+
+class ModelProgress(ModelData):
+    """请求阶段与单调时钟耗时，不包含网络原文。 Request phases and timings without raw payloads."""
+
+    phase: Literal[
+        "preparing", "connecting", "tls", "waiting", "receiving", "reasoning", "text", "completed"
+    ]
+    elapsed_ms: Annotated[float, Field(ge=0)]
+    first_text_ms: Annotated[float, Field(ge=0)] | None = None
+    first_event_ms: Annotated[float, Field(ge=0)] | None = None
+    response_headers_ms: Annotated[float, Field(ge=0)] | None = None
+    connect_ms: Annotated[float, Field(ge=0)] | None = None
+    tls_ms: Annotated[float, Field(ge=0)] | None = None
+    response_complete: bool | None = None
+
+
+type ProgressSink = Callable[[ModelProgress], Awaitable[None]]
+
+
+class ModelTurn(ModelData):
+    """只提交完整回合，并独立保留原生续接。 Commit complete turns with separate native history."""
 
     text: str
-    tool_calls: tuple[ToolCall, ...]
+    tool_calls: list[ToolCall]
+    native: JsonObject
+    usage: TokenUsage
+
+
+class ModelClient(Protocol):
+    """运行时需要的模型能力，不耦合 provider。 Provider-independent runtime model boundary."""
+
+    def check_available(self) -> None:
+        """检查本地前置条件，不发请求。 Check local prerequisites without a request."""
+        ...
+
+    async def complete(
+        self,
+        *,
+        model_id: ModelId,
+        session_id: str,
+        messages: list[JsonObject],
+        tools: list[JsonObject],
+        limits: RunLimits,
+        on_text: TextSink,
+        on_progress: ProgressSink | None = None,
+    ) -> ModelTurn:
+        """流式展示文本，返回完整结构化结果。 Stream display text and return a complete turn."""
+        ...

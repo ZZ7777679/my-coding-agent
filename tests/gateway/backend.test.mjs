@@ -83,11 +83,11 @@ test('UTF-8 bytes split across chunks are decoded after framing', async () => {
 })
 
 /**
- * 让诊断超过普通请求的八秒窗口，验证刷新排队及重复探测拒绝。
- * Exceed the ordinary eight-second window to verify queued refreshes and duplicate rejection.
+ * 让诊断超过八秒，普通控制仍立即响应，重复探测被拒绝。
+ * Keep ordinary control responsive during long diagnostics and reject duplicate probes.
  */
 test(
-  'slow diagnostics do not expire queued refreshes and reject duplicate probes',
+  'slow diagnostics do not block control and reject duplicate probes',
   { timeout: 15000 },
   async () => {
     childProcess.spawn = (command, args, options) => {
@@ -108,8 +108,10 @@ test(
         backend.diagnostics({ dev: false, network: false, write_probe: false }),
         (error) => error.detail.code === 'DIAGNOSTICS_BUSY'
       )
-      const refreshed = backend.info()
-      const [diagnostic, info] = await Promise.all([report, refreshed])
+      const start = performance.now()
+      const info = await backend.info()
+      assert.ok(performance.now() - start < 2000)
+      const diagnostic = await report
       assert.equal(diagnostic.authentication_verified, 'not_checked')
       assert.equal(info.config.model_id, 'glm-5.3-flash')
       assert.deepEqual(logs, [])

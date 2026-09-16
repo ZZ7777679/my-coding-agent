@@ -1,0 +1,113 @@
+# M1 网络与响应体验：DeepSeek Harness 对照
+
+调研日期：2026-09-16。用户确认，感觉响应较快的 DeepSeek Harness（DSH）也使用 **OpenCode Go**，所以不能用“它连接另一家服务商”解释速度差异。
+
+本轮结论：应先改进我们自己的 HTTP 连接生命周期、流式处理与超时 / 取消，再用相同条件测量剩余差距。已确认的 TLS 等待仍是有效证据，但它只能定位等待发生在哪一层，不能单独证明 VPN、Go 服务或某个客户端实现是唯一原因。
+
+2026-09-16 用户补充：应用不绑定代理或连接方式，集中优化自身网络实现。据此，原建议中的“统一代理解析”移出本轮范围；下文保留源码对照与历史诊断事实，实施顺序以第 4 节修订方案为准。
+
+本文件保留源码对照与修订设计。最初调研仅分析；随后用户已授权实施并测试，连接复用、响应流清理、阶段 / 首字指标和桌面等待优化已落地。实际证据见第 6 节与 [M1 进度](../progress/m1.md)，VPN、系统网络、DSH 个人配置和默认模型保持原状。
+
+## 1. 依据与适用范围
+
+- 官方仓库：[`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness)。本次固定提交 [`0d1f50007f9bca3f52b06e1c3074fa14d5fb0720`](https://github.com/deepseek-ai/deepseek-harness/tree/0d1f50007f9bca3f52b06e1c3074fa14d5fb0720)，提交时间为 2026-09-15T03:16:06Z。
+- 仓库许可证为 [MIT](https://github.com/deepseek-ai/deepseek-harness/blob/0d1f50007f9bca3f52b06e1c3074fa14d5fb0720/LICENSE)。本次只阅读源码并归纳设计，没有将上游源码复制进产品。
+- 研究副本位于 Git 忽略的 `.artifacts/research/deepseek-harness/0d1f50007f9bca3f52b06e1c3074fa14d5fb0720/`，含提交元数据、完整文件树和所需源码；未安装依赖或运行上游。
+- 核对的是上述上游版本，不是用户当前运行的 DSH 二进制。没有读取个人 DSH 配置，因此实际模型 ID、请求参数、代理来源、版本和连接是否预热仍未确认。
+- DSH 通用网关走 `llm-pi-ai` 能力，它支持 OpenAI-compatible 路由；本次沿此链路阅读，没有把只供官方 DeepSeek 接口使用的适配器当成 Go 的唯一实现。[路由职责](https://github.com/deepseek-ai/deepseek-harness/blob/0d1f50007f9bca3f52b06e1c3074fa14d5fb0720/packages/llm/llm-pi-ai/README.md)、[协议选择](https://github.com/deepseek-ai/deepseek-harness/blob/0d1f50007f9bca3f52b06e1c3074fa14d5fb0720/packages/llm/llm-pi-ai/src/provider.ts#L28)
+- `llm-pi-ai/package.json` 声明 `@earendil-works/pi-ai: ^0.85.1`。依赖锁文件获取受限，不能把这个范围说成已确认的精确锁定版本；这不影响对已读取 DSH 自有连接管理源码的判断。
+
+## 2. 调研时已确认的实现差异
+
+下表记录实施前的基线，当前落地结果见第 6 节。
+
+| 方面 | DSH 固定提交中的实现 | 当前项目 | 实际含义 |
+| --- | --- | --- | --- |
+| HTTP 连接管理 | 启动时安装进程级 dispatcher；代理策略下由一个 Agent 持有按 origin 创建的 Pool / ProxyAgent，释放归所属生命周期管理。无代理且没有既有安装时保留 Node 默认 dispatcher | `GoClient.complete()` 每调用一次都进入新的 `AsyncClient`，回合结束就关闭；装配层还会按 run 新建 `GoClient` | 我们没有跨请求复用连接池，工具后的模型续答和追问反复付出建连成本 |
+| 代理解析 | 启动时集中解析环境与受信 DSH home `.env`，统一路由匹配，普通 fetch 与 PI 请求共用 | 依靠 HTTPX / urllib 隐式发现；桌面只传递变量，没有明确的应用网络策略 | DSH 的优势是规则与实际传输保持一致，不是自动识别 Windows 代理 |
+| 首段反馈 | 正文、reasoning 和工具参数是独立增量；界面有流式 reasoning 状态 | 只把正文推送到 renderer，provider 原生附加字段留在后端 | 模型先返回 reasoning 时，我们可能一直没有新的可见反馈；这和正文真正变快是不同指标 |
+| 超时与取消 | PI 适配器提供请求超时选项和独立流空闲 watchdog，默认空闲上限 300,000 ms；调用方取消和超时有区别 | 连接 / 读写使用同一个请求超时数值，并有单请求与总 run 时限 | 值得借鉴超时含义与错误归属，不能认为 DSH 快是因为把超时设得更短 |
+| 重试 | PI SDK `maxRetries: 0`；上层重试是可记录、可取消的独立机制 | 无隐式重试，失败显式重试 | 关闭 SDK 重试的方向一致；加重试并不会降低健康请求的首字延迟 |
+| 错误信息 | 区分 AUTH、RATE_LIMIT、TIMEOUT、TRANSPORT 等；同时注明 PI 部分异常已经丢失底层 cause | 不同 HTTPX 网络异常统一变为 `MODEL_NETWORK`，没有持久化连接阶段 | 可以借鉴分类与关联记录，但不应照搬依赖错误字符串的分类方式 |
+
+关键源码：
+
+- [进程级 Agent / Pool / ProxyAgent](https://github.com/deepseek-ai/deepseek-harness/blob/0d1f50007f9bca3f52b06e1c3074fa14d5fb0720/packages/util/http-proxy/src/install.ts#L143)，[启动安装](https://github.com/deepseek-ai/deepseek-harness/blob/0d1f50007f9bca3f52b06e1c3074fa14d5fb0720/apps/cli/src/profile-boot.ts#L294)。共享连接池提供复用机会，不保证每次请求都能复用同一个 TCP / TLS 连接。
+- [代理规则解析](https://github.com/deepseek-ai/deepseek-harness/blob/0d1f50007f9bca3f52b06e1c3074fa14d5fb0720/packages/util/http-proxy/src/policy.ts#L306)，[网络代理使用说明](https://github.com/deepseek-ai/deepseek-harness/blob/0d1f50007f9bca3f52b06e1c3074fa14d5fb0720/docs/user/guide/network-proxy.md)。DSH 明确不读取 Windows / macOS 系统代理，也不支持 SOCKS / PAC 自动发现。
+- [PI 请求选项和禁用 SDK 重试](https://github.com/deepseek-ai/deepseek-harness/blob/0d1f50007f9bca3f52b06e1c3074fa14d5fb0720/packages/llm/llm-pi-ai/src/adapter.ts#L115)，[空闲 watchdog](https://github.com/deepseek-ai/deepseek-harness/blob/0d1f50007f9bca3f52b06e1c3074fa14d5fb0720/packages/llm/llm-pi-ai/src/adapter.ts#L354)，[空闲默认值](https://github.com/deepseek-ai/deepseek-harness/blob/0d1f50007f9bca3f52b06e1c3074fa14d5fb0720/packages/llm/llm-pi-ai/src/config.ts#L46)。
+- [正文 / reasoning 事件转换](https://github.com/deepseek-ai/deepseek-harness/blob/0d1f50007f9bca3f52b06e1c3074fa14d5fb0720/packages/llm/llm-pi-ai/src/stream.ts#L155)，[reasoning 界面](https://github.com/deepseek-ai/deepseek-harness/blob/0d1f50007f9bca3f52b06e1c3074fa14d5fb0720/packages/client/ui-chat/src/client/chat/ReasoningRow.tsx#L19)，[带时间的即时事件发布](https://github.com/deepseek-ai/deepseek-harness/blob/0d1f50007f9bca3f52b06e1c3074fa14d5fb0720/packages/core/agent-loop/src/assistant-stream.ts#L61)。
+- [PI 错误分类与已知信息损失](https://github.com/deepseek-ai/deepseek-harness/blob/0d1f50007f9bca3f52b06e1c3074fa14d5fb0720/packages/llm/llm-pi-ai/src/stream.ts#L31)，[有记录的上层重试](https://github.com/deepseek-ai/deepseek-harness/blob/0d1f50007f9bca3f52b06e1c3074fa14d5fb0720/packages/llm/llm-retry/src/index.ts#L149)。
+
+## 3. 与本机实测如何对应
+
+此前三次真实 Go 短请求中，TLS 握手为 32.663、0.559、16.553 秒，而请求体发出到首个正文约 1.0–1.25 秒。我们每次新建客户端，会让每个请求都有机会遭遇一次慢握手。应优先修正这一实现；HTTPX 官方也明确建议避免在循环中反复创建 AsyncClient，以利用连接池。[HTTPX 客户端生命周期](https://www.python-httpx.org/async/#opening-and-closing-clients)
+
+但连接复用主要解释**已有连接可以复用的后续请求**。如果 DSH 在完全冷启动、没有预热连接的条件下也明显更快，就仍需比较代理入口、TLS 栈和请求条件，不能把差距全部算给连接池。
+
+同样，reasoning 状态可以让界面更早给出真实反馈，但不能缩短 TLS 时间。此前三次短请求没有非空 reasoning；它们的慢握手不能由“思考内容未展示”解释。长问题则应分别测首个网络字节、首个进度事件和首个正文，不混用“首字”指标。
+
+本机 `NO_PROXY` 导致 Python 未回退读取系统代理的事实仍成立。不过 DSH 本来也不读取系统代理：如果两边都只有这一个变量，且 DSH home 没有另设代理，两者都可能通过相同 TUN。不能据源码对照就宣布 DSH 已解决了同一个 Windows 代理问题。
+
+目前没有对用户正在使用的 DSH 做同条件性能测量；“DSH 使用 Go 且感觉快”是用户提供的事实，本文列出的实现差异是源码事实，它们对速度差距的贡献仍是待验证的因果判断。
+
+## 4. 适合当前项目的改进顺序
+
+### 边界：业务不依赖具体连接方式
+
+- 直连、系统代理或 TUN 由用户当前环境决定；应用不绑定 VPN 客户端、端口或出站方式，不把检测到代理 / VPN 作为启动和对话的前提。
+- 保留现有 HTTP 库对用户网络环境的正常使用；“不绑定”不等于关闭环境继承、忽略显式代理或强制直连。本轮不新增代理发现、来源优先级、自动切换或设置页面，也不读取 / 修改 VPN 配置。
+- 连接管理、流式传输、取消和错误反馈采用通用实现。先前 `NO_PROXY` / 系统代理发现现象作为已有兼容性记录保留，不把其排查或修复设为本轮优化的前置条件；本方案不宣称已经解决无 VPN 时的连接失败。
+
+### 第一步：让 HTTP 客户端由后端生命周期持有
+
+- 在显式装配入口创建可复用的异步 HTTP 客户端，注入 Go 适配器；同一个后端中的工具续答和追问可以共用连接池。仅把客户端移进 `GoClient.__init__` 仍不够，因为当前工厂每个 run 都会新建 GoClient。
+- 保持每个请求独立构造凭据和稳定的 `x-opencode-session`，凭据不放入通用日志、UI 或共享配置。运行取消关闭所属响应流，后端关闭时停止活动请求后再关闭客户端。
+- 核对 `[DONE]` 后响应体的结束与清理是否允许 HTTP 连接复用；不能把“客户端对象没变”当成连接已经复用的证据。网络切换导致的失效连接应丢弃，不能通过静默重放工具或无限重试恢复。
+- 首次冷连接依然需要握手；不以每次发送前增加探测请求作为修复，不以强制预热来伪装首字速度。
+
+### 第二步：减少流式处理与请求生命周期的额外等待
+
+- 保持已修正的 SSE 到达即解析行为，不为凑固定字节数等待；模型事件经后端、RPC 和桌面逐段交付，完整工具参数校验继续保留。
+- 核对请求处理中的异步等待和资源占用，避免应用自己的阻塞、重复初始化或串行准备增加延迟；仅依据实际代码和耗时证据改动，不扩展无关重构。
+- 连接超时、流空闲超时和单请求总时限表达各自含义，保留运行总预算并集中配置；不要照抄 DSH 的 300 秒，也不为优化无依据缩短现有超时。
+- 取消、网络断开和正常结束都释放所属响应资源；失效连接按通用传输机制淘汰，后续请求可重新建连。保留 SDK 无隐式重试的约定，不自动重放结果未知的请求或工具，也不按 VPN 类型建立恢复分支。
+
+### 第三步：显示真实等待阶段并保留必要诊断
+
+- 区分连接中、等待模型、收到模型进度、正文输出；状态只能由真实事件驱动，不用定时器生成假进度。
+- 可先发布收到 reasoning 的状态 / 时间元数据，保持当前 provider 原生数据不进入前端的边界。DSH 展示 reasoning 正文的做法不能自动覆盖本项目的数据约定；如要改变展示范围，应先明确公开 DTO 的职责。
+- 记录底层实际可观测的连接 / TLS / HTTP 阶段、耗时、异常类别和 run ID；不能单独观测的 DNS 等阶段不编造独立耗时。不记录 API key、完整代理 URL、提示词、HTTP 原文或原生思考内容，不依赖探测 VPN 进程来给出连接状态。
+
+上述内容按用户后续授权落实为 M1 的局部体验改进，不引入 DSH 全套运行时、插件框架或新 provider。尚无必要依据修改的超时 / 重试策略保持原值，不为形式上完成每个建议而增加配置或变更。
+
+## 5. 最小验证方式
+
+实施时优先复用集中诊断入口，不运行无关全量回归。
+
+1. 连接管理改动：用隔离的本地 keep-alive 服务验证连续请求、取消和关闭的实际连接行为；仅检查客户端实例相同不足以证明复用。
+2. 流式 / 超时 / 取消若有实际改动，复用受影响的集中模拟用例，只覆盖直接行为与资源清理；不新增代理识别矩阵或 VPN 切换验收，不要求完成外部网络根因排查后才能交付自身优化。
+3. 如执行真实对照，固定同一 Go 地址、精确模型 ID、短提示、工具 schema、输出与思考参数，在同一实际网络环境下区分冷启动和连续调用；不要求采用某种连接方式。记录首字节、首个进度、首个正文、完成时间和真实请求次数。
+4. 如需比较 DSH，先记录其版本与实际请求条件，再用独立会话做有界样本；不混用两个模型，不把已有会话的热连接与新后端冷连接直接作结论。额度、请求上限和是否实际执行写入 progress。
+
+## 6. 实施与验证结果（2026-09-16）
+
+- `ModelHttpPool` 按需创建，生命周期覆盖整个 Python 后端，逐 run 的 GoClient 借用；模型凭据和会话头逐请求构造。关闭服务先等待活动运行清理，再释放池。CLI 独立进程之间不共享套接字。
+- 保留 SSE 到达即解析；收到 DONE 后在容量保护下读取 HTTP 尾部以便复用。清理默认 1 秒集中在 `defaults.json.http`，可在装配时覆盖；仅限制首字之后的可选连接回收，超时保留完整回答并关闭该连接，不延长运行预算。空闲到期默认 `null`，避免固定空闲秒数导致后续追问重新握手；底层仍处理连接关闭、失效与连接池容量。
+- 请求 / 运行超时仍使用既有可调整预算，没有以“优化”为由缩短；未增加隐式重试、网络路径选择、探测或预热请求。
+- 新增公开的真实阶段和耗时，reasoning 只显示状态。阶段实时在内存发布，在完整回合 / 运行终态中持久保存；旧记录无指标时返回空，不拿上一请求的时延补造。前端按请求身份及较新的计时处理迟到事件。
+- 去掉桌面快照刷新前固定 120 ms 的延迟，同一事件循环内仍合并通知，保留有界缓存与去重。隔离桌面即时模型的点击至正文 DOM 从此前约 140 ms 降至 25–38 ms；这是桌面链路指标，不是 Go 端到端成绩。
+- 实际 8 次网络尝试中 6 次成功、2 次冷 TLS 到达 60 秒诊断上限。确认复用后的 GLM 首字为 1.214 / 0.906 秒，DeepSeek 为 1.768 秒，后续请求 trace 无新的 TCP / TLS 事件；冷连接首字仍可能很慢。报告位于 `.artifacts/tests/go-latency-pooling-20260916-01/summary.md`，完整命令与检查见 [M1 进度](../progress/m1.md)。
+
+没有修改 VPN 或系统网络，未提交 / 推送。仍保留冷连接抖动和服务首段等待的限制，未把连接复用描述成所有首次回复问题均已解决。
+
+## 7. 诊断页连接管理补充（2026-09-16）
+
+用户已确认当前基本网络诊断与服务使用能力足够，本专项收尾。后续以具体使用问题或新需求为依据调整，暂不扩展诊断功能或主动重复测速；保留已有验证证据和冷连接限制。
+
+- 诊断页集中查看后端连接复用设置、HTTP 客户端是否创建、活动请求数量与最近请求 / 探测的时间、结果和阶段耗时。客户端存在不代表套接字仍在线；不依赖 HTTPX 私有字段显示精确空闲套接字数量。
+- 复用默认开启，可显式关闭并保存到数据根配置；关闭仅改变连接保留策略，不禁止聊天。已有请求继续正常完成，旧客户端在最后一个借用者退出后关闭，新请求采用最新设置。
+- 手动释放当前连接后，下一请求按需创建客户端；此操作不清空会话或模型上下文。打开页面、刷新状态、开启开关都不主动联网，无心跳或自动保活。
+- 按用户后续反馈，面板首先按 GLM / DeepSeek 列出模型，分别提供真实模型测试按钮。每次调用 `connections.test_model` 显式携带模型 ID 与可调整超时，经生产 Go 客户端和共享池发送一个固定短提示，不读取会话 / 项目、不执行工具、不重试；会使用模型额度，不改变默认模型选择。首字定义为首个正文片段，reasoning 和响应头单独计时。
+- 各模型保存独立的进行状态、阶段和最近成功 / 失败结果；重复测试同一模型返回忙碌，测试一个模型不覆盖另一个模型。等待期间只轮询本地快照，长测试不占串行控制队列；关闭响应时正常清理借用者。结果仅保留在当前后端内存中，不作为持续在线保证。
+- 原目录测试移到折叠项并明确命名“网关目录探测”：只向固定 Go 目录发送一个无凭据 GET，沿用生产共享池与现有网络环境，不更换代理策略。其结果标明时间、HTTP 状态与脱敏错误，不能替代上面的模型响应测试；共享池最近模型请求补充模型身份。
+- 用本地 HTTP / SSE 和最小 RPC / 桌面检查验证目标模型、独立结果、偏好、失败与取消；真实验收显式启用，限定两个模型各一次、每次 60 秒，无全量回归。实际结果与限制保存在进度文件，不将一次成功推广为长期速度保证。

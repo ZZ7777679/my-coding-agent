@@ -31,11 +31,115 @@ test('model settings persist, local diagnostics stay read-only, and JSON exports
     await expect(page.getByLabel('探测服务网络连通性')).not.toBeChecked()
     await expect(page.getByLabel('实际测试数据目录写入')).not.toBeChecked()
     await expect(page.getByTestId('diagnostic-report')).toHaveCount(0)
+    const connections = page.getByRole('region', { name: '模型连接池', exact: true })
+    const glm = connections.getByTestId('model-connection-glm-5.3-flash')
+    const deepseek = connections.getByTestId('model-connection-deepseek-v4.1-flash')
+    await expect(glm).toContainText('尚未测试')
+    await expect(deepseek).toContainText('尚未测试')
+    await expect(connections.getByTestId('connection-pool-status')).toContainText(
+      '共享客户端：未创建'
+    )
+    await connections.getByLabel('跨会话复用连接').uncheck()
+    await connections.getByLabel('连接测试超时（秒）').fill('7.5')
+    await connections.getByRole('button', { name: '保存连接设置', exact: true }).click()
+    await expect(connections).toContainText('连接设置已保存')
+    await expect(connections.getByTestId('connection-pool-status')).toContainText('当前复用：关闭')
+
+    // 仅模拟网络探测结果的 UI 展示；真实池生命周期由本地 HTTP 用例验证。
+    // Mock probe presentation only; local HTTP tests verify the actual pool lifecycle.
+    const pool = await page.evaluate(() => window.agent.getConnections())
+    if (!pool.ok) throw new Error('Missing pool status')
+    await app.evaluate(({ ipcMain }, state) => {
+      ipcMain.removeHandler('agent:test-connection')
+      ipcMain.handle('agent:test-connection', (_event, params) => {
+        process.env.MY_AGENT_TEST_CONNECTION_PARAMS = JSON.stringify(params)
+        return {
+          ok: true,
+          data: {
+            ...state,
+            last_probe: {
+              finished_at: new Date().toISOString(),
+              code: 'OK',
+              http_status: 200,
+              models_confirmed: true,
+              progress: {
+                phase: 'completed',
+                elapsed_ms: 35,
+                connect_ms: 5,
+                tls_ms: 8,
+                response_headers_ms: 30,
+                response_complete: true
+              }
+            }
+          }
+        }
+      })
+    }, pool.data)
+    await connections.getByText('网关目录探测与最近请求', { exact: true }).click()
+    await connections.getByRole('button', { name: '网关目录探测', exact: true }).click()
+    await expect(connections).toContainText('HTTP 200')
+    expect(
+      await app.evaluate(() => JSON.parse(process.env.MY_AGENT_TEST_CONNECTION_PARAMS ?? '{}'))
+    ).toEqual({ timeout_seconds: 7.5 })
+    await connections.screenshot({ path: path.join(root, 'connection-pool.png') })
+    await connections.getByRole('button', { name: '释放已有连接', exact: true }).click()
+    await expect(connections).toContainText('已有连接已释放')
+    // 模拟两个不同结果以验证目标传参和行归属；生产请求由 Python SSE 用例覆盖。
+    // Simulate distinct outcomes for target/row attribution; Python covers production requests.
+    await app.evaluate(({ ipcMain }, state) => {
+      ipcMain.removeHandler('agent:test-model-connection')
+      ipcMain.handle('agent:test-model-connection', (_event, params) => {
+        process.env.MY_AGENT_TEST_MODEL_PARAMS = JSON.stringify(params)
+        const success = params.model_id === 'glm-5.3-flash'
+        state.models = (state.models ?? []).map((row) =>
+          row.model_id !== params.model_id
+            ? row
+            : {
+                ...row,
+                last_test: {
+                  finished_at: new Date().toISOString(),
+                  code: success ? 'OK' : 'MODEL_TIMEOUT',
+                  message: success ? '该模型已返回完整文本响应。' : '模型测试超过设定等待时间。',
+                  remediation: success ? '' : '查看停止阶段后重试。',
+                  progress: {
+                    phase: success ? 'completed' : 'tls',
+                    elapsed_ms: success ? 1400 : 7500,
+                    first_text_ms: success ? 1200 : null
+                  },
+                  usage: null
+                }
+              }
+        )
+        return { ok: true, data: state }
+      })
+    }, pool.data)
+    await glm.getByRole('button', { name: '测试 GLM', exact: true }).click()
+    await expect(glm).toContainText('最近测试成功')
+    await expect(glm).toContainText('1.200 秒')
+    await expect(deepseek).toContainText('尚未测试')
+    expect(
+      await app.evaluate(() => JSON.parse(process.env.MY_AGENT_TEST_MODEL_PARAMS ?? '{}'))
+    ).toEqual({ model_id: 'glm-5.3-flash', timeout_seconds: 7.5 })
+    await deepseek.getByRole('button', { name: '测试 DeepSeek', exact: true }).click()
+    await expect(deepseek).toContainText('最近测试失败 · MODEL_TIMEOUT')
+    await expect(deepseek).toContainText('模型首字 未观测')
+    await expect(glm).toContainText('最近测试成功')
+    await expect(glm).toContainText('1.200 秒')
+    expect(
+      await app.evaluate(() => JSON.parse(process.env.MY_AGENT_TEST_MODEL_PARAMS ?? '{}'))
+    ).toEqual({ model_id: 'deepseek-v4.1-flash', timeout_seconds: 7.5 })
+    await connections.getByText('网关目录探测与最近请求', { exact: true }).click()
+    await connections.screenshot({ path: path.join(root, 'model-connections.png') })
+    await writeFile(
+      path.join(root, 'connection-probe-ui-simulated.txt'),
+      'Catalog and per-model UI results simulated; no external network or model request was sent.\n'
+    )
     await page.getByLabel('默认模型').selectOption('deepseek-v4.1-flash')
     await page.getByRole('button', { name: '保存默认模型', exact: true }).click()
     await expect(page.getByRole('status')).toContainText('默认模型已保存')
     const configBefore = await readFile(path.join(dataDir, 'config.toml'), 'utf8')
     expect(configBefore).toContain('deepseek-v4.1-flash')
+    expect(configBefore).toContain('reuse_enabled = false')
     expect(configBefore).not.toContain(sentinel)
     const malformed = await page.evaluate(() =>
       window.agent.saveConfig(JSON.parse('{"model_id":"glm-5.3-flash","api_key":"untrusted"}'))
@@ -86,6 +190,8 @@ test('model settings persist, local diagnostics stay read-only, and JSON exports
     await expect(page.getByTestId('active-project-path')).toHaveText(project)
     await page.getByRole('button', { name: '设置与诊断', exact: true }).click()
     await expect(page.getByLabel('默认模型')).toHaveValue('deepseek-v4.1-flash')
+    await expect(page.getByLabel('跨会话复用连接')).not.toBeChecked()
+    await expect(page.getByLabel('连接测试超时（秒）')).toHaveValue('7.5')
     await page.getByRole('button', { name: '刷新配置', exact: true }).click()
     await expect(page.getByRole('status')).toContainText('配置已刷新')
     expect(await page.locator('body').innerText()).not.toContain(sentinel)
@@ -246,7 +352,8 @@ test('development and write diagnostics are real; optional network dispatch uses
     ).toEqual({
       dev: false,
       network: true,
-      write_probe: false
+      write_probe: false,
+      network_timeout_seconds: 20
     })
     expect(await page.locator('body').innerText()).not.toContain(sentinel)
     await writeFile(

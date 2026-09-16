@@ -136,8 +136,8 @@ def main() -> None:
     parser.add_argument("--desktop", action="store_true", help="Also run real Electron UI tests")
     args = parser.parse_args()
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
-    os.environ["RUFF_CACHE_DIR"] = str(ROOT / ".cache/ruff")
-    os.environ["MYPY_CACHE_DIR"] = str(ROOT / ".cache/mypy")
+    os.environ["RUFF_CACHE_DIR"] = str(ARTIFACTS / "ruff-cache")
+    os.environ["MYPY_CACHE_DIR"] = str(ARTIFACTS / "mypy-cache")
     os.environ["PYTHONIOENCODING"] = "utf-8"
     # 哨兵优先于 Windows 用户凭据；本入口不读取真实秘密。
     # The sentinel takes precedence over Windows user credentials without reading real secrets.

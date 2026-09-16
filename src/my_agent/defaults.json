@@ -1,13 +1,36 @@
 {
   "app_name": "My Coding Agent",
-  "stage": "M0",
-  "protocol_version": 1,
+  "stage": "M1",
+  "protocol_version": 2,
   "data_schema_version": 1,
   "data_dir": "E:\\MyCodingAgentData",
   "data_dir_env": "MY_AGENT_DATA_DIR",
   "development_project_dir": "E:\\claude_code\\my-coding-agent-test",
   "project_dir_env": "MY_AGENT_PROJECT_DIR",
   "max_frame_bytes": 1048576,
+  "http": {
+    "reuse_enabled": true,
+    "probe_timeout_seconds": 20.0,
+    "probe_max_bytes": 1048576,
+    "rpc_timeout_grace_ms": 5000,
+    "keepalive_expiry_seconds": null,
+    "response_drain_timeout_seconds": 1.0
+  },
+  "run": {
+    "max_requests": 25,
+    "max_tools": 60,
+    "max_seconds": 600,
+    "request_timeout_seconds": 180,
+    "max_output_tokens": 8192,
+    "max_context_bytes": 600000,
+    "max_response_bytes": 131072,
+    "max_file_bytes": 1048576,
+    "max_tool_bytes": 32768,
+    "max_scan_files": 10000,
+    "max_depth": 32,
+    "include_ignored": false,
+    "exclude_globs": []
+  },
   "model": {
     "provider": "opencode-go",
     "base_url": "https://opencode.ai/zen/go/v1",

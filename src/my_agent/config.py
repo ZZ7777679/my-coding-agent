@@ -15,7 +15,9 @@ from typing import Literal, get_args
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from my_agent.errors import AgentError, DataSource
+from my_agent.models.connections import ConnectionSettings
 from my_agent.rpc.dto import CredentialInfo, ModelId, PublicConfig
+from my_agent.runtime.settings import RunLimits
 
 DEFAULTS = json.loads(files("my_agent").joinpath("defaults.json").read_text(encoding="utf-8"))
 DEFAULT_DATA_DIR: str = DEFAULTS["data_dir"]
@@ -73,6 +75,8 @@ class LoadedConfig:
     model: ModelConfig
     path: Path
     model_source: Literal["default", "user", "cli"]
+    run: RunLimits
+    http: ConnectionSettings
 
     def public(self, credential: CredentialInfo) -> PublicConfig:
         """组装可发送给前端的配置，只包含凭据元信息。
@@ -89,6 +93,8 @@ class LoadedConfig:
             credential=credential,
             config_path=str(self.path),
             model_source=self.model_source,
+            run=self.run,
+            http=self.http,
         )
 
 
@@ -131,31 +137,44 @@ def load_config(location: DataLocation, model_override: str | None = None) -> Lo
 
     path = location.root / "config.toml"
     values = dict(MODEL_DEFAULTS)
+    run_values = dict(DEFAULTS["run"])
+    http_values = {key: DEFAULTS["http"][key] for key in ConnectionSettings.model_fields}
     source: Literal["default", "user", "cli"] = "default"
     try:
         if path.exists():
             if path.stat().st_size > 65536:
                 raise AgentError("CONFIG_INVALID", "配置文件超过大小限制。")
             content = tomllib.loads(path.read_text(encoding="utf-8"))
-            if set(content) - {"model"} or not isinstance(content.get("model", {}), dict):
-                raise AgentError("CONFIG_INVALID", "配置只支持 model 表，请检查字段名称。")
+            if set(content) - {"model", "run", "http"} or any(
+                not isinstance(content.get(section, {}), dict)
+                for section in ("model", "run", "http")
+            ):
+                raise AgentError(
+                    "CONFIG_INVALID", "配置只支持 model、run 和 http 表，请检查字段名称。"
+                )
             user_model: dict[str, object] = content.get("model", {})
             values.update(user_model)
+            run_values.update(content.get("run", {}))
+            http_values.update(content.get("http", {}))
             if "model_id" in user_model:
                 source = "user"
         if model_override is not None:
             values["model_id"], source = model_override, "cli"
         model = ModelConfig.model_validate(values)
+        run = RunLimits.model_validate(run_values)
+        http = ConnectionSettings.model_validate(http_values)
     except (ValidationError, tomllib.TOMLDecodeError, UnicodeError) as exc:
         raise AgentError(
-            "CONFIG_INVALID", "model 配置无效，请检查字段、类型和允许的模型。"
+            "CONFIG_INVALID", "model、run 或 http 配置无效，请检查字段、类型和允许的范围。"
         ) from exc
     except OSError as exc:
         raise AgentError("CONFIG_UNAVAILABLE", "无法读取应用配置。") from exc
-    return LoadedConfig(model, path, source)
+    return LoadedConfig(model, path, source, run, http)
 
 
-def model_config_text(model: ModelConfig) -> str:
+def model_config_text(
+    model: ModelConfig, run: RunLimits | None = None, http: ConnectionSettings | None = None
+) -> str:
     """将已验证的模型字段写成 TOML 文本，不保留原文件注释与排版。
 
     Serialize validated model fields as TOML without preserving file comments or layout.
@@ -164,6 +183,14 @@ def model_config_text(model: ModelConfig) -> str:
     lines = ["[model]"]
     for key, value in model.model_dump().items():
         lines.append(key + " = " + json.dumps(value, ensure_ascii=False))
+    if run is not None:
+        lines.extend(["", "[run]"])
+        for key, value in run.model_dump().items():
+            lines.append(key + " = " + json.dumps(value, ensure_ascii=False))
+    if http is not None:
+        lines.extend(["", "[http]"])
+        for key, value in http.model_dump().items():
+            lines.append(key + " = " + json.dumps(value, ensure_ascii=False))
     return "\n".join(lines) + "\n"
 
 
@@ -173,7 +200,13 @@ def default_config_text() -> str:
     Render initial configuration from the centralized defaults.
     """
 
-    return model_config_text(ModelConfig.model_validate(MODEL_DEFAULTS))
+    return model_config_text(
+        ModelConfig.model_validate(MODEL_DEFAULTS),
+        RunLimits.model_validate(DEFAULTS["run"]),
+        ConnectionSettings.model_validate(
+            {key: DEFAULTS["http"][key] for key in ConnectionSettings.model_fields}
+        ),
+    )
 
 
 def default_model() -> ModelId:

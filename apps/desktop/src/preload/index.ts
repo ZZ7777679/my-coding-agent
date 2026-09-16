@@ -5,18 +5,18 @@
 
 import { contextBridge, ipcRenderer } from 'electron'
 import type { DesktopAPI, Result } from '../shared/api'
-import type { ProtocolV1 } from '../generated/protocol'
+import type { ProtocolV2 } from '../generated/protocol'
 import { validate } from '../shared/validation'
 
 /**
  * 校验 IPC 结果封装与方法契约，拒绝混合成功和失败字段。
  * Validate the IPC envelope and method contract, rejecting mixed success/error fields.
  */
-async function invoke<K extends keyof ProtocolV1>(
+async function invoke<K extends keyof ProtocolV2>(
   channel: string,
   contract: K,
   args: unknown[] = []
-): Promise<Result<ProtocolV1[K]>> {
+): Promise<Result<ProtocolV2[K]>> {
   const raw: unknown = await ipcRenderer.invoke(channel, ...args)
   if (typeof raw !== 'object' || raw === null || !('ok' in raw)) throw new Error('IPC_INVALID')
   if (raw.ok === false && 'error' in raw && !('data' in raw)) {
@@ -41,6 +41,25 @@ async function nullableProjects(): ReturnType<DesktopAPI['chooseProject']> {
 }
 
 const api: DesktopAPI = {
+  createSession: (params) => invoke('agent:session-create', 'SessionSummary', [params]),
+  listSessions: (params) => invoke('agent:sessions-list', 'SessionPage', [params]),
+  getSession: (params) => invoke('agent:session-get', 'SessionView', [params]),
+  attachSession: (params) => invoke('agent:session-attach', 'SessionView', [params]),
+  detachSession: (sessionId) =>
+    invoke('agent:session-detach', 'EmptyParams', [{ session_id: sessionId }]),
+  startRun: (params) => invoke('agent:run-start', 'SessionSummary', [params]),
+  cancelRun: (runId) => invoke('agent:run-cancel', 'SessionSummary', [{ run_id: runId }]),
+  getActiveRun: () => invoke('agent:run-active', 'ActiveRunResult'),
+  /** 校验每条事件，并提供可注销监听。 Validate each event and return a removable listener. */
+  onSessionEvent: (listener) => {
+    const receive = (_event: Electron.IpcRendererEvent, raw: unknown) => {
+      listener(validate('SessionSignal', raw))
+    }
+    ipcRenderer.on('agent:session-event', receive)
+    return () => {
+      ipcRenderer.removeListener('agent:session-event', receive)
+    }
+  },
   getAppInfo: () => invoke('agent:info', 'InitializeResult'),
   chooseProject: nullableProjects,
   listProjects: () => invoke('agent:projects', 'ProjectsView'),
@@ -49,6 +68,12 @@ const api: DesktopAPI = {
   getConfig: () => invoke('agent:config', 'PublicConfig'),
   saveConfig: (params) => invoke('agent:save-config', 'PublicConfig', [params]),
   runDiagnostics: (params) => invoke('agent:diagnostics', 'DiagnosticReport', [params]),
+  getConnections: () => invoke('agent:connections', 'ConnectionStatus'),
+  saveConnections: (params) => invoke('agent:save-connections', 'PublicConfig', [params]),
+  releaseConnections: () => invoke('agent:release-connections', 'ConnectionStatus'),
+  testConnection: (params) => invoke('agent:test-connection', 'ConnectionStatus', [params]),
+  testModelConnection: (params) =>
+    invoke('agent:test-model-connection', 'ConnectionStatus', [params]),
   getStartupPaths: () => invoke('agent:startup-paths', 'StartupPaths'),
   saveStartupPaths: (params) => invoke('agent:save-startup-paths', 'StartupPaths', [params]),
   chooseStartupDirectory: (params) =>

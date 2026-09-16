@@ -875,3 +875,328 @@ h3 {
     font-size: 12px;
   }
 }
+/* 对话布局与工具证据；长内容在面板内滚动。 Chat layout and bounded evidence panels. */
+.chat-layout {
+  display: grid;
+  grid-template-columns: 235px minmax(0, 1fr);
+  min-height: 660px;
+}
+.session-sidebar {
+  padding: 24px 18px;
+  border-right: 1px solid #2d3336;
+}
+.session-sidebar h2 {
+  font-size: 17px;
+  margin: 0 0 6px;
+}
+.session-sidebar label,
+.run-settings label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  color: #a9b2b6;
+}
+.session-sidebar select {
+  width: 100%;
+  margin-bottom: 12px;
+}
+.session-sidebar nav {
+  margin-top: 22px;
+}
+.session-item {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 12px 10px;
+  border-radius: 7px;
+  margin-bottom: 7px;
+  color: #c6cecf;
+}
+.session-item strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.session-item small {
+  font-size: 10px;
+  color: #8d989d;
+}
+.session-item.selected {
+  background: #1f302e;
+  border-color: #385650;
+}
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: calc(100vh - 75px);
+  min-height: 570px;
+}
+.chat-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 24px;
+  border-bottom: 1px solid #2d3336;
+}
+.chat-history {
+  flex: 1;
+  min-height: 160px;
+  overflow: auto;
+  padding: 20px 26px;
+}
+.chat-empty {
+  padding: 70px 8px;
+  color: #a3b2b1;
+  line-height: 1.9;
+}
+.chat-empty h2 {
+  color: #e1eae7;
+  font-size: 22px;
+}
+.chat-message {
+  padding: 16px 0;
+}
+.chat-message.user {
+  border-radius: 8px;
+  background: #222b2b;
+  padding: 16px;
+}
+.chat-message > strong {
+  color: #90b8a9;
+  font-size: 12px;
+}
+.chat-message pre {
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.85;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 10px 0 0;
+}
+.chat-message.stream {
+  border-left: 2px solid #8ab49f;
+  padding-left: 12px;
+}
+.tool-entry {
+  border: 1px solid #343c3f;
+  border-radius: 7px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.tool-entry summary {
+  cursor: pointer;
+  color: #9fbbb4;
+  overflow-wrap: anywhere;
+}
+.tool-entry pre {
+  max-height: 280px;
+  overflow: auto;
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tool-error {
+  border-color: #7c5a45;
+}
+.run-end {
+  color: #879694;
+  font-size: 11px;
+  border-top: 1px solid #293332;
+  padding-top: 12px;
+}
+.run-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 15px;
+  font-size: 11px;
+  color: #a4b4ae;
+  padding: 12px 24px;
+  border-top: 1px solid #303a36;
+}
+.run-metrics p {
+  flex-basis: 100%;
+  margin: 4px 0;
+  color: #d7b893;
+}
+.chat-composer {
+  border-top: 1px solid #303a36;
+  padding: 16px 24px;
+}
+.chat-composer textarea,
+.run-settings textarea {
+  resize: vertical;
+  width: 100%;
+  box-sizing: border-box;
+  background: #171d1d;
+  border: 1px solid #3d514a;
+  border-radius: 8px;
+  padding: 12px;
+  color: #dce6e0;
+  font: inherit;
+  font-size: 13px;
+}
+.chat-composer > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 10px;
+}
+.chat-composer small {
+  color: #8d9a94;
+  font-size: 10px;
+}
+.global-run {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 22px;
+  background: #24372f;
+  color: #d4e5d9;
+  font-size: 12px;
+}
+.global-run span {
+  flex: 1;
+}
+.global-run button {
+  padding: 5px 12px;
+  background: #324c3e;
+  border: 1px solid #59715d;
+  border-radius: 6px;
+  color: inherit;
+}
+.global-run + div + div .chat-panel {
+  height: calc(100vh - 128px);
+}
+.run-settings {
+  margin-bottom: 24px;
+}
+.run-settings summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.budget-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 20px 0;
+}
+.budget-grid input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.run-settings .checkbox-row {
+  display: flex;
+  margin: 18px 0;
+}
+.run-settings button {
+  margin-top: 16px;
+}
+/* 连接管理保持窄窗口可换行。 Connection controls wrap in narrow windows. */
+.connection-panel {
+  width: 100%;
+}
+.connection-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  font-size: 13px;
+  margin: 12px 0;
+}
+.connection-observation {
+  border-top: 1px solid #30393f;
+  margin-top: 16px;
+  padding-top: 14px;
+}
+.connection-observation p {
+  font-size: 13px;
+}
+.connection-panel input.connection-timeout {
+  width: 110px;
+  height: 34px;
+  margin-left: 8px;
+}
+.connection-panel label {
+  white-space: nowrap;
+}
+.model-connection-list {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+}
+.model-connection-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(200px, 1.2fr) auto;
+  align-items: start;
+  gap: 20px;
+  padding: 20px;
+  border: 1px solid #35423c;
+  border-radius: 10px;
+  background: #18221d;
+}
+.model-connection-name,
+.model-connection-result {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.model-connection-name code,
+.model-connection-result small {
+  color: #9ba9a1;
+  font-size: 12px;
+}
+.model-connection-result {
+  font-size: 13px;
+}
+.model-connection-result > div > strong {
+  margin-left: 8px;
+  font-size: 18px;
+  color: #e2eee6;
+}
+.model-test-status {
+  font-size: 12px;
+  color: #a2aea7;
+}
+.model-test-status.ok {
+  color: #91caa4;
+}
+.model-test-status.error,
+.model-test-error {
+  color: #e9ab9f;
+}
+.model-test-status.running {
+  color: #e4ca88;
+}
+.model-test-error {
+  margin: 4px 0;
+}
+.connection-details summary,
+.model-connection-row summary {
+  cursor: pointer;
+}
+.connection-details {
+  margin-top: 20px;
+}
+@media (max-width: 1050px) {
+  .model-connection-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .model-connection-name {
+    grid-column: 1;
+  }
+  .model-connection-result {
+    grid-column: 1;
+  }
+  .model-connection-row > button {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}

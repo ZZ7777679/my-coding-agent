@@ -196,6 +196,9 @@ app
       }
     })
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    backend.subscribe((signal) => {
+      if (window && !window.isDestroyed()) window.webContents.send('agent:session-event', signal)
+    })
     window.webContents.on('will-navigate', (event) => event.preventDefault())
     window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) =>
       callback(false)
@@ -205,6 +208,54 @@ app
       dialog.showErrorBox('界面加载失败', '请重新构建桌面资源后再打开应用。')
     })
     handle('agent:info', 0, async () => (await readyBackend()).info())
+    handle('agent:session-create', 1, async (value) =>
+      (await readyBackend()).call(
+        'sessions.create',
+        validate('CreateSessionParams', value),
+        'SessionSummary'
+      )
+    )
+    handle('agent:sessions-list', 1, async (value) =>
+      (await readyBackend()).call(
+        'sessions.list',
+        validate('ListSessionsParams', value),
+        'SessionPage'
+      )
+    )
+    handle('agent:session-get', 1, async (value) =>
+      (await readyBackend()).call(
+        'sessions.get',
+        validate('GetSessionParams', value),
+        'SessionView'
+      )
+    )
+    handle('agent:session-attach', 1, async (value) =>
+      (await readyBackend()).call(
+        'sessions.attach',
+        validate('GetSessionParams', value),
+        'SessionView'
+      )
+    )
+    handle('agent:session-detach', 1, async (value) =>
+      (await readyBackend()).call(
+        'sessions.detach',
+        validate('SessionParams', value),
+        'EmptyParams'
+      )
+    )
+    handle('agent:run-start', 1, async (value) =>
+      (await readyBackend()).call('runs.start', validate('StartRunParams', value), 'SessionSummary')
+    )
+    handle('agent:run-cancel', 1, async (value) =>
+      (await readyBackend()).call(
+        'runs.cancel',
+        validate('CancelRunParams', value),
+        'SessionSummary'
+      )
+    )
+    handle('agent:run-active', 0, async () =>
+      (await readyBackend()).call('runs.active', {}, 'ActiveRunResult')
+    )
     handle('agent:projects', 0, async () =>
       (await readyBackend()).call('projects.list', {}, 'ProjectsView')
     )
@@ -226,6 +277,43 @@ app
       return report
     })
     handle('agent:startup-paths', 0, async () => validate('StartupPaths', startupPaths(dataDir)))
+    handle('agent:connections', 0, async () =>
+      (await readyBackend()).call('connections.get', {}, 'ConnectionStatus')
+    )
+    handle('agent:save-connections', 1, async (value) => {
+      const params = validate('ConnectionSettings', value)
+      const result = await (
+        await readyBackend()
+      ).call('connections.configure', params, 'PublicConfig')
+      lastDiagnostic = undefined
+      return result
+    })
+    handle('agent:release-connections', 0, async () =>
+      (await readyBackend()).call('connections.release', {}, 'ConnectionStatus')
+    )
+    handle('agent:test-connection', 1, async (value) => {
+      const params = validate('ConnectionProbeParams', value)
+      // 传输等待覆盖用户选择的探测期限；上限来自 JS 定时器范围。
+      // Cover the chosen probe deadline within JavaScript's timer range.
+      const timeout = Math.min(
+        2 ** 31 - 1,
+        params.timeout_seconds * 1000 + defaults.http.rpc_timeout_grace_ms
+      )
+      return (await readyBackend()).call('connections.test', params, 'ConnectionStatus', timeout)
+    })
+    handle('agent:test-model-connection', 1, async (value) => {
+      const params = validate('ModelConnectionProbeParams', value)
+      const timeout = Math.min(
+        2 ** 31 - 1,
+        params.timeout_seconds * 1000 + defaults.http.rpc_timeout_grace_ms
+      )
+      return (await readyBackend()).call(
+        'connections.test_model',
+        params,
+        'ConnectionStatus',
+        timeout
+      )
+    })
     handle('agent:save-startup-paths', 1, async (value) => {
       const params = validate('StartupPathsParams', value)
       return validate('StartupPaths', saveStartupPaths(params, dataDir))

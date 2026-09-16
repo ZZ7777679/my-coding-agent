@@ -12,6 +12,8 @@ import type {
   StartupPaths
 } from '../../generated/protocol'
 import type { Result } from '../../shared/api'
+import { RunSettings } from './RunSettings'
+import { Connections } from './Connections'
 
 /**
  * 从工作台接收连接与互斥状态，并上报已保存配置。
@@ -133,6 +135,13 @@ export function Settings({ info, connected, busy, onBusy, onConfig }: Props) {
 
   const config = info?.config
   const selectedModel = model ?? config?.model_id
+  /** 连接配置保存后使旧报告失效，与主进程导出缓存保持一致。
+   * Invalidate old reports after connection settings change, matching the export cache.
+   */
+  const acceptConnectionConfig = (value: PublicConfig) => {
+    onConfig(value)
+    setReport(null)
+  }
   /**
    * 保存选中的模型，成功后采用后端结果并使旧诊断报告失效。
    * Save the selected model, apply backend results and invalidate the old diagnostic report.
@@ -173,6 +182,7 @@ export function Settings({ info, connected, busy, onBusy, onConfig }: Props) {
           <p>管理本地配置，检查运行环境，保存诊断结果。</p>
         </div>
       </div>
+      {config && <RunSettings config={config} disabled={busy || !connected} onSaved={onConfig} />}
       {error && (
         <div className="notice" role="alert">
           <span>!</span>
@@ -405,7 +415,13 @@ export function Settings({ info, connected, busy, onBusy, onConfig }: Props) {
               onClick={() =>
                 void perform(
                   'diagnostics',
-                  () => window.agent.runDiagnostics({ dev, network, write_probe: writeProbe }),
+                  () =>
+                    window.agent.runDiagnostics({
+                      dev,
+                      network,
+                      write_probe: writeProbe,
+                      network_timeout_seconds: config?.http.probe_timeout_seconds ?? null
+                    }),
                   setReport
                 )
               }
@@ -482,6 +498,17 @@ export function Settings({ info, connected, busy, onBusy, onConfig }: Props) {
           ) : (
             <p className="settings-hint">尚未运行诊断。打开此页不会自动联网或执行写入探测。</p>
           )}
+        </section>
+
+        <section className="detail-card settings-card diagnostics-card">
+          <Connections
+            connected={connected}
+            busy={busy}
+            config={config}
+            diagnosticStatus={report?.connections}
+            onBusy={onBusy}
+            onConfig={acceptConnectionConfig}
+          />
         </section>
 
         <section className="detail-card settings-card export-card" aria-labelledby="export-heading">
