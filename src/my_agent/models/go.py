@@ -3,12 +3,14 @@
 import asyncio
 import json
 from dataclasses import dataclass, field
+from typing import Literal
 
 import httpx
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
 from my_agent.credentials import ResolvedCredential
 from my_agent.errors import AgentError, http_error_code
+from my_agent.models.failures import request_failure
 from my_agent.models.http import ModelHttpPool, public_request_headers
 from my_agent.models.timing import RequestTiming
 from my_agent.models.types import (
@@ -53,16 +55,14 @@ class TurnBuffer:
     usage: TokenUsage = field(
         default_factory=lambda: TokenUsage(input_tokens=None, output_tokens=None)
     )
-    size: int = 0
 
-    async def accept(self, value: JsonObject, on_text: TextSink, limit: int) -> None:
+    async def accept(
+        self, value: JsonObject, on_text: TextSink, limit: int, on_reasoning: TextSink | None = None
+    ) -> Literal["text", "reasoning", "tool_arguments"] | None:
         """先校验累计边界，再发布文本；工具只缓冲。
 
         Validate limits before streaming display text.
         """
-        self.size += len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
-        if self.size > limit * 32:
-            raise AgentError("MODEL_OUTPUT_LIMIT", "模型流超过输出容量，请调整输出预算。")
         if value.get("error") is not None:
             raise AgentError("MODEL_STREAM_ERROR", "模型服务在流中返回错误，请显式重试。")
         usage = value.get("usage")
@@ -77,11 +77,14 @@ class TurnBuffer:
         if not isinstance(choices, list) or len(choices) > 1:
             raise AgentError("MODEL_PROTOCOL", "模型选择结构不受支持。")
         if not choices:
-            return
+            return None
         choice = object_value(choices[0])
         if choice.get("index") != 0:
             raise AgentError("MODEL_PROTOCOL", "模型回合标识不一致。")
         delta = object_value(choice.get("delta"))
+        reasoning = delta.get("reasoning_content")
+        if isinstance(reasoning, str) and reasoning and on_reasoning is not None:
+            await on_reasoning(reasoning)
         content = delta.get("content")
         if content is not None:
             if not isinstance(content, str):
@@ -92,8 +95,8 @@ class TurnBuffer:
         for key, item in delta.items():
             if key in {"content", "role", "tool_calls"} or item is None:
                 continue
-            # 非公开原生字段按流语义续接，绝不作为前端消息。
-            # Native fields remain private and are merged using their stream representation.
+            # 原生对象保持续接语义；只有 reasoning_content 文本经独立展示通道交付。
+            # Preserve native continuation; only reasoning_content text uses the display channel.
             previous = self.native_extra.get(key)
             if isinstance(item, str):
                 self.native_extra[key] = (previous if isinstance(previous, str) else "") + item
@@ -111,7 +114,7 @@ class TurnBuffer:
         for raw in incoming:
             call = object_value(raw)
             index = call.get("index")
-            if type(index) is not int or index < 0 or index > 255:
+            if type(index) is not int or index < 0:
                 raise AgentError("MODEL_PROTOCOL", "工具流标识不正确。")
             buffer = self.calls.setdefault(index, CallBuffer())
             identifier = call.get("id")
@@ -119,9 +122,11 @@ class TurnBuffer:
                 if not isinstance(identifier, str):
                     raise AgentError("MODEL_PROTOCOL", "工具 ID 不正确。")
                 buffer.identifier += identifier
-            if call.get("type", "function") != "function":
+            # 增量片段可省略或用 null 表示尚无该字段，最终调用仍须完整。
+            # A delta may omit/null a field; the assembled call must still be complete.
+            if call.get("type") is not None and call["type"] != "function":
                 raise AgentError("MODEL_PROTOCOL", "不支持该工具调用类型。")
-            function = object_value(call.get("function", {}))
+            function = object_value(call["function"] if call.get("function") is not None else {})
             for key in ("name", "arguments"):
                 fragment = function.get(key)
                 if fragment is not None:
@@ -144,6 +149,13 @@ class TurnBuffer:
         )
         if payload_size > limit:
             raise AgentError("MODEL_OUTPUT_LIMIT", "模型累计内容超过输出容量。")
+        if incoming:
+            return "tool_arguments"
+        if content:
+            return "text"
+        if delta.get("reasoning_content"):
+            return "reasoning"
+        return None
 
     def finish(self) -> ModelTurn:
         """完整结束标记与参数校验通过后才返回回合。 Return only a fully validated finished turn."""
@@ -183,7 +195,14 @@ class TurnBuffer:
             native["tool_calls"] = native_calls
         if not calls and not self.text.strip():
             raise AgentError("MODEL_EMPTY", "模型没有返回可显示的回答。")
-        return ModelTurn(text=self.text, tool_calls=calls, native=native, usage=self.usage)
+        reasoning = self.native_extra.get("reasoning_content")
+        return ModelTurn(
+            text=self.text,
+            reasoning=reasoning if isinstance(reasoning, str) else "",
+            tool_calls=calls,
+            native=native,
+            usage=self.usage,
+        )
 
 
 class GoClient:
@@ -213,6 +232,19 @@ class GoClient:
                 "在启动进程或 Windows 当前用户环境变量中配置后重试。",
             )
 
+    def request_headers(self, session_id: str, *, messages_api: bool = False) -> dict[str, str]:
+        """统一主模型与辅助请求的凭据 / 身份，敏感头不保存到客户端。
+
+        Share credentials and identity across main and auxiliary calls, never client defaults.
+        """
+        self.check_available()
+        assert self.credential.secret is not None  # 已检查 / checked above
+        secret = self.credential.secret.get_secret_value()
+        headers = {**public_request_headers(session_id), "Authorization": "Bearer " + secret}
+        if messages_api:
+            headers.update({"x-api-key": secret, "anthropic-version": "2023-06-01"})
+        return headers
+
     async def complete(
         self,
         *,
@@ -223,18 +255,14 @@ class GoClient:
         limits: RunLimits,
         on_text: TextSink,
         on_progress: ProgressSink | None = None,
+        on_reasoning: TextSink | None = None,
     ) -> ModelTurn:
         """每次调用恰好一个请求，取消退出会关闭 HTTP 流。
 
         Make one request and close on cancellation.
         """
         timing = RequestTiming(on_progress)
-        self.check_available()
-        assert self.credential.secret is not None  # 已检查凭据 / checked above
-        headers = {
-            **public_request_headers(session_id),
-            "Authorization": "Bearer " + self.credential.secret.get_secret_value(),
-        }
+        headers = self.request_headers(session_id)
         body = {
             "model": model_id,
             "messages": messages,
@@ -248,6 +276,15 @@ class GoClient:
             """先记真实首字再交付，不等响应结束。 Time text before immediate delivery."""
             await timing.text()
             await on_text(delta)
+
+        async def deliver_reasoning(delta: str) -> None:
+            """思考立即交付，但不计为正文首字。
+
+            Deliver reasoning without counting it as answer TTFT.
+            """
+            await timing.set_phase("reasoning")
+            if on_reasoning is not None:
+                await on_reasoning(delta)
 
         code = "UNEXPECTED_ERROR"
         http_status = None
@@ -275,16 +312,16 @@ class GoClient:
                             f"模型请求失败（HTTP {response.status_code}）。",
                             "检查认证、Go 额度或网络后显式重试。",
                         )
-                    turn = await self._stream(response, limits, deliver_text, timing)
+                    turn = await self._stream(
+                        response, limits, deliver_text, timing, deliver_reasoning
+                    )
                     await timing.set_phase("completed")
                     code = "OK"
                     return turn
-        except (TimeoutError, httpx.TimeoutException) as exc:
-            code = "MODEL_TIMEOUT"
-            raise AgentError(code, "模型请求超时，可调整单请求等待时间后重试。") from exc
-        except httpx.HTTPError as exc:
-            code = "MODEL_NETWORK"
-            raise AgentError(code, "模型网络连接失败，请检查网络后重试。") from exc
+        except (TimeoutError, httpx.HTTPError) as exc:
+            failure = request_failure(exc, timing, limits.request_timeout_seconds)
+            code = failure.code
+            raise failure from exc
         except (ValidationError, ValueError, UnicodeError) as exc:
             code = "MODEL_PROTOCOL"
             raise AgentError(code, "模型返回了无法可靠解析的流。") from exc
@@ -319,7 +356,12 @@ class GoClient:
             return None
 
     async def _stream(
-        self, response: httpx.Response, limits: RunLimits, on_text: TextSink, timing: RequestTiming
+        self,
+        response: httpx.Response,
+        limits: RunLimits,
+        on_text: TextSink,
+        timing: RequestTiming,
+        on_reasoning: TextSink | None = None,
     ) -> ModelTurn:
         """按字节有界组 SSE 帧，要求 DONE 与完整回合。
 
@@ -333,6 +375,7 @@ class GoClient:
         # A fixed chunk_size delays delivery; parse arrivals and bound lines/events instead.
         chunks = response.aiter_bytes()
         async for chunk in chunks:
+            await timing.received(len(chunk))
             offset = 0
             while offset < len(chunk):
                 newline = chunk.find(b"\n", offset)
@@ -359,13 +402,14 @@ class GoClient:
                         done = True
                         break
                     value = JSON_OBJECT.validate_json(data, strict=True)
-                    await timing.event(False)
-                    await turn.accept(
+                    await timing.event(None)
+                    phase = await turn.accept(
                         value,
                         on_text,
                         limits.max_response_bytes,
+                        on_reasoning,
                     )
-                    await timing.event(bool(turn.native_extra.get("reasoning_content")))
+                    await timing.event(phase)
             if done:
                 break
         if not done:

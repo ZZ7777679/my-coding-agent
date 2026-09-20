@@ -4,18 +4,19 @@ Model substitute for desktop/stdio acceptance; never loaded by the product entry
 """
 
 import asyncio
+import json
 import sys
 from uuid import uuid4
 
+from goal_model import goal_turn, response
+
+from my_agent.bootstrap import build_sessions
 from my_agent.config import resolve_data_dir
 from my_agent.errors import AgentError
 from my_agent.models.timing import RequestTiming
 from my_agent.models.types import ModelTurn, TokenUsage, ToolCall
-from my_agent.projects import ProjectService
 from my_agent.rpc import application
 from my_agent.rpc.server import read_parent_credential, serve
-from my_agent.sessions.service import SessionService
-from my_agent.sessions.store import SessionStore
 
 
 class DesktopModel:
@@ -37,6 +38,24 @@ class DesktopModel:
         prompt = next(
             message["content"] for message in reversed(messages) if message["role"] == "user"
         )
+        if (
+            "Goal mode:" in messages[0]["content"]
+            or "ordinary question interrupting" in messages[0]["content"]
+        ):
+            return await goal_turn(messages)
+        if prompt.startswith("goal-chat:"):
+            return response(text="普通问题已回答，等待中的 Goal 没有恢复。")
+        if prompt.startswith("recovery:create"):
+            return response("create_file", {"path": "recovery.txt", "content": "saved once"})
+        if prompt.startswith("recovery:check"):
+            assert any(
+                "INTERRUPTED_RESULT_RECONCILED" in (item.get("content") or "") for item in messages
+            )
+            return response(text="已接续核对后的历史，未重跑旧工具。")
+        if prompt.startswith("files:"):
+            return await file_turn(prompt, **kwargs)
+        if prompt.startswith("program:"):
+            return program_turn(prompt, messages)
         if "fail" in prompt:
             raise AgentError("MODEL_TIMEOUT", "模型请求超时，可调整等待时间后重试。")
         if messages[-1]["role"] != "tool":
@@ -63,9 +82,14 @@ class DesktopModel:
         if "return 42" not in messages[-1]["content"]:
             raise AgentError("FIXTURE_MISMATCH", "验收夹具未按预期读取。")
         timing = RequestTiming(kwargs.get("on_progress"))
+        await timing.received(32)
         await timing.set_phase("reasoning")
-        await asyncio.sleep(0.3)
+        thoughts = ("先定位 main.py 的入口。", "再核对第 2 行的返回值。")
+        for thought in thoughts:
+            await kwargs["on_reasoning"](thought)
+            await asyncio.sleep(0.35)
         for text in ("已读取 main.py。", "第 2 行返回 42。"):
+            await timing.received(len(text.encode("utf-8")))
             await timing.text()
             await kwargs["on_text"](text)
             await asyncio.sleep(0.3)
@@ -74,22 +98,194 @@ class DesktopModel:
         await timing.set_phase("completed")
         return ModelTurn(
             text="main.py:2 返回 42。<script>不执行脚本</script>",
+            reasoning="".join(thoughts),
             tool_calls=[],
             native={
                 "role": "assistant",
                 "content": "main.py:2 returns 42",
-                "reasoning_content": "private-native-sentinel",
+                "reasoning_content": "".join(thoughts),
+                "provider_state": "private-native-sentinel",
             },
             usage=TokenUsage(input_tokens=25, output_tokens=16),
         )
 
 
-def build_fake(storage, worker, credential, *, http=None):
+async def file_turn(prompt, **kwargs):
+    """驱动实际文件工具，不替换存储或权限。 Drive real file tools without mocking their policy."""
+    messages = kwargs["messages"]
+    previous = json.loads(messages[-1]["content"]) if messages[-1]["role"] == "tool" else None
+    name, arguments = None, {}
+    if previous is None:
+        if "edit" in prompt:
+            name, arguments = "read_file", {"path": "src/main.py"}
+        else:
+            name, arguments = (
+                "create_file",
+                {
+                    "path": "docs/plan.md" if "document" in prompt else "src/main.py",
+                    "content": "# Plan\n" if "document" in prompt else "print(1)\n",
+                },
+            )
+    elif "edit" in prompt and "change_id" not in previous:
+        name, arguments = (
+            "edit_file",
+            {
+                "path": "src/main.py",
+                "old_text": "print(1)",
+                "new_text": "print(2)",
+            },
+        )
+    if name:
+        identifier = str(uuid4())
+        return ModelTurn(
+            text="",
+            tool_calls=[ToolCall(tool_call_id=identifier, name=name, arguments=arguments)],
+            native={
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": identifier,
+                        "type": "function",
+                        "function": {"name": name, "arguments": json.dumps(arguments)},
+                    }
+                ],
+            },
+            usage=TokenUsage(input_tokens=1, output_tokens=1),
+        )
+    return ModelTurn(
+        text="文件操作已完成；未运行代码。",
+        tool_calls=[],
+        native={"role": "assistant", "content": "File operation completed."},
+        usage=TokenUsage(input_tokens=1, output_tokens=1),
+    )
+
+
+def program_turn(prompt, messages):
+    """空目录生成并启动真实 HTTP 程序，只有模型决策是替身。
+
+    Generate and launch a real HTTP app in an empty project; substitute only model decisions.
+    """
+    last_user = max(i for i, message in enumerate(messages) if message["role"] == "user")
+    completed = sum(message["role"] == "tool" for message in messages[last_user + 1 :])
+    if prompt == "program:location":
+        if not completed:
+            return response(
+                "run_command",
+                {"command": json.dumps({"kind": "powershell", "script": "Get-Location"})},
+            )
+        result = json.loads(messages[-1]["content"])
+        assert result["summary"]["exit_code"] == 0
+        assert "Path" in "".join(chunk["text"] for chunk in result["output"])
+        return response(text="已使用默认本机环境执行 Get-Location。")
+    port = int(prompt.rsplit(":", 1)[1])
+    source = (
+        "from http.server import BaseHTTPRequestHandler, HTTPServer\n"
+        "import sys\n"
+        "class Handler(BaseHTTPRequestHandler):\n"
+        "    def do_GET(self):\n"
+        "        content = b'<html><title>Empty project app</title><h1>Notes</h1>"
+        '<textarea id=note></textarea><button onclick="localStorage.note='
+        "document.getElementById(\\'note\\').value\">Save note</button></html>'\n"
+        "        self.send_response(200)\n"
+        "        self.send_header('Content-Type', 'text/html; charset=utf-8')\n"
+        "        self.end_headers()\n"
+        "        self.wfile.write(content)\n"
+        "if '--describe' in sys.argv:\n"
+        "    print('Notes app ready to launch', flush=True)\n"
+        "else:\n"
+        "    print('Starting Notes app', flush=True)\n"
+        "    HTTPServer(('127.0.0.1', int(sys.argv[1])), Handler).serve_forever()\n"
+    )
+    steps = [
+        ("create_file", {"path": "app.py", "content": source}),
+        (
+            "run_command",
+            {
+                "command": {
+                    "kind": "program",
+                    "program": "python",
+                    "arguments": ["app.py", "--describe"],
+                }
+            },
+        ),
+        (
+            "start_service",
+            {
+                "command": {
+                    "kind": "program",
+                    "program": "python",
+                    "arguments": ["app.py", str(port)],
+                },
+                "ready_url": f"http://127.0.0.1:{port}/",
+            },
+        ),
+    ]
+    if completed >= len(steps):
+        return ModelTurn(
+            text="已创建并运行 Notes 小应用；服务保留到退出应用。",
+            tool_calls=[],
+            native={"role": "assistant", "content": "Application ready."},
+            usage=TokenUsage(input_tokens=1, output_tokens=1),
+        )
+    name, arguments = steps[completed]
+    identifier = str(uuid4())
+    return ModelTurn(
+        text="",
+        tool_calls=[ToolCall(tool_call_id=identifier, name=name, arguments=arguments)],
+        native={
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": identifier,
+                    "type": "function",
+                    "function": {"name": name, "arguments": json.dumps(arguments)},
+                }
+            ],
+        },
+        usage=TokenUsage(input_tokens=1, output_tokens=1),
+    )
+
+
+class InterruptedResponseTools:
+    """验收专用：真实写入后延迟响应，以实际取消制造未配对工具。
+
+    Test-only delayed responses after real writes, producing unpaired calls via real cancellation.
+    """
+
+    def __init__(self, delegate):
+        """保留实际工具实现。 Retain the actual tool implementation."""
+        self.delegate = delegate
+
+    def definitions(self):
+        return self.delegate.definitions()
+
+    def is_mutating(self, name):
+        return self.delegate.is_mutating(name)
+
+    async def execute(self, call):
+        """只为专用恢复场景延迟，其他场景直接返回真实结果。
+
+        Delay only the dedicated recovery fixture and return real results for all other cases.
+        """
+        result = await self.delegate.execute(call)
+        if call.name == "create_file" and call.arguments.get("path") == "recovery.txt":
+            assert not result.is_error
+            await asyncio.Event().wait()
+        return result
+
+
+def build_fake(storage, worker, credential, *, http=None, programs=None):
     """测试装配替换模型，保留实际存储、运行、工具与 RPC。
 
-    Replace only the model in the real stack.
+    Substitute the model, with a dedicated post-write response gate for interruption tests.
     """
-    return SessionService(SessionStore(storage), ProjectService(storage), worker, DesktopModel)
+    service = build_sessions(storage, worker, credential, http=http, programs=programs)
+    service.model_factory = DesktopModel
+    original = service.tool_factory
+    service.tool_factory = lambda context: InterruptedResponseTools(original(context))
+    return service
 
 
 if __name__ == "__main__":

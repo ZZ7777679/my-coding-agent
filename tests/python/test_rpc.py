@@ -11,6 +11,8 @@ from io import BytesIO
 from my_agent.config import MAX_FRAME_BYTES, resolve_data_dir
 from my_agent.credentials import resolve_credential
 from my_agent.diagnostics import diagnose
+from my_agent.models.connections import ConnectionObservation
+from my_agent.models.types import ModelProgress
 from my_agent.processes import probe_environment
 from my_agent.rpc.server import serve
 from my_agent.storage import Storage
@@ -41,7 +43,7 @@ def initialize():
         "initialize",
         {
             "app_version": "0.0.0",
-            "protocol_version": 2,
+            "protocol_version": 3,
             "data_schema_version": 1,
         },
     )
@@ -210,6 +212,7 @@ def test_diagnostic_flags_are_explicit_and_credential_refresh_is_public(tmp_path
 
     location = resolve_data_dir(str(tmp_path / "data"))
     calls = []
+    probes = []
     report = diagnose(str(location.root))
 
     def fake_diagnose(**kwargs):
@@ -222,6 +225,22 @@ def test_diagnostic_flags_are_explicit_and_credential_refresh_is_public(tmp_path
         return report
 
     monkeypatch.setattr("my_agent.rpc.application.diagnose", fake_diagnose)
+
+    async def fake_probe(pool, timeout):
+        """M1 连接探测已独立；替换真实网络并核对显式调用。
+
+        Stub the separate M1 pool probe and verify explicit calls without networking.
+        """
+        probes.append(timeout)
+        pool.last_probe = ConnectionObservation(
+            finished_at="2026-09-17T00:00:00Z",
+            code="OK",
+            http_status=200,
+            models_confirmed=True,
+            progress=ModelProgress(phase="completed", elapsed_ms=1.0),
+        )
+
+    monkeypatch.setattr("my_agent.rpc.application.probe_connection", fake_probe)
     monkeypatch.setattr("my_agent.credentials.read_windows_user", lambda _: "user-sentinel")
     credential = resolve_credential({}, lambda _: None, "win32")
     writer = BytesIO()
@@ -242,7 +261,9 @@ def test_diagnostic_flags_are_explicit_and_credential_refresh_is_public(tmp_path
     )
     replies = [json.loads(line) for line in writer.getvalue().splitlines()]
     by_id = {reply["id"]: reply for reply in replies}
-    assert calls == [(True, True, True)]
+    assert calls == [(True, False, True)]
+    assert len(probes) == 1
+    assert by_id["d"]["result"]["catalog_reachable"] == "ok"
     assert by_id["refresh"]["result"]["credential"] == {
         "env_var": "OPENCODE_API_KEY",
         "source": "windows_user" if sys.platform == "win32" else "none",

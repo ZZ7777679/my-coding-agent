@@ -196,9 +196,26 @@ button:hover:not(:disabled) {
 .workspace {
   overflow: auto;
   min-width: 0;
+  min-height: 0;
+}
+.workspace-chat {
+  overflow: hidden;
+}
+.chat-page {
+  height: 100%;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .toolbar {
-  height: 74px;
+  height: 46px;
   border-bottom: 1px solid #25292e;
   display: flex;
   align-items: center;
@@ -878,8 +895,8 @@ h3 {
 /* 对话布局与工具证据；长内容在面板内滚动。 Chat layout and bounded evidence panels. */
 .chat-layout {
   display: grid;
-  grid-template-columns: 235px minmax(0, 1fr);
-  min-height: 660px;
+  height: 100%;
+  min-height: 0;
 }
 .session-sidebar {
   padding: 24px 18px;
@@ -933,22 +950,15 @@ h3 {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  height: calc(100vh - 75px);
-  min-height: 570px;
-}
-.chat-heading {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 20px 24px;
-  border-bottom: 1px solid #2d3336;
+  height: 100%;
+  min-height: 0;
 }
 .chat-history {
   flex: 1;
-  min-height: 160px;
+  min-height: 0;
   overflow: auto;
-  padding: 20px 26px;
+  padding: 12px 22px;
+  overscroll-behavior: contain;
 }
 .chat-empty {
   padding: 70px 8px;
@@ -960,7 +970,7 @@ h3 {
   font-size: 22px;
 }
 .chat-message {
-  padding: 16px 0;
+  padding: 12px 0;
 }
 .chat-message.user {
   border-radius: 8px;
@@ -983,11 +993,29 @@ h3 {
   border-left: 2px solid #8ab49f;
   padding-left: 12px;
 }
+.reasoning-block {
+  margin-top: 8px;
+  color: #a5b7af;
+  font-size: 12px;
+  border-left: 2px solid #3b5146;
+  padding-left: 10px;
+}
+.reasoning-block summary {
+  cursor: pointer;
+  color: #96b7a7;
+}
+.reasoning-block pre {
+  max-height: 24vh;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.7;
+  overscroll-behavior: contain;
+}
 .tool-entry {
   border: 1px solid #343c3f;
   border-radius: 7px;
-  margin: 10px 0;
-  padding: 10px 12px;
+  margin: 6px 0;
+  padding: 6px 10px;
   font-size: 12px;
 }
 .tool-entry summary {
@@ -1012,22 +1040,47 @@ h3 {
   padding-top: 12px;
 }
 .run-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 15px;
   font-size: 11px;
   color: #a4b4ae;
-  padding: 12px 24px;
-  border-top: 1px solid #303a36;
+  padding: 0 18px;
 }
-.run-metrics p {
-  flex-basis: 100%;
-  margin: 4px 0;
+.run-metrics > summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 7px 0;
+  cursor: pointer;
+  list-style: none;
+}
+.metrics-disclosure {
+  margin-left: auto;
+  color: #81aa97;
+}
+.metrics-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 4px 0 8px;
+}
+.run-message {
+  margin: 0;
+  padding: 4px 18px 8px;
+  font-size: 12px;
   color: #d7b893;
+  overflow-wrap: anywhere;
+}
+.composer-dock {
+  flex-shrink: 0;
+  border-top: 1px solid #303a36;
+  background: #121715;
 }
 .chat-composer {
-  border-top: 1px solid #303a36;
-  padding: 16px 24px;
+  margin: 0 18px 12px;
+  padding: 8px 12px;
+  border: 1px solid #3d514a;
+  border-radius: 10px;
+  background: #171d1d;
 }
 .chat-composer textarea,
 .run-settings textarea {
@@ -1042,39 +1095,81 @@ h3 {
   font: inherit;
   font-size: 13px;
 }
-.chat-composer > div {
+.chat-composer > textarea {
+  display: block;
+  min-height: 64px;
+  max-height: 22vh;
+  border: 0;
+  border-radius: 0;
+  padding: 4px 0;
+  background: transparent;
+  outline: none;
+}
+.composer-footer,
+.composer-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-top: 10px;
+  gap: 8px;
+}
+.composer-footer {
+  position: relative;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.composer-actions {
+  margin-left: auto;
+}
+.composer-actions button {
+  padding: 6px 14px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+.stop-run {
+  color: #dfbca3;
+  background: #30251f;
+  border: 1px solid #624c3c;
 }
 .chat-composer small {
   color: #8d9a94;
   font-size: 10px;
 }
-.global-run {
+.collaboration-panel {
+  position: relative;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.collaboration-panel label {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+}
+.collaboration-panel .checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.collaboration-panel .checkbox-label input {
+  width: auto;
+  flex: none;
+  margin-top: 3px;
+}
+.collaboration-panel pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.collaboration-requests article {
+  border-top: 1px solid #303a34;
+  padding: 10px 0;
+}
+.collaboration-panel summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+.collaboration-panel .button-row {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 22px;
-  background: #24372f;
-  color: #d4e5d9;
-  font-size: 12px;
-}
-.global-run span {
-  flex: 1;
-}
-.global-run button {
-  padding: 5px 12px;
-  background: #324c3e;
-  border: 1px solid #59715d;
-  border-radius: 6px;
-  color: inherit;
-}
-.global-run + div + div .chat-panel {
-  height: calc(100vh - 128px);
+  gap: 6px;
 }
 .run-settings {
   margin-bottom: 24px;
@@ -1199,4 +1294,527 @@ h3 {
     grid-column: 2;
     grid-row: 1;
   }
+}
+/* 三级树与任务表单保留真实层级，长路径不挤压对话区域。
+   Keep navigation hierarchy clear without letting long paths crowd the conversation. */
+.task-navigation {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 0 12px 20px;
+}
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.tree-toggle {
+  background: transparent;
+  color: inherit;
+  border: 0;
+  padding: 8px 3px;
+  flex: 0 0 22px;
+}
+.tree-project,
+.tree-task,
+.tree-session {
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  min-width: 0;
+  width: 100%;
+  border-radius: 7px;
+  padding: 8px 6px;
+  cursor: pointer;
+}
+.tree-project strong,
+.tree-project small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-project small,
+.tree-task small {
+  opacity: 0.6;
+  font-size: 10px;
+}
+.tree-task {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+.tree-task span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-task small {
+  flex-shrink: 0;
+}
+.tree-project.selected,
+.tree-task.selected,
+.tree-session.selected {
+  background: #233b31;
+  color: #adddc8;
+}
+.tree-project:hover,
+.tree-task:hover,
+.tree-session:hover {
+  background: #202a25;
+}
+.tree-children {
+  margin-left: 14px;
+  padding-left: 8px;
+  border-left: 1px solid #303a34;
+}
+.tree-children .text-button {
+  font-size: 11px;
+  padding: 8px 3px;
+}
+.tree-sessions {
+  margin-left: 19px;
+}
+.tree-session {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+}
+.tree-session span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-children summary {
+  font-size: 11px;
+  padding: 9px 3px;
+  cursor: pointer;
+  color: #87978e;
+}
+.task-form,
+.task-session-create {
+  display: grid;
+  gap: 14px;
+  max-width: 900px;
+}
+.task-panel label,
+.session-membership label {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.task-panel input,
+.task-panel textarea,
+.task-panel select,
+.session-membership input,
+.session-membership textarea,
+.session-membership select,
+.collaboration-panel textarea,
+.collaboration-panel select {
+  font: inherit;
+  border: 1px solid #3d584b;
+  border-radius: 7px;
+  padding: 10px;
+  background: #171d1b;
+  color: #e5e7e9;
+  max-width: 100%;
+}
+.task-panel textarea,
+.session-membership textarea {
+  resize: vertical;
+}
+.task-panel details summary {
+  cursor: pointer;
+  padding: 12px 0;
+}
+.task-panel .primary {
+  justify-self: start;
+}
+.task-session-create {
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid #303a34;
+}
+.session-membership {
+  position: relative;
+  font-size: 12px;
+}
+.session-membership summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+.collaboration-body,
+.session-membership-body {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 20;
+  width: min(560px, calc(100vw - 40px));
+  max-height: 70vh;
+  overflow: auto;
+  background: #1b2420;
+  border: 1px solid #3b5145;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 12px 35px #0008;
+}
+.session-membership-body {
+  width: min(370px, calc(100vw - 40px));
+}
+.chat-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+.chat-layout.with-changes {
+  grid-template-columns: minmax(360px, 1fr) minmax(310px, 0.75fr);
+}
+/* 文件成果与模式选择。 File artifacts and run-mode controls. */
+.changes-panel {
+  border-left: 1px solid #30453c;
+  padding: 12px 16px;
+  min-width: 0;
+  overflow: auto;
+  height: 100%;
+}
+.changes-panel summary {
+  cursor: pointer;
+}
+.changes-panel button,
+.collaboration-panel button {
+  margin: 6px 6px 6px 0;
+  background: #233b31;
+  color: #c3ead1;
+  border: 1px solid #395447;
+  border-radius: 5px;
+  padding: 7px;
+  overflow-wrap: anywhere;
+}
+.change-diff {
+  background: #101914;
+  color: #c3ead1;
+  padding: 12px;
+  overflow: auto;
+  max-height: 320px;
+  white-space: pre;
+}
+.changes-panel p {
+  overflow-wrap: anywhere;
+}
+.run-mode {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: 12px;
+}
+.run-mode label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+.run-mode input,
+.run-mode select {
+  background: #18241e;
+  color: #dce9e1;
+  border: 1px solid #395447;
+  border-radius: 5px;
+  padding: 6px;
+}
+.run-mode select {
+  border-color: transparent;
+  background: transparent;
+  padding-left: 0;
+}
+.run-mode select:hover,
+.run-mode select:focus-visible {
+  border-color: #395447;
+}
+.composer-options {
+  position: static;
+}
+.composer-options > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0 7px;
+  font-size: 20px;
+  line-height: 28px;
+  color: #a9bbb1;
+}
+.composer-options-body {
+  /* 对齐整个输入区，避免按省略号右对齐时越入侧栏被裁切。
+     Anchor to the composer so the menu cannot be clipped beneath the sidebar. */
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 0;
+  z-index: 20;
+  width: min(470px, 100%);
+  max-height: 65vh;
+  overflow: auto;
+  background: #1b2420;
+  border: 1px solid #3b5145;
+  border-radius: 8px;
+  padding: 12px 16px;
+  box-shadow: 0 12px 35px #0008;
+}
+.composer-options .session-membership-body,
+.composer-options .collaboration-body {
+  position: static;
+  width: auto;
+  max-height: none;
+  overflow: visible;
+  padding: 8px 0;
+  box-shadow: none;
+  border: 0;
+}
+.composer-options .text-button {
+  padding: 4px 0;
+  font-size: 12px;
+}
+.session-state {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: #81968b;
+  font-size: 11px;
+}
+.session-state.running {
+  color: #a9dec4;
+}
+.session-state.failed,
+.session-state.budget_exceeded {
+  color: #e2ae85;
+}
+
+.environment-settings label {
+  display: grid;
+  gap: 5px;
+  margin: 10px 0;
+}
+.environment-settings input:not([type='checkbox']),
+.environment-settings select {
+  background: #151d19;
+  border: 1px solid #35483d;
+  border-radius: 5px;
+  color: #dce9e1;
+  padding: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.environment-settings .checkbox-label {
+  display: flex;
+  align-items: center;
+}
+.environment-settings details,
+.environment-binding {
+  border-top: 1px solid #303c35;
+  padding: 12px 0;
+}
+.environment-settings summary,
+.program-panel summary,
+.program-card summary {
+  cursor: pointer;
+}
+.environment-settings .path-input {
+  display: flex;
+  gap: 8px;
+}
+.environment-settings button,
+.program-panel button,
+.program-card button {
+  padding: 7px 10px;
+  background: #263b2e;
+  color: #d0ead8;
+  border: 1px solid #405e4b;
+  border-radius: 5px;
+}
+.environment-settings code,
+.program-panel code,
+.program-card code {
+  overflow-wrap: anywhere;
+}
+.program-panel {
+  margin: 14px 0;
+  padding: 12px;
+  background: #151c18;
+  border: 1px solid #334039;
+  border-radius: 8px;
+}
+.program-card {
+  margin-top: 9px;
+  padding: 9px;
+  border: 1px solid #344b3d;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.program-card p {
+  overflow-wrap: anywhere;
+}
+.program-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.program-heading::before {
+  content: '▸';
+}
+.program-card[open] > .program-heading::before {
+  content: '▾';
+}
+.program-heading > span:not(.program-caption),
+.program-heading > strong {
+  flex-shrink: 0;
+}
+.program-caption {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-history > .program-card {
+  margin: 8px 0;
+}
+.goal-history summary {
+  overflow-wrap: anywhere;
+}
+.program-command,
+.program-output {
+  background: #0e1510;
+  padding: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: auto;
+  max-height: 260px;
+}
+/* 工作结果与用户字段分开展示。 Keep work results distinct from user-maintained fields. */
+.task-work {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+}
+.task-work details {
+  margin-top: 0.7rem;
+}
+.task-work summary {
+  cursor: pointer;
+}
+.work-summary {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Goal 状态与单次运行分开呈现，长条件可折叠。 Separate goal and run state; collapse long criteria. */
+.goal-card {
+  margin: 8px 18px 4px;
+  padding: 0;
+  border: 1px solid #405343;
+  border-radius: 8px;
+  background: #17231b;
+  font-size: 12px;
+}
+.goal-heading,
+.goal-usage,
+.goal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+}
+.goal-objective {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #a7baa9;
+}
+.goal-body {
+  max-height: 30vh;
+  overflow: auto;
+  padding: 2px 12px 10px;
+}
+.goal-card summary {
+  cursor: pointer;
+  margin: 8px 0;
+}
+.goal-card li {
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.goal-budgets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+.goal-budgets label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.goal-budgets input {
+  width: 150px;
+}
+.goal-budgets small {
+  flex-basis: 100%;
+}
+.goal-question,
+.goal-queue {
+  padding: 10px;
+  margin: 8px 0;
+  background: #273125;
+  border-radius: 6px;
+}
+.goal-question textarea,
+.goal-setup textarea {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 8px 0;
+}
+.goal-setup {
+  margin: 6px 0 8px;
+  font-size: 12px;
+  max-height: 28vh;
+  overflow: auto;
+}
+.goal-setup summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+.goal-card small {
+  display: block;
+  margin-top: 6px;
+}
+.goal-heading {
+  padding: 7px 10px;
+  margin: 0 !important;
+  flex-wrap: nowrap;
+  list-style: none;
+}
+.goal-heading::before {
+  content: '▸';
+  color: #8aad99;
+}
+.goal-card > details[open] > .goal-heading::before {
+  content: '▾';
+}
+
+.web-references summary {
+  overflow-wrap: anywhere;
+}
+.web-references li {
+  margin-block: 0.6rem;
+}
+.web-references small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.web-references blockquote {
+  margin: 0.4rem 0;
+  padding-left: 0.7rem;
+  border-left: 2px solid #719a81;
 }

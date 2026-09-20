@@ -20,7 +20,7 @@ M0 要交付一个**能够重复安装依赖、运行 CLI 诊断、选择并记�
 | 默认模型配置 | 固定 OpenCode Go、两个模型 ID、凭据引用与配置校验 | M1 进行两个模型的真实结构化工具回合 |
 | 诊断 | 本地检查、可选网络检查、稳定错误分类与 JSON 报告 | M1 接入真实模型认证结果，M2 接入桌面诊断 |
 | 数据契约与连接 | 配置、存储、项目、诊断和握手 DTO；schema / 类型生成；最小 stdio 网关 | M1 扩充任务事件，M2 接入任务订阅和打包运行 |
-| 项目与应用数据 | 原生目录选择、最近项目、重启恢复、默认数据根、原子保存与单写者约束 | 后续加入项目会话、工作副本和历史管理 |
+| 项目与应用数据 | 原生目录选择、最近项目、重启恢复、默认数据根、原子保存与单写者约束 | 后续加入项目会话和历史管理；代码默认原目录，副本可选 |
 | 桌面工程 | Electron / React 窗口、有限 preload、Python 启动与基本故障提示；开发模式联调和资源构建 | M2 假任务、任务取消、打包及故障恢复强化 |
 | 示例与验证 | 一个小型 Python 缺陷项目、任务说明及验收条件 | M1 用于只读问答，M3–M4 用于编辑与修复 |
 | 仓库规范 | README、忽略规则、两份锁文件、本地检查入口与 CI 配置 | 后续阶段扩充已有检查 |
@@ -231,7 +231,7 @@ E:\MyCodingAgentData\
 ├── electron/                   # Electron 自身状态，与 Python 配置分开
 ├── cache/electron/             # Chromium 缓存与浏览器会话数据
 ├── sessions/<session_id>/      # M1 起：事件、快照与产物，记录 project_id
-├── workspaces/<run_id>/        # M3 起：任务工作副本
+├── workspaces/<workspace_id>/  # 后续可选副本：仅用户选择时准备，不默认创建
 └── dev/                        # 开发入口显式选用的另一数据根
 ```
 
@@ -270,7 +270,7 @@ M0 提供 `initialize`、`projects.open`、`projects.list`、`diagnostics.get`�
 
 Python 使用 portalocker 的排他文件锁约束同一数据根只能有一个业务写入者；桌面已经占用时，第二个写入型 CLI 返回 `DATA_DIR_BUSY`。锁的获得以实际文件锁为准，不以 PID 文件存在与否推断。诊断等只读命令允许读取原子写入的快照，不能借读取绕过写入约束。[portalocker 文档](https://github.com/wolph/portalocker)
 
-这些小型元数据的初始化、版本检查和原子保存属于 M0；完整会话日志、任务恢复、数据迁移和工作副本仍按后续阶段实现。
+这些小型元数据的初始化、版本检查和原子保存属于 M0；完整会话日志、任务恢复、数据迁移和可选工作副本仍按后续阶段实现。2026-09-16 用户已明确代码默认在原项目目录工作，上述未来副本布局不作为默认数据初始化要求，不改变 M0 已有实现与验收事实。
 
 ## 6. `doctor` 怎样设计才有实际价值
 
@@ -307,7 +307,7 @@ uv run --locked my-agent doctor --network --json
 | 项目路径无效或与应用数据重叠 | `PROJECT_UNAVAILABLE`、`PROJECT_DATA_OVERLAP` | 不切换当前项目，不保存无效选择 |
 | 密钥来源为空 | `CREDENTIAL_MISSING` | 本地工程诊断警告；M1 真实模型任务启动时阻塞 |
 | 读取受限 | `ENVIRONMENT_RESTRICTED` | 报告实际限制；必需检查未完成时不能宣称通过 |
-| Docker CLI 存在但 daemon 不可用 | `EXECUTION_BACKEND_UNAVAILABLE` | M0 警告，M4 的容器验收前解决 |
+| Docker CLI 存在但 daemon 不可用 | `EXECUTION_BACKEND_UNAVAILABLE` | M0 警告；后续只影响选择容器的执行，不能阻断已配置的 Windows 本机任务（2026-09-16 设计调整） |
 | DNS、连接、TLS、代理、超时错误 | 分别使用 `DNS_ERROR`、`CONNECT_ERROR`、`TLS_ERROR`、`PROXY_ERROR`、`TIMEOUT` | 指出失败层，不建议用户盲目重新登录 |
 | 返回 HTML、非法 JSON 或结构不符 | `INVALID_SERVICE_RESPONSE` | 不能当成有效模型目录 |
 

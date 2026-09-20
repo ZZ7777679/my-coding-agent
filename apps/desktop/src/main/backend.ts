@@ -12,7 +12,7 @@ import type {
   DiagnosticsParams,
   InitializeResult,
   OperationError,
-  ProtocolV2,
+  ProtocolV3,
   SessionSignal
 } from '../generated/protocol'
 import { validate } from '../shared/validation'
@@ -253,12 +253,12 @@ export class Backend {
    * 按方法校验短控制响应，诊断与运行使用独立等待。
    * Validate short control responses independently of diagnostic and run waiting.
    */
-  async call<K extends keyof ProtocolV2>(
+  async call<K extends keyof ProtocolV3>(
     method: string,
     params: object,
     resultType: K,
     timeoutMs = 8000
-  ): Promise<ProtocolV2[K]> {
+  ): Promise<ProtocolV3[K]> {
     // M1 的诊断与模型运行独立，取消请求立即进入控制通道。
     // M1 diagnostics and model runs are independent; cancellation goes directly to control.
     const value = await this.request(method, params, timeoutMs)
@@ -382,14 +382,27 @@ export class Backend {
    */
   async stop(): Promise<void> {
     const child = this.child
-    this.stopping = true
     if (!child) return
     if (child.exitCode !== null || child.signalCode !== null) {
       await this.termination
       return
     }
+    let graceMs = (defaults.execution.cleanup_timeout_seconds * 2 + 5) * 1000
+    if (!this.failed && !this.stopping) {
+      try {
+        const catalog = await this.call(
+          'environments.list',
+          { project_id: null },
+          'EnvironmentCatalog'
+        )
+        graceMs = (catalog.settings.cleanup_timeout_seconds * 2 + 5) * 1000
+      } catch {
+        this.log('SHUTDOWN_SETTINGS_UNAVAILABLE')
+      }
+    }
+    this.stopping = true
     child.stdin.end()
-    const timer = setTimeout(() => this.terminate(), 2000)
+    const timer = setTimeout(() => this.terminate(), Math.min(graceMs, 2147483647))
     try {
       // 发出终止请求不代表已退出，需等待实际事件以释放管道和写入锁。
       // A kill request alone does not prove exit; wait for the process event and lock release.

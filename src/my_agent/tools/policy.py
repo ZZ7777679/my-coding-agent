@@ -1,6 +1,7 @@
-"""共享路径、忽略与凭据文件规则。 Shared path, ignore and credential-file policy."""
+"""项目路径与发现过滤；忽略规则不是显式访问权限。 Project paths and discovery filters."""
 
 import fnmatch
+import ntpath
 import os
 import threading
 from collections.abc import Iterator
@@ -29,26 +30,6 @@ EXCLUDED_DIRS = frozenset(
         ".artifacts",
     }
 )
-SECRET_DIRS = frozenset({".ssh", ".aws", ".azure", ".gnupg", ".kube"})
-SECRET_NAMES = frozenset(
-    {
-        "credentials",
-        "credentials.json",
-        "secrets.json",
-        "secrets.toml",
-        "secrets.yaml",
-        "secrets.yml",
-        "auth.json",
-        ".npmrc",
-        ".pypirc",
-        ".netrc",
-        "id_rsa",
-        "id_ed25519",
-        "id_ecdsa",
-        "agent.paths.local.json",
-    }
-)
-SECRET_SUFFIXES = frozenset({".pem", ".key", ".p12", ".pfx", ".jks"})
 
 
 def checkpoint(stop: threading.Event) -> None:
@@ -69,24 +50,10 @@ def relative_path(value: str) -> PurePosixPath:
         or PureWindowsPath(value).drive
         or ".." in path.parts
         or any(part.endswith((".", " ")) for part in path.parts if part != ".")
+        or ntpath.isreserved(normalized)
     ):
         raise AgentError("PATH_DENIED", "工具只接受项目内的相对路径。")
     return path
-
-
-def is_secret(path: PurePosixPath) -> bool:
-    """保护常见凭据文件；明确命名的示例文件除外。 Protect credentials, allowing named examples."""
-    names = [part.casefold() for part in path.parts]
-    if any(part in SECRET_DIRS for part in names):
-        return True
-    name = path.name.casefold()
-    example = name.endswith((".example", ".sample", ".template"))
-    return not example and (
-        name in SECRET_NAMES
-        or name == ".env"
-        or name.startswith(".env.")
-        or path.suffix.casefold() in SECRET_SUFFIXES
-    )
 
 
 @dataclass
@@ -108,24 +75,34 @@ class ReadPolicy:
         self.stop = stop
         self.ignore_cache: dict[Path, tuple[tuple[int, int], GitIgnoreSpec]] = {}
 
+    def relative(self, value: str) -> PurePosixPath:
+        """将项目内绝对或相对写法统一；不凭路径写法拒绝同一文件。
+
+        Normalize absolute or relative project paths without rejecting equivalent spellings.
+        """
+        if not value or "\x00" in value or ntpath.isreserved(value):
+            raise AgentError("PATH_DENIED", "文件路径无效。")
+        selected = Path(value)
+        absolute = Path(os.path.abspath(self.root / selected))
+        if not absolute.is_relative_to(self.root):
+            raise AgentError("PATH_DENIED", "文件工具的目标需要位于当前项目内。")
+        return PurePosixPath(absolute.relative_to(self.root).as_posix())
+
     def _resolve(self, relative: PurePosixPath) -> Path:
-        """检查链接后的真实路径和硬链接风险。 Check resolved containment and hard-link risk."""
+        """解析实际目标并核对项目归属。 Resolve the target and check project containment."""
         checkpoint(self.stop)
         try:
             target = self.root.joinpath(*relative.parts).resolve(strict=True)
             if not target.is_relative_to(self.root):
                 raise AgentError("PATH_DENIED", "链接目标位于项目之外。")
-            real_relative = PurePosixPath(target.relative_to(self.root).as_posix())
-            if is_secret(relative) or is_secret(real_relative):
-                raise AgentError("SENSITIVE_FILE", "该文件属于受保护的凭据文件。")
-            if target.is_file() and target.stat().st_nlink > 1:
-                raise AgentError("PATH_DENIED", "不读取具有其他硬链接的文件，请使用普通源码文件。")
             return target
+        except FileNotFoundError as exc:
+            raise AgentError("FILE_NOT_FOUND", "目标不存在，请调整路径或按任务需要创建。") from exc
         except (OSError, RuntimeError) as exc:
             raise AgentError("FILE_UNAVAILABLE", "文件不存在或无法访问。") from exc
 
     def _rules(self, directory: Path) -> Iterator[tuple[Path, GitIgnoreSpec]]:
-        """按根到叶读取嵌套 gitignore，限制配置体积。 Read bounded nested gitignore rules."""
+        """按根到叶读取嵌套 gitignore。 Read nested gitignore rules from root to leaf."""
         parents = [self.root]
         cursor = self.root
         for part in directory.relative_to(self.root).parts:
@@ -144,23 +121,16 @@ class ReadPolicy:
                 if cached and cached[0] == version:
                     yield parent, cached[1]
                     continue
-                with safe.open("rb") as stream:
-                    raw = stream.read(65537)
-                if len(raw) > 65536:
-                    raise AgentError("IGNORE_INVALID", "忽略规则过大，请检查 .gitignore。")
+                raw = safe.read_bytes()
                 spec = GitIgnoreSpec.from_lines(raw.decode("utf-8-sig").splitlines())
                 self.ignore_cache[safe] = (version, spec)
                 yield parent, spec
             except (UnicodeError, ValueError) as exc:
                 raise AgentError("IGNORE_INVALID", "无法可靠解析 .gitignore。") from exc
 
-    def _filtered(self, target: Path, relative: PurePosixPath) -> bool:
-        """三工具共用过滤；普通忽略可由受信设置覆盖。 Apply shared, trusted file filters."""
+    def _filtered(self, target: Path, relative: PurePosixPath, *, directory: bool = False) -> bool:
+        """只用于发现，不阻断指定路径的读写。 Filter discovery, never explicit reads or writes."""
         if any(fnmatch.fnmatchcase(relative.as_posix(), p) for p in self.limits.exclude_globs):
-            return True
-        # .git 永不作为源码上下文，其余普通忽略可显式覆盖。
-        # Git metadata is never source context; ordinary ignores have a trusted override.
-        if any(part.casefold() in {".git", ".svn", ".hg"} for part in relative.parts):
             return True
         if self.limits.include_ignored:
             return False
@@ -169,31 +139,47 @@ class ReadPolicy:
         ignored = False
         for base, spec in self._rules(target.parent if target != self.root else self.root):
             rel = target.relative_to(base).as_posix()
-            if target.is_dir():
+            if directory or target.is_dir():
                 rel += "/"
             result = spec.check_file(rel)
             if result.include is not None:
                 ignored = result.include
         return ignored
 
-    def target(self, value: str, *, directory: bool = False) -> Path:
-        """同时验证别名和真实目标，禁止链接绕过过滤。 Validate alias and real target filters."""
-        relative = relative_path(value)
-        target = self._resolve(relative)
-        real = PurePosixPath(target.relative_to(self.root).as_posix())
+    def new_target(self, value: str) -> Path:
+        """检查新目标与所有真实祖先，允许创建缺失目录。
+
+        Validate new targets and resolved ancestors."""
+        relative = self.relative(value)
+        if not relative.parts:
+            raise AgentError("PATH_DENIED", "新文件需要明确文件名。")
         try:
+            lexical = self.root.joinpath(*relative.parts)
+            target = lexical.resolve(strict=False)
+            if not target.is_relative_to(self.root):
+                raise AgentError("PATH_DENIED", "新文件的父目录位于项目之外。")
+            if os.path.lexists(lexical) or os.path.lexists(target):
+                raise AgentError("FILE_EXISTS", "目标已存在；请读取后使用精确编辑。")
+            return target
+        except (OSError, RuntimeError) as exc:
+            raise AgentError("FILE_UNAVAILABLE", "无法验证新文件路径。") from exc
+
+    def target(self, value: str, *, directory: bool = False) -> Path:
+        """指定文件不受发现过滤影响，仍核对存在性和类型。
+
+        Check explicit target existence and type, independent of discovery filters.
+        """
+        checkpoint(self.stop)
+        if not value or "\x00" in value or ntpath.isreserved(value):
+            raise AgentError("PATH_DENIED", "文件路径无效。")
+        try:
+            target = (self.root / value).resolve(strict=True)
             if target.is_dir() != directory or (not directory and not target.is_file()):
                 raise AgentError("FILE_TYPE", "目标类型不符合工具要求。")
-            # 检查祖先目录，避免直接 read_file 绕过被忽略目录。
-            # Check ancestors so direct reads cannot bypass ignored directories.
-            for path in (relative, real):
-                for count in range(1, len(path.parts) + 1):
-                    part = PurePosixPath(*path.parts[:count])
-                    candidate = self.root.joinpath(*part.parts)
-                    if self._filtered(candidate, part):
-                        raise AgentError("FILE_IGNORED", "文件被项目或应用读取规则忽略。")
             return target
-        except OSError as exc:
+        except FileNotFoundError as exc:
+            raise AgentError("FILE_NOT_FOUND", "目标不存在，请调整路径或按任务需要创建。") from exc
+        except (OSError, RuntimeError) as exc:
             raise AgentError("FILE_UNAVAILABLE", "无法检查目标文件。") from exc
 
     def scan(self, directory: str = ".", glob: str = "*") -> Scan:
@@ -218,10 +204,25 @@ class ReadPolicy:
                         visited += 1
                         if visited > self.limits.max_scan_files:
                             return Scan(sorted(files), True, skipped)
-                        rel = Path(entry.path).relative_to(self.root).as_posix()
+                        candidate = Path(entry.path)
+                        rel = (
+                            candidate.relative_to(self.root).as_posix()
+                            if candidate.is_relative_to(self.root)
+                            else candidate.as_posix()
+                        )
                         try:
                             is_dir = entry.is_dir()
                             target = self.target(rel, directory=is_dir)
+                            if start == self.root and not target.is_relative_to(self.root):
+                                skipped += 1
+                                continue
+                            # 指定子目录意味着定向查看；全项目发现才应用默认忽略。
+                            # Explicit subdirectories are targeted views, not workspace discovery.
+                            if start == self.root and self._filtered(
+                                target, PurePosixPath(rel), directory=is_dir
+                            ):
+                                skipped += 1
+                                continue
                             if is_dir:
                                 if depth < self.limits.max_depth:
                                     pending.append((target, depth + 1))

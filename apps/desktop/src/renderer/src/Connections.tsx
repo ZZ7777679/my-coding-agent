@@ -10,6 +10,7 @@ import type {
   PublicConfig
 } from '../../generated/protocol'
 import type { Result } from '../../shared/api'
+import { ModelActivity } from './ModelActivity'
 
 type Props = {
   connected: boolean
@@ -18,17 +19,6 @@ type Props = {
   diagnosticStatus: ConnectionStatus | null | undefined
   onBusy: (value: boolean) => void
   onConfig: (config: PublicConfig) => void
-}
-
-const phases = {
-  preparing: '准备请求',
-  connecting: '建立连接',
-  tls: 'TLS 握手',
-  waiting: '等待服务',
-  receiving: '接收响应',
-  reasoning: '模型处理中',
-  text: '输出正文',
-  completed: '响应结束'
 }
 
 const modelNames: Record<ModelId, string> = {
@@ -72,7 +62,7 @@ function ModelConnectionRow({
         <code>{model}</code>
         <span className={`model-test-status ${outcome}`} aria-live="polite">
           {running
-            ? `正在测试 · ${progress ? phases[progress.phase] : '准备请求'}`
+            ? '正在测试，响应状态见下方'
             : !state
               ? '状态尚未读取'
               : !result
@@ -97,7 +87,7 @@ function ModelConnectionRow({
           <details>
             <summary>分段耗时</summary>
             <div className="connection-metrics">
-              <span>阶段：{phases[progress.phase]}</span>
+              <ModelActivity progress={progress} active={running} />
               <span>总耗时：{elapsed(progress.elapsed_ms)}</span>
               <span>建立连接：{elapsed(progress.connect_ms)}</span>
               <span>TLS：{elapsed(progress.tls_ms)}</span>
@@ -132,7 +122,7 @@ function Observation({ title, value }: { title: string; value: ConnectionObserva
             {value.http_status !== null && ` · HTTP ${value.http_status}`}
           </p>
           <div className="connection-metrics">
-            <span>结束于：{phases[value.progress.phase]}</span>
+            <ModelActivity progress={value.progress} active={false} />
             <span>总耗时：{elapsed(value.progress.elapsed_ms)}</span>
             <span>建立连接：{elapsed(value.progress.connect_ms)}</span>
             <span>TLS：{elapsed(value.progress.tls_ms)}</span>

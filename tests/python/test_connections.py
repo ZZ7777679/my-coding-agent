@@ -85,7 +85,7 @@ def test_model_tests_select_targets_and_keep_independent_results(tmp_path):
         task = None
         try:
             await app.dispatch(
-                "initialize", {"app_version": "0", "protocol_version": 2, "data_schema_version": 1}
+                "initialize", {"app_version": "0", "protocol_version": 3, "data_schema_version": 1}
             )
             initial = await app.dispatch("connections.get", {})
             assert len(initial.models) == 2 and not requests
@@ -107,6 +107,14 @@ def test_model_tests_select_targets_and_keep_independent_results(tmp_path):
                     {"model_id": "deepseek-v4.1-flash", "timeout_seconds": 2.0},
                 )
                 assert other.models[0].testing and other.models[0].last_test is None
+                assert other.models[0].progress.elapsed_ms > running.models[0].progress.elapsed_ms
+                assert (
+                    other.models[0].progress.last_data_ms == running.models[0].progress.last_data_ms
+                )
+                assert (
+                    other.models[0].progress.received_bytes
+                    == running.models[0].progress.received_bytes
+                )
                 failure = other.models[1].last_test
                 assert failure.code == "AUTHENTICATION_FAILED"
                 assert failure.progress.first_text_ms is None
@@ -151,7 +159,7 @@ def test_model_probe_failure_cleans_up_without_retries(tmp_path, case):
         app.http.transport = httpx.MockTransport(respond)
         try:
             await app.dispatch(
-                "initialize", {"app_version": "0", "protocol_version": 2, "data_schema_version": 1}
+                "initialize", {"app_version": "0", "protocol_version": 3, "data_schema_version": 1}
             )
             task = asyncio.create_task(
                 app.dispatch(
@@ -175,7 +183,7 @@ def test_model_probe_failure_cleans_up_without_retries(tmp_path, case):
             assert (
                 row.last_test.code
                 == {
-                    "timeout": "MODEL_TIMEOUT",
+                    "timeout": "MODEL_REQUEST_TIMEOUT",
                     "cancel": "CANCELLED",
                     "missing": "CREDENTIAL_MISSING",
                 }[case]
@@ -213,7 +221,7 @@ def test_rpc_settings_probe_and_restart_preserve_other_configuration(tmp_path, m
         location = resolve_data_dir(str(tmp_path / "data"))
         app = RpcApplication(location, credential(), None)
         app.http.transport = httpx.MockTransport(respond)
-        initialization = {"app_version": "0", "protocol_version": 2, "data_schema_version": 1}
+        initialization = {"app_version": "0", "protocol_version": 3, "data_schema_version": 1}
         try:
             await app.dispatch("initialize", initialization)
             before = await app.dispatch("connections.get", {})

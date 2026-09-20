@@ -256,11 +256,18 @@ def ask(
     run_json: Annotated[
         str | None, typer.Option("--run-json", help="Budget overrides as JSON")
     ] = None,
+    mode: Annotated[
+        str | None, typer.Option("--mode", help="normal or plan; omitted keeps session mode")
+    ] = None,
+    plan_document: Annotated[
+        str | None,
+        typer.Option("--plan-document", help="Only this relative file is writable in Plan"),
+    ] = None,
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    """在明确项目或已有会话中运行只读 Agent；Ctrl+C 停止。
+    """在明确项目或已有会话中运行 Agent；Ctrl+C 停止。
 
-    Run the read-only agent in an explicit project or session; Ctrl+C stops it.
+    Run the agent in an explicit project or session; Ctrl+C stops it.
     """
     with report_errors(as_json):
         if (project is None) == (session is None):
@@ -307,9 +314,30 @@ def ask(
                         raise AgentError(
                             "SESSION_MODEL_MISMATCH", "已有会话固定模型；切换模型请新建会话。"
                         )
-                await service.start(session_id, str(uuid4()), prompt, limits)
-                if service.active and service.active.task:
-                    await asyncio.shield(service.active.task)
+                from my_agent.rpc.dto import StartRunParams
+
+                session_view = await service.view(session_id)
+                try:
+                    start = StartRunParams.model_validate(
+                        {
+                            "session_id": session_id,
+                            "operation_id": str(uuid4()),
+                            "prompt": prompt,
+                            "limits": limits,
+                            "mode": mode or session_view.summary.mode,
+                            "plan_document": plan_document,
+                        }
+                    )
+                except ValidationError as exc:
+                    raise AgentError(
+                        "INVALID_PARAMS", "请使用 normal / plan 模式及有效文档路径。"
+                    ) from exc
+                await service.start(
+                    session_id, start.operation_id, prompt, limits, start.mode, start.plan_document
+                )
+                active = service.active_for(session_id)
+                if active and active.task:
+                    await asyncio.shield(active.task)
                 final = await service.view(session_id)
                 if not as_json:
                     typer.echo()

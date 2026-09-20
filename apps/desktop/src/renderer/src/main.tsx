@@ -15,6 +15,9 @@ import type {
 import type { Result } from '../../shared/api'
 import { Settings } from './Settings'
 import { Chat } from './Chat'
+import { TaskNavigation, type WorkspaceSelection } from './TaskNavigation'
+import { TaskPanel } from './TaskPanel'
+import { ProgramCards } from './ProgramCards'
 import './style.css'
 
 /**
@@ -52,8 +55,11 @@ function App() {
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
-  const [view, setView] = useState<'projects' | 'settings' | 'chat'>('projects')
-  const [activeRun, setActiveRun] = useState<SessionSummary | null>(null)
+  const [view, setView] = useState<'projects' | 'settings' | 'chat' | 'task'>('projects')
+  const [selection, setSelection] = useState<WorkspaceSelection | null>(null)
+  const [treeRevision, setTreeRevision] = useState(0)
+  const [activeRuns, setActiveRuns] = useState<SessionSummary[]>([])
+  const runGeneration = useRef(0)
   const generation = useRef(0)
   const occupied = useRef(false)
   const mounted = useRef(true)
@@ -112,8 +118,13 @@ function App() {
         if (!mounted.current || ticket !== generation.current) return
         if (result.ok) {
           const projects = result.data
-          if (projects !== null)
+          if (projects !== null) {
             setInfo((current) => (current ? { ...current, projects } : current))
+            setSelection((current) =>
+              current?.projectId === projects.active_project?.project_id ? current : null
+            )
+            return true
+          }
         } else {
           setNotice(errorNotice(result.error))
         }
@@ -126,6 +137,23 @@ function App() {
     },
     [phase]
   )
+
+  /** 项目打开确认后才切换任务 / 会话，失败保留原选择。 Navigate only after project selection is confirmed. */
+  const navigate = useCallback(
+    async (next: WorkspaceSelection) => {
+      if (
+        info?.projects.active_project?.project_id !== next.projectId &&
+        !(await select(next.projectId))
+      )
+        return
+      setSelection(next)
+      setView(next.sessionId ? 'chat' : 'task')
+    },
+    [info?.projects.active_project?.project_id, select]
+  )
+
+  /** 刷新树的数据版本，不发模型请求。 Invalidate navigation data without model calls. */
+  const refreshTree = useCallback(() => setTreeRevision((value) => value + 1), [])
 
   /**
    * 请求打开实际数据文件夹，并显示受信入口返回的错误。
@@ -163,16 +191,18 @@ function App() {
     info?.config.model_id === 'deepseek-v4.1-flash' ? 'DeepSeek V4.1 Flash' : 'GLM-5.3-Flash'
   const credential = info?.config.credential
 
-  /** 视图切换不改变活动任务；独立刷新全局停止入口。 Keep global run control across view changes. */
+  /** 显示所有会话的运行，丢弃过期刷新。 Display all session runs and discard stale refreshes. */
   const refreshRun = useCallback(async () => {
+    const ticket = ++runGeneration.current
     try {
-      const result = await window.agent.getActiveRun()
-      if (mounted.current) {
-        if (result.ok) setActiveRun(result.data.session)
+      const result = await window.agent.getActiveRuns()
+      if (mounted.current && ticket === runGeneration.current) {
+        if (result.ok) setActiveRuns(result.data.sessions)
         else setNotice(errorNotice(result.error))
       }
     } catch {
-      if (mounted.current) setNotice('无法刷新运行状态，请检查后端连接。')
+      if (mounted.current && ticket === runGeneration.current)
+        setNotice('无法刷新运行状态，请检查后端连接。')
     }
   }, [])
   useEffect(() => {
@@ -181,14 +211,23 @@ function App() {
     const timer = setInterval(() => void refreshRun(), 1000)
     return () => clearInterval(timer)
   }, [connected, refreshRun])
+  const runningRevision = activeRuns
+    .map((item) => `${item.run?.run_id}:${item.run?.status}`)
+    .join('|')
+  useEffect(() => {
+    refreshTree()
+  }, [runningRevision, refreshTree])
 
   /** 停止按钮只确认请求，保持 stopping 直到后端退出任务。 Keep stopping until backend cleanup ends. */
-  const stopRun = async () => {
-    if (!activeRun?.run) return
+  const stopRun = async (runId: string) => {
     try {
-      const result = await window.agent.cancelRun(activeRun.run.run_id)
-      if (result.ok) setActiveRun(result.data)
-      else setNotice(errorNotice(result.error))
+      const result = await window.agent.cancelRun(runId)
+      if (result.ok) {
+        setActiveRuns((current) =>
+          current.map((item) => (item.run?.run_id === runId ? result.data : item))
+        )
+        await refreshRun()
+      } else setNotice(errorNotice(result.error))
     } catch {
       setNotice('停止请求未确认，请检查连接。')
     }
@@ -223,87 +262,42 @@ function App() {
           </span>
           <span>设置与诊断</span>
         </button>
-        <button
-          className={'nav-item ' + (view === 'chat' ? 'nav-current' : '')}
-          onClick={() => setView('chat')}
-        >
-          <span aria-hidden="true">◈</span>
-          <span>只读对话</span>
-        </button>
         <div className="section-label">
-          最近打开<span>{info?.projects.recent_projects.length ?? 0}</span>
+          项目与任务<span>{info?.projects.recent_projects.length ?? 0}</span>
         </div>
-        <nav className="recent-list" aria-label="最近项目">
-          {info?.projects.recent_projects.map((item) => (
-            <button
-              key={item.project_id}
-              className={
-                'recent-project' + (project?.project_id === item.project_id ? ' selected' : '')
-              }
-              onClick={() => {
-                setView('projects')
-                void select(item.project_id)
-              }}
-              disabled={busy || !connected}
-              title={item.path}
-              aria-current={project?.project_id === item.project_id ? 'page' : undefined}
-            >
-              <FolderIcon size={19} />
-              <span>
-                <strong>{item.name}</strong>
-                <small>{item.available ? item.path : '目录不可用'}</small>
-              </span>
-            </button>
-          ))}
-          {!info?.projects.recent_projects.length && (
-            <p className="sidebar-empty">
-              打开的项目会保存在这里，
-              <br />
-              下次可以直接继续。
-            </p>
-          )}
-        </nav>
+        <TaskNavigation
+          projects={info?.projects.recent_projects ?? []}
+          selected={selection}
+          revision={treeRevision}
+          connected={connected && !busy}
+          onSelect={(next) => void navigate(next)}
+        />
         <div className="sidebar-bottom">
           <span className={'connection-dot ' + (connected ? 'online' : '')} />
           <span data-testid="connection-status">
             {phase === 'loading' ? '正在连接后端' : connected ? '本地后端已连接' : '后端不可用'}
           </span>
-          <small>{info?.app.stage ?? 'M1'}</small>
+          <small>{info?.app.stage ?? 'M2'}</small>
         </div>
       </aside>
 
-      <main className="workspace">
-        <header className="toolbar">
-          <div>
-            <span className="breadcrumb">工作台</span>
-            <span className="separator">/</span>
-            <strong>
-              {view === 'projects' ? '项目' : view === 'chat' ? '只读对话' : '设置与诊断'}
-            </strong>
-          </div>
-          <span className="local-badge">
-            <span />
-            本地工作空间
-          </span>
-        </header>
-        {activeRun?.run && (
-          <div className="global-run" role="status">
-            <span>
-              {activeRun.run.status === 'stopping' ? '正在停止并清理…' : 'Agent 正在运行'} ·{' '}
-              {activeRun.title}
-            </span>
-            <button
-              onClick={() => {
-                setView('chat')
-                if (activeRun.project_id !== project?.project_id) void select(activeRun.project_id)
-              }}
-            >
-              查看运行
-            </button>
-            <button onClick={() => void stopRun()} disabled={activeRun.run.status === 'stopping'}>
-              停止运行
-            </button>
-          </div>
+      <main className={'workspace' + (view === 'chat' ? ' workspace-chat' : '')}>
+        {view !== 'chat' && (
+          <header className="toolbar">
+            <div>
+              <span className="breadcrumb">工作台</span>
+              <span className="separator">/</span>
+              <strong>
+                {view === 'projects' ? '项目' : view === 'task' ? '任务' : '设置与诊断'}
+              </strong>
+            </div>
+            {
+              <span className="local-badge">
+                <span />
+                本地工作空间
+              </span>
+            }
+          </header>
         )}
         <div hidden={view !== 'projects'}>
           <div className="content">
@@ -360,8 +354,17 @@ function App() {
                         ? '项目选择已保存。重新打开应用时，会恢复到这里。'
                         : '原来的记录已保留。请连接磁盘，或重新选择项目目录。'}
                     </p>
-                    <button className="text-button" onClick={() => setView('chat')}>
-                      进入只读对话 →
+                    <button
+                      className="text-button"
+                      onClick={() =>
+                        void navigate({
+                          projectId: project.project_id,
+                          taskId: null,
+                          sessionId: null
+                        })
+                      }
+                    >
+                      新建任务 →
                     </button>
                   </div>
                 </div>
@@ -427,23 +430,47 @@ function App() {
                 </button>
               </section>
             </div>
+            {project && (
+              <ProgramCards
+                key={project.project_id}
+                projectId={project.project_id}
+                visible={view === 'projects'}
+              />
+            )}
             <footer className="footer-note">
               <span>◎</span>
-              <p>已接入只读对话、代码读取与本地历史。代码修改和项目命令在后续阶段实现。</p>
+              <p>任务与会话在左侧管理。可在原项目编辑代码，选择项目默认环境后执行与预览。</p>
               <span className="version">v{info?.app.app_version ?? '—'}</span>
             </footer>
           </div>
         </div>
-        <div hidden={view !== 'chat'}>
+        <div className="chat-page" hidden={view !== 'chat'}>
           <Chat
-            project={project ?? null}
-            defaultModel={info?.config.model_id ?? 'glm-5.3-flash'}
-            connected={connected}
             visible={view === 'chat'}
-            active={activeRun}
-            onRunChange={() => void refreshRun()}
+            key={selection?.sessionId ?? 'empty'}
+            project={project ?? null}
+            selected={selection?.sessionId ?? null}
+            connected={connected}
+            active={activeRuns.find((item) => item.session_id === selection?.sessionId) ?? null}
+            onStop={(id) => void stopRun(id)}
+            onRunChange={() => {
+              void refreshRun()
+              refreshTree()
+            }}
+            onSelect={(next) => void navigate(next)}
           />
         </div>
+        {view === 'task' && (
+          <TaskPanel
+            key={`${project?.project_id}/${selection?.taskId}`}
+            project={project ?? null}
+            taskId={selection?.taskId ?? null}
+            defaultModel={info?.config.model_id ?? 'glm-5.3-flash'}
+            connected={connected}
+            onSelect={(next) => void navigate(next)}
+            onChanged={refreshTree}
+          />
+        )}
         <div hidden={view !== 'settings'}>
           <Settings
             info={info}

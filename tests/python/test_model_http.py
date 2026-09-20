@@ -119,7 +119,7 @@ def test_backend_pool_reuses_connections_across_runs_and_recovers_after_cancel(
                     async def run(prompt):
                         """经生产服务提交新运行。 Submit a run through the production service."""
                         await service.start(session.session_id, str(uuid4()), prompt, None)
-                        await service.active.task
+                        await service.active_for(session.session_id).task
                         return await service.view(session.session_id)
 
                     first = await run("answer")
@@ -133,7 +133,7 @@ def test_backend_pool_reuses_connections_across_runs_and_recovers_after_cancel(
                         and second.model_progress.response_complete
                     )
                     await service.start(session.session_id, str(uuid4()), "wait", None)
-                    task = service.active.task
+                    task = service.active_for(session.session_id).task
                     await waiting.wait()
                     # 等待真实 reasoning 事件被解析后取消，避免仅测服务端发出。
                     # Wait for actual parsing before cancelling, rather than just server emission.
@@ -141,7 +141,7 @@ def test_backend_pool_reuses_connections_across_runs_and_recovers_after_cancel(
                         s.model_progress and s.model_progress.phase == "reasoning" for s in signals
                     ):
                         await asyncio.sleep(0)
-                    await service.cancel(service.active.run_id)
+                    await service.cancel(service.active_for(session.session_id).run_id)
                     await task
                     cancelled = await service.view(session.session_id)
                     assert cancelled.summary.run.status == "cancelled"

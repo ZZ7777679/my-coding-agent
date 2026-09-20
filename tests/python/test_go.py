@@ -52,6 +52,7 @@ def test_text_delivered_before_next_network_chunk_with_frame_limits(oversized):
         Reproduce ordering without sleeps or network.
         """
         output = []
+        reasoning = []
 
         class GatedStream(ChunkStream):
             """后一块只能在首段显示后读取。 Read the next chunk only after displaying the first."""
@@ -61,6 +62,10 @@ def test_text_delivered_before_next_network_chunk_with_frame_limits(oversized):
 
                 Follow with coalesced or oversized events.
                 """
+                yield sse({"reasoning_content": "先读"})
+                assert reasoning == ["先读"] and output == []
+                yield sse({"reasoning_content": "文件。"})
+                assert reasoning == ["先读", "文件。"] and output == []
                 yield sse({"content": "首段"})
                 assert output == ["首段"], "Text must arrive before requesting the next chunk"
                 yield self.payload
@@ -68,7 +73,7 @@ def test_text_delivered_before_next_network_chunk_with_frame_limits(oversized):
         payload = (
             sse({"content": "x" * 1024})
             if oversized
-            else sse({"content": "续"}) * 20 + sse({}, "stop") + b"data: [DONE]\n\n"
+            else sse({"content": "x"}) * 420 + sse({}, "stop") + b"data: [DONE]\n\n"
         )
         assert len(payload) > 1024
         stream = GatedStream(payload)
@@ -83,6 +88,10 @@ def test_text_delivered_before_next_network_chunk_with_frame_limits(oversized):
             Observe the production client's public text callback.
             """
             output.append(delta)
+
+        async def thought(delta):
+            """思考必须逐片交付，不能等正文出现。 Deliver reasoning before answer text appears."""
+            reasoning.append(delta)
 
         client = GoClient(
             ResolvedCredential(
@@ -104,6 +113,7 @@ def test_text_delivered_before_next_network_chunk_with_frame_limits(oversized):
             tools=[],
             limits=RunLimits.model_validate({**DEFAULTS["run"], "max_response_bytes": 1024}),
             on_text=text,
+            on_reasoning=thought,
         )
         if oversized:
             with pytest.raises(AgentError) as error:
@@ -112,8 +122,10 @@ def test_text_delivered_before_next_network_chunk_with_frame_limits(oversized):
             assert output == ["首段"]
         else:
             turn = await call
-            assert turn.text == "首段" + "续" * 20
+            assert turn.text == "首段" + "x" * 420
             assert "".join(output) == turn.text
+            assert turn.reasoning == "先读文件。"
+            assert turn.native["reasoning_content"] == turn.reasoning
         assert stream.closed
         await client.http.close()
 
@@ -140,7 +152,7 @@ def test_fragmented_tools_headers_native_state_and_partial_rejection(broken):
                     "content": "读取",
                     "tool_calls": [
                         {
-                            "index": 0,
+                            "index": 256,
                             "id": "call-1",
                             "type": "function",
                             "function": {"name": "read_file", "arguments": '{"path":'},
@@ -152,7 +164,7 @@ def test_fragmented_tools_headers_native_state_and_partial_rejection(broken):
                 {
                     "tool_calls": [
                         {
-                            "index": 0,
+                            "index": 256,
                             "function": {"arguments": '"main.py"' if broken else '"main.py"}'},
                         }
                     ]
@@ -187,10 +199,15 @@ def test_fragmented_tools_headers_native_state_and_partial_rejection(broken):
             ),
         )
         output = []
+        progress = []
 
         async def text(delta):
             """收集公开流文本。 Collect public streaming text."""
             output.append(delta)
+
+        async def observe(value):
+            """验证思考之后的参数生成阶段。 Observe argument generation following reasoning."""
+            progress.append(value)
 
         call = client.complete(
             model_id="glm-5.3-flash",
@@ -199,6 +216,7 @@ def test_fragmented_tools_headers_native_state_and_partial_rejection(broken):
             tools=[],
             limits=RunLimits.model_validate(DEFAULTS["run"]),
             on_text=text,
+            on_progress=observe,
         )
         if broken:
             with pytest.raises(AgentError) as error:
@@ -210,6 +228,10 @@ def test_fragmented_tools_headers_native_state_and_partial_rejection(broken):
             assert turn.native["reasoning_content"] == "private reasoning"
             assert turn.usage.input_tokens == 4
             assert output == ["读取"]
+            assert "tool_arguments" in [item.phase for item in progress]
+            assert progress[-1].phase == "completed"
+            assert progress[-1].last_data_ms is not None
+            assert progress[-1].received_bytes > 0
         assert len(seen) == 1 and stream.closed
         await client.http.close()
 
@@ -259,6 +281,107 @@ def test_auth_failure_no_retry_or_raw_body():
         assert error.value.code == "AUTHENTICATION_FAILED" and calls == 1
         assert "private-body-sentinel" not in str(error.value)
         await client.http.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected"),
+    [
+        ("connect", "MODEL_CONNECT_ERROR"),
+        ("read", "MODEL_READ_TIMEOUT"),
+        ("deadline", "MODEL_REQUEST_TIMEOUT"),
+        ("disconnected", "MODEL_STREAM_ERROR"),
+    ],
+)
+def test_failure_cause_is_separate_from_last_reasoning_phase(failure, expected):
+    """复现思考后停流与不同失败，阶段保留事实，原因不推测且不重试。
+
+    Reproduce stalled reasoning and distinct failures without inferred causes or retries.
+    """
+
+    async def scenario():
+        """使用生产解析器和总时限，仅替换传输，检查时间与资源清理。
+
+        Use the production parser/deadline with substituted transport, checking timing and cleanup.
+        """
+        calls = 0
+        progress = []
+
+        class FailingStream(ChunkStream):
+            """先返回真实结构的思考事件，再停流或产生指定网络异常。
+
+            Emit a valid reasoning event before stalling or raising a specified transport error.
+            """
+
+            async def __aiter__(self):
+                """不暴露思考内容，仅保存可公开时序。 Retain public timing, not reasoning text."""
+                yield sse({"reasoning_content": "private-reasoning-sentinel"})
+                if failure == "read":
+                    raise httpx.ReadTimeout("private-error-sentinel")
+                if failure == "disconnected":
+                    raise httpx.RemoteProtocolError("private-error-sentinel")
+                await asyncio.Event().wait()
+
+        stream = FailingStream(b"")
+
+        async def handler(request):
+            """区分未连接与连接后异常。 Distinguish connection failure from later faults."""
+            nonlocal calls
+            calls += 1
+            if failure == "connect":
+                raise httpx.ConnectError("private-error-sentinel")
+            return httpx.Response(200, stream=stream)
+
+        async def observe(value):
+            """收集公开阶段快照。 Collect public phase snapshots."""
+            progress.append(value)
+
+        async def no_text(delta):
+            """失败前只有私有思考，不能伪装为正文。 Private reasoning is not visible answer text."""
+            pytest.fail("Unexpected answer text")
+
+        pool = ModelHttpPool(
+            reuse_enabled=True,
+            keepalive_expiry=None,
+            drain_timeout_seconds=0.1,
+            transport=httpx.MockTransport(handler),
+        )
+        client = GoClient(
+            ResolvedCredential(
+                SecretStr("sentinel-only"),
+                CredentialInfo(env_var="OPENCODE_API_KEY", source="process", present=True),
+            ),
+            "https://opencode.ai/zen/go/v1",
+            pool,
+        )
+        try:
+            with pytest.raises(AgentError) as error:
+                await client.complete(
+                    model_id="glm-5.3-flash",
+                    session_id="failure-check",
+                    messages=[],
+                    tools=[],
+                    limits=RunLimits.model_validate(
+                        {**DEFAULTS["run"], "request_timeout_seconds": 1}
+                    ),
+                    on_text=no_text,
+                    on_progress=observe,
+                )
+            assert error.value.code == expected and calls == 1
+            assert "sentinel" not in error.value.message
+            final = progress[-1]
+            if failure == "connect":
+                assert final.last_data_ms is None and final.received_bytes == 0
+            else:
+                assert stream.closed and final.phase == "reasoning"
+                assert final.last_data_ms is not None and final.received_bytes > 0
+                assert final.first_text_ms is None
+                if failure == "deadline":
+                    assert final.elapsed_ms - final.last_data_ms >= 800
+            assert pool.last_request.code == expected
+        finally:
+            await pool.close()
 
     asyncio.run(scenario())
 

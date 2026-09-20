@@ -48,7 +48,15 @@ class ModelProgress(ModelData):
     """请求阶段与单调时钟耗时，不包含网络原文。 Request phases and timings without raw payloads."""
 
     phase: Literal[
-        "preparing", "connecting", "tls", "waiting", "receiving", "reasoning", "text", "completed"
+        "preparing",
+        "connecting",
+        "tls",
+        "waiting",
+        "receiving",
+        "reasoning",
+        "text",
+        "tool_arguments",
+        "completed",
     ]
     elapsed_ms: Annotated[float, Field(ge=0)]
     first_text_ms: Annotated[float, Field(ge=0)] | None = None
@@ -57,6 +65,8 @@ class ModelProgress(ModelData):
     connect_ms: Annotated[float, Field(ge=0)] | None = None
     tls_ms: Annotated[float, Field(ge=0)] | None = None
     response_complete: bool | None = None
+    last_data_ms: Annotated[float, Field(ge=0)] | None = None
+    received_bytes: Annotated[int, Field(ge=0)] | None = None
 
 
 type ProgressSink = Callable[[ModelProgress], Awaitable[None]]
@@ -66,6 +76,7 @@ class ModelTurn(ModelData):
     """只提交完整回合，并独立保留原生续接。 Commit complete turns with separate native history."""
 
     text: str
+    reasoning: str = ""
     tool_calls: list[ToolCall]
     native: JsonObject
     usage: TokenUsage
@@ -88,6 +99,7 @@ class ModelClient(Protocol):
         limits: RunLimits,
         on_text: TextSink,
         on_progress: ProgressSink | None = None,
+        on_reasoning: TextSink | None = None,
     ) -> ModelTurn:
-        """流式展示文本，返回完整结构化结果。 Stream display text and return a complete turn."""
+        """分别交付正文与可见思考，返回完整结果。 Stream text and visible reasoning separately."""
         ...

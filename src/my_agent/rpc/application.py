@@ -7,10 +7,37 @@ from pydantic import BaseModel
 
 from my_agent import __version__
 from my_agent.bootstrap import build_model_http, build_sessions
+from my_agent.changes.store import ChangeStore
+from my_agent.changes.types import GetChangeParams, ListChangesParams
+from my_agent.collaboration.types import (
+    ArrangeSessionWorkParams,
+    CollaborationHistoryParams,
+    CollaborationPageParams,
+    CollaborationRequestParams,
+    ConnectSessionsParams,
+    ControlCollaborationParams,
+)
 from my_agent.config import DEFAULTS, MODEL_DEFAULTS, DataLocation, ModelConfig, load_config
 from my_agent.credentials import ResolvedCredential, resolve_credential
 from my_agent.diagnostics import diagnose
 from my_agent.errors import AgentError
+from my_agent.execution.environments import EnvironmentStore
+from my_agent.execution.service import ProgramService
+from my_agent.execution.store import ProgramStore
+from my_agent.execution.types import (
+    BindEnvironmentParams,
+    EnvironmentParams,
+    EnvironmentProjectParams,
+    ExecutionStatus,
+    GetProgramParams,
+    ListProgramsParams,
+    ProgramParams,
+    RemoveEnvironmentParams,
+    SaveEnvironmentParams,
+    SaveExecutionSettings,
+)
+from my_agent.goals.dto import ControlGoalParams, CreateGoalParams, ListGoalsParams
+from my_agent.goals.types import GoalControl, GoalCreated
 from my_agent.models.connection_probe import probe_connection
 from my_agent.models.connections import (
     ConnectionProbeParams,
@@ -39,8 +66,10 @@ from my_agent.rpc.dto import (
     StartRunParams,
     UpdateConfigParams,
 )
-from my_agent.sessions.projection import summarize
 from my_agent.storage import Storage
+from my_agent.tasks.service import TaskService
+from my_agent.tasks.store import TaskStore
+from my_agent.tasks.types import AssignSessionParams, CreateTaskParams, TaskParams, UpdateTaskParams
 from my_agent.worker import BusinessWorker
 
 
@@ -64,7 +93,13 @@ class RpcApplication:
         self.model_tests = ModelConnectionTests(
             ModelConfig.model_validate(MODEL_DEFAULTS).allowed_models
         )
-        self.sessions = build_sessions(self.storage, self.worker, credential, http=self.http)
+        self.environments = EnvironmentStore(self.storage)
+        self.programs = ProgramService(self.environments, ProgramStore(self.storage), self.worker)
+        self.sessions = build_sessions(
+            self.storage, self.worker, credential, http=self.http, programs=self.programs
+        )
+        self.tasks = TaskService(TaskStore(self.storage), self.sessions, self.worker)
+        self.changes = ChangeStore(self.storage)
         self.initialized = False
         self.stopping = False
         self.subscriptions: set[str] = set()
@@ -116,8 +151,8 @@ class RpcApplication:
                     app=AppInfo(
                         name=DEFAULTS["app_name"],
                         app_version=__version__,
-                        protocol_version=2,
-                        stage="M1",
+                        protocol_version=3,
+                        stage="M2",
                     ),
                     storage=self.storage.info(),
                     config=config.public(self.credential.info),
@@ -136,6 +171,19 @@ class RpcApplication:
                         "connections.test_model",
                         "shutdown",
                         "sessions.create",
+                        "sessions.select_model",
+                        "sessions.assign",
+                        "collaboration.list",
+                        "collaboration.connect",
+                        "collaboration.history",
+                        "collaboration.request",
+                        "collaboration.control",
+                        "collaboration.arrange",
+                        "tasks.create",
+                        "tasks.list",
+                        "tasks.get",
+                        "tasks.update",
+                        "tasks.ensure_session",
                         "sessions.list",
                         "sessions.get",
                         "sessions.attach",
@@ -143,10 +191,28 @@ class RpcApplication:
                         "runs.start",
                         "runs.cancel",
                         "runs.active",
+                        "goals.create",
+                        "goals.list",
+                        "goals.control",
+                        "changes.list",
+                        "changes.get",
+                        "environments.list",
+                        "environments.save",
+                        "environments.remove",
+                        "environments.probe",
+                        "environments.bind",
+                        "execution.configure",
+                        "programs.list",
+                        "programs.get",
+                        "programs.stop",
+                        "execution.status",
                     ],
                 )
 
             result = await self.worker.call(initialize)
+            await self.programs.recover()
+            if self.sessions.collaboration is not None:
+                await self.sessions.collaboration.recover()
             await self.http.set_reuse(result.config.http.reuse_enabled)
             return result
         if method == "diagnostics.get":
@@ -280,9 +346,69 @@ class RpcApplication:
                 self.credential = await asyncio.to_thread(resolve_credential)
             config = await self.worker.call(load_config, self.storage.location, self.model)
             return config.public(self.credential.info)
+        if method == "sessions.select_model":
+            from my_agent.rpc.dto import SelectSessionModelParams
+
+            model_selection = SelectSessionModelParams.model_validate(params)
+            return await self.sessions.select_model(
+                model_selection.session_id, model_selection.operation_id, model_selection.model_id
+            )
         if method == "sessions.create":
             create = CreateSessionParams.model_validate(params)
-            return await self.sessions.create(create.project_id, create.model_id)
+            return await self.tasks.create_session(
+                create.project_id,
+                create.model_id,
+                create.task_id,
+                create.operation_id,
+                create.role,
+                create.scope,
+            )
+        if method == "sessions.assign":
+            return await self.tasks.assign(AssignSessionParams.model_validate(params))
+        if method.startswith("collaboration."):
+            collaboration = self.sessions.collaboration
+            if collaboration is None:
+                raise AgentError("COLLABORATION_UNAVAILABLE", "协作服务尚未装配。")
+            if method == "collaboration.list":
+                return await collaboration.page(CollaborationPageParams.model_validate(params))
+            if method == "collaboration.connect":
+                return await collaboration.connect(ConnectSessionsParams.model_validate(params))
+            if method == "collaboration.history":
+                return await collaboration.history(
+                    CollaborationHistoryParams.model_validate(params)
+                )
+            if method == "collaboration.request":
+                return await collaboration.submit(CollaborationRequestParams.model_validate(params))
+            if method == "collaboration.control":
+                return await collaboration.control(
+                    ControlCollaborationParams.model_validate(params)
+                )
+            if method == "collaboration.arrange":
+                if collaboration.arrangements is None:
+                    raise AgentError("COLLABORATION_UNAVAILABLE", "交接服务尚未装配。")
+                return await collaboration.arrangements.create(
+                    ArrangeSessionWorkParams.model_validate(params)
+                )
+        if method == "tasks.create":
+            return await self.tasks.create(CreateTaskParams.model_validate(params))
+        if method == "tasks.list":
+            task_listing = ListSessionsParams.model_validate(params)
+            return await self.worker.call(
+                self.tasks.store.list,
+                task_listing.project_id,
+                task_listing.cursor,
+                task_listing.limit,
+            )
+        if method in {"tasks.get", "tasks.ensure_session"}:
+            task_params = TaskParams.model_validate(params)
+            task = await self.worker.call(self.tasks.store.get, task_params.task_id)
+            return (
+                await self.tasks.first_session(task) if method == "tasks.ensure_session" else task
+            )
+        if method == "tasks.update":
+            return await self.worker.call(
+                self.tasks.store.update, UpdateTaskParams.model_validate(params)
+            )
         if method == "sessions.list":
             listing = ListSessionsParams.model_validate(params)
             return await self.sessions.list(listing.project_id, listing.cursor, listing.limit)
@@ -305,24 +431,94 @@ class RpcApplication:
         if method == "runs.start":
             start = StartRunParams.model_validate(params)
             return await self.sessions.start(
-                start.session_id, start.operation_id, start.prompt, start.limits
+                start.session_id,
+                start.operation_id,
+                start.prompt,
+                start.limits,
+                start.mode,
+                start.plan_document,
+            )
+        if method in {"goals.create", "goals.list", "goals.control"}:
+            goals = self.sessions.goals
+            if goals is None:
+                raise AgentError("GOAL_UNAVAILABLE", "Goal 控制器未装配。")
+            if method == "goals.create":
+                create_goal = CreateGoalParams.model_validate(params)
+                return await goals.create(
+                    create_goal.session_id,
+                    GoalCreated.model_validate(create_goal.model_dump(exclude={"session_id"})),
+                )
+            if method == "goals.list":
+                return await goals.page(ListGoalsParams.model_validate(params))
+            goal_control = ControlGoalParams.model_validate(params).root
+            return await goals.control(
+                goal_control.session_id,
+                GoalControl.model_validate(goal_control.model_dump(exclude={"session_id"})),
+            )
+        if method == "environments.list":
+            env_project = EnvironmentProjectParams.model_validate(params)
+            return await self.worker.call(self.environments.catalog, env_project.project_id)
+        if method == "execution.status":
+            EmptyParams.model_validate(params)
+            return ExecutionStatus(
+                programs=[
+                    p.record.summary for p in self.programs.owned.values() if not p.done.is_set()
+                ],
+                probe_count=len(self.programs.probes),
+            )
+        if method == "environments.save":
+            return await self.worker.call(
+                self.environments.save, SaveEnvironmentParams.model_validate(params)
+            )
+        if method == "environments.remove":
+            return await self.worker.call(
+                self.environments.remove, RemoveEnvironmentParams.model_validate(params)
+            )
+        if method == "environments.bind":
+            return await self.worker.call(
+                self.environments.bind, BindEnvironmentParams.model_validate(params)
+            )
+        if method == "execution.configure":
+            return await self.worker.call(
+                self.environments.settings, SaveExecutionSettings.model_validate(params)
+            )
+        if method == "environments.probe":
+            return await self.programs.probe(EnvironmentParams.model_validate(params))
+        if method == "programs.list":
+            program_list = ListProgramsParams.model_validate(params)
+            await self.worker.call(self.environments.project_root, program_list.project_id)
+            return await self.programs.list(program_list)
+        if method == "programs.get":
+            return await self.programs.get(GetProgramParams.model_validate(params))
+        if method == "programs.stop":
+            return await self.programs.stop(ProgramParams.model_validate(params).program_id)
+        if method == "changes.list":
+            changes = ListChangesParams.model_validate(params)
+            await self.sessions.view(changes.session_id)
+            return await self.worker.call(
+                self.changes.list, changes.session_id, changes.cursor, changes.limit
+            )
+        if method == "changes.get":
+            change = GetChangeParams.model_validate(params)
+            await self.sessions.view(change.session_id)
+            return await self.worker.call(
+                self.changes.view, change.session_id, change.change_id, change.offset
             )
         if method == "runs.cancel":
             cancel = CancelRunParams.model_validate(params)
             return await self.sessions.cancel(cancel.run_id)
         if method == "runs.active":
             EmptyParams.model_validate(params)
-            active = self.sessions.active
-            return ActiveRunResult(
-                session=summarize(active.log, active=True, stopping=active.cancel.is_set())
-                if active
-                else None
-            )
+            return ActiveRunResult(sessions=await self.sessions.active_summaries())
         raise AgentError("METHOD_NOT_FOUND", "不支持该方法。")
 
     async def close(self) -> None:
         """清理活动运行后在原业务线程释放写锁。 Clean up runs before releasing the writer lock."""
-        await self.sessions.close()
-        await self.http.close()
-        await self.worker.call(self.stack.close)
-        self.worker.close()
+        try:
+            await self.sessions.close()
+        finally:
+            try:
+                await self.http.close()
+            finally:
+                await self.worker.call(self.stack.close)
+                self.worker.close()

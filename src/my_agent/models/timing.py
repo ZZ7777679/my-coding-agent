@@ -12,8 +12,9 @@ class RequestTiming:
         """从模型入口起算，不包含 UI / 存储。 Start at the model call, excluding UI/storage."""
         self.sink = sink
         self.started = perf_counter()
-        self.progress = ModelProgress(phase="preparing", elapsed_ms=0.0)
+        self.progress = ModelProgress(phase="preparing", elapsed_ms=0.0, received_bytes=0)
         self.network_started: dict[str, float] = {}
+        self.last_published_ms = 0.0
 
     def milliseconds(self) -> float:
         """返回单调毫秒，避免系统时间调整影响。 Return monotonic elapsed milliseconds."""
@@ -24,6 +25,7 @@ class RequestTiming:
         if phase is not None:
             self.progress = phase
         self.progress = self.progress.model_copy(update={"elapsed_ms": self.milliseconds()})
+        self.last_published_ms = self.progress.elapsed_ms
         if self.sink is not None:
             await self.sink(self.progress)
 
@@ -61,13 +63,33 @@ class RequestTiming:
         )
         await self.set_phase("receiving")
 
-    async def event(self, reasoning: bool) -> None:
-        """记录首事件与思考阶段，不公开思考正文。 Record event/reasoning timing, never text."""
+    async def received(self, size: int) -> None:
+        """记录真实收包而非推测模型在线；展示节流不影响超时或数据处理。
+
+        Track actual data; display throttling never affects timeouts or processing.
+        """
+        now = self.milliseconds()
+        self.progress = self.progress.model_copy(
+            update={
+                "last_data_ms": now,
+                "received_bytes": (self.progress.received_bytes or 0) + size,
+            }
+        )
+        # 每秒最多额外发布一次收包统计；不逐 token 写磁盘，也不发送网络心跳。
+        # Publish byte counters at most once per second, without token writes or network heartbeats.
+        if now - self.last_published_ms >= 1000:
+            await self.publish()
+
+    async def event(self, phase: str | None) -> None:
+        """记录当前片段的阶段，不把历史思考内容误当作当前活动。
+
+        Record the current delta's phase instead of treating old reasoning as present activity.
+        """
         first = self.progress.first_event_ms is None
         if first:
             self.progress = self.progress.model_copy(update={"first_event_ms": self.milliseconds()})
-        if reasoning and self.progress.phase not in {"reasoning", "text"}:
-            await self.set_phase("reasoning")
+        if phase is not None and phase != self.progress.phase:
+            await self.set_phase(phase)
         elif first:
             await self.publish()
 

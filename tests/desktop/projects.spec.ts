@@ -28,19 +28,62 @@ test('project selection, cancellation, persistence, unavailable paths and data b
     await expect(page.getByTestId('data-dir')).toHaveText(dataDir)
     await page.screenshot({ path: path.join(root, 'empty.png') })
     expect(await page.evaluate(() => Object.keys(window.agent).sort())).toEqual([
+      'arrangeSessionWork',
+      'assignSession',
+      'attachSession',
+      'bindEnvironment',
+      'cancelRun',
+      'chooseEnvironmentPath',
       'chooseProject',
       'chooseStartupDirectory',
+      'connectSessions',
+      'controlCollaboration',
+      'controlGoal',
+      'createGoal',
+      'createSession',
+      'createTask',
+      'detachSession',
+      'ensureTaskSession',
       'exportJson',
+      'getActiveRuns',
       'getAppInfo',
+      'getChange',
       'getConfig',
+      'getConnections',
+      'getProgram',
+      'getSession',
       'getStartupPaths',
       'getStorageInfo',
+      'getTask',
+      'listChanges',
+      'listCollaboration',
+      'listEnvironments',
+      'listGoals',
+      'listPrograms',
       'listProjects',
+      'listSessions',
+      'listTasks',
+      'onSessionEvent',
       'openDataDirectory',
+      'openProgram',
       'openRecentProject',
+      'openWebUrl',
+      'probeEnvironment',
+      'readPeerHistory',
+      'releaseConnections',
+      'removeEnvironment',
+      'requestCollaboration',
       'runDiagnostics',
       'saveConfig',
-      'saveStartupPaths'
+      'saveConnections',
+      'saveEnvironment',
+      'saveExecutionSettings',
+      'saveStartupPaths',
+      'startRun',
+      'stopProgram',
+      'testConnection',
+      'testModelConnection',
+      'updateTask'
     ])
     expect(await page.evaluate(() => 'require' in window || 'process' in window)).toBe(false)
 
@@ -55,7 +98,7 @@ test('project selection, cancellation, persistence, unavailable paths and data b
     await expect(page.getByRole('alert')).toBeVisible()
     expect(await readFile(path.join(dataDir, 'projects.json'), 'utf8')).toBe(firstSave)
     await choose(app, project)
-    await expect(page.locator('.recent-project')).toHaveCount(1)
+    await expect(page.locator('.tree-project')).toHaveCount(1)
 
     await app.evaluate(({ shell }) => {
       shell.openPath = async (target) => {

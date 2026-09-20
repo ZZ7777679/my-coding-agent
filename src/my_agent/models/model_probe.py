@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from math import ceil
+from time import monotonic
 from uuid import uuid4
 
 from my_agent.errors import AgentError
@@ -30,10 +31,27 @@ class ModelConnectionTests:
             )
             for model in models
         }
+        self._progress_at: dict[ModelId, float] = {}
 
     def snapshot(self) -> list[ModelConnectionState]:
-        """返回副本，防止调用方改动正在测试的记录。 Copy state to protect active records."""
-        return [state.model_copy(deep=True) for state in self._states.values()]
+        """返回独立快照，只推进等待时钟，切换诊断页不重置收包间隔。
+
+        Copy state and advance only the waiting clock so reopening diagnostics preserves data gaps.
+        """
+        states = [state.model_copy(deep=True) for state in self._states.values()]
+        for state in states:
+            observed_at = self._progress_at.get(state.model_id)
+            progress = state.progress
+            if (
+                state.testing
+                and progress is not None
+                and progress.phase != "completed"
+                and observed_at is not None
+            ):
+                state.progress = progress.model_copy(
+                    update={"elapsed_ms": progress.elapsed_ms + (monotonic() - observed_at) * 1000}
+                )
+        return states
 
     async def test(
         self, params: ModelConnectionProbeParams, client: ModelClient, limits: RunLimits
@@ -47,12 +65,14 @@ class ModelConnectionTests:
             raise AgentError("MODEL_PROBE_BUSY", "该模型已有测试正在运行，请等待结果。")
         state.testing = True
         state.progress = ModelProgress(phase="preparing", elapsed_ms=0)
+        self._progress_at[params.model_id] = monotonic()
         code, message, remediation = "MODEL_TEST_FAILED", "模型测试未完成。", "请显式重试。"
         usage: TokenUsage | None = None
 
         async def observe(progress: ModelProgress) -> None:
             """按目标模型记录时序，不借用全局最近请求。 Track this model's own timing only."""
             state.progress = progress
+            self._progress_at[params.model_id] = monotonic()
 
         async def discard_text(_delta: str) -> None:
             """只计时，不保存或公开测试回答。 Discard test text; timings are tracked separately."""
@@ -79,9 +99,9 @@ class ModelConnectionTests:
             code, message, remediation = "OK", "该模型已返回完整文本响应。", ""
         except TimeoutError:
             code, message, remediation = (
-                "MODEL_TIMEOUT",
-                "模型测试超过设定等待时间。",
-                "查看停止阶段，必要时调整测试超时后重试。",
+                "MODEL_REQUEST_TIMEOUT",
+                f"模型测试达到设定的 {params.timeout_seconds:g} 秒总时限。",
+                "结合最后收包间隔判断等待情况；最后输出阶段不能证明连接正常。未自动重试。",
             )
         except AgentError as exc:
             code, message, remediation = exc.code, exc.message, exc.remediation
@@ -90,6 +110,7 @@ class ModelConnectionTests:
             raise
         finally:
             state.testing = False
+            self._progress_at.pop(params.model_id, None)
             state.last_test = ModelConnectionResult(
                 finished_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
                 code=code,

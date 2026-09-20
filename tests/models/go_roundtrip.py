@@ -71,8 +71,9 @@ async def verify(model_id: ModelId, root: Path, resume: Path | None = None) -> d
                 prompt,
                 limits,
             )
-            assert service.active is not None and service.active.task is not None
-            await service.active.task
+            active = service.active_for(session.session_id)
+            assert active is not None and active.task is not None
+            await active.task
             result = await service.view(session.session_id)
             log = service.last_log
             assert log is not None

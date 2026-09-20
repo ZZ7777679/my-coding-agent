@@ -4,6 +4,15 @@
  */
 
 import type {
+  ArrangeSessionWorkParams,
+  CollaborationPage,
+  CollaborationPageParams,
+  CollaborationLink,
+  ConnectSessionsParams,
+  CollaborationHistoryParams,
+  CollaborationRequest,
+  CollaborationRequestParams,
+  ControlCollaborationParams,
   InitializeResult,
   OperationError,
   ProjectsView,
@@ -30,7 +39,35 @@ import type {
   SessionPage,
   SessionView,
   SessionSignal,
-  ActiveRunResult
+  ActiveRunResult,
+  CreateTaskParams,
+  CreateTaskResult,
+  UpdateTaskParams,
+  TaskView,
+  TaskPage,
+  AssignSessionParams,
+  SelectSessionModelParams,
+  ListChangesParams,
+  GetChangeParams,
+  ChangePage,
+  ChangeView,
+  EnvironmentCatalog,
+  EnvironmentProjectParams,
+  SaveEnvironmentParams,
+  RemoveEnvironmentParams,
+  EnvironmentParams,
+  BindEnvironmentParams,
+  SaveExecutionSettings,
+  ListProgramsParams,
+  GetProgramParams,
+  ProgramPage,
+  ProgramView,
+  ChooseEnvironmentPathParams,
+  CreateGoalParams,
+  ListGoalsParams,
+  ControlGoalParams,
+  GoalView,
+  GoalPage
 } from '../generated/protocol'
 
 /**
@@ -44,8 +81,68 @@ export type Result<T> = { ok: true; data: T } | { ok: false; error: OperationErr
  * The renderer's trusted entry point, without filesystem, secret or arbitrary-command access.
  */
 export interface DesktopAPI {
+  /** 读取双方协作状态。 Read collaboration status for both parties. */
+  listCollaboration(params: CollaborationPageParams): Promise<Result<CollaborationPage>>
+  /** 保存用户协作约定。 Save a user-defined agreement. */
+  connectSessions(params: ConnectSessionsParams): Promise<Result<CollaborationLink>>
+  /** 按约定读取公开历史，不唤醒模型。 Read permitted history without waking a model. */
+  readPeerHistory(params: CollaborationHistoryParams): Promise<Result<SessionView>>
+  /** 向已有会话投递明确请求。 Deliver scoped work to an existing session. */
+  requestCollaboration(params: CollaborationRequestParams): Promise<Result<CollaborationRequest>>
+  /** 停止或明确接续尚未开始的请求。 Stop or release an unstarted request. */
+  controlCollaboration(params: ControlCollaborationParams): Promise<Result<CollaborationRequest>>
+  /** 用户主动交接或独立审查已有会话成果。 Arrange a user-initiated handoff or independent review. */
+  arrangeSessionWork(params: ArrangeSessionWorkParams): Promise<Result<CollaborationRequest>>
+  /** 在当前会话启动用户 Goal。 Start a user goal in the current session. */
+  createGoal(params: CreateGoalParams): Promise<Result<GoalView>>
+  /** 读取真实目标状态及累计用量。 Read goal state and cumulative usage. */
+  listGoals(params: ListGoalsParams): Promise<Result<GoalPage>>
+  /** 明确暂停、接续、取消、答复或改预算。 Explicitly control, answer or budget a goal. */
+  controlGoal(params: ControlGoalParams): Promise<Result<GoalView>>
+  /** 查看登记和项目默认。 Read registrations and project defaults. */
+  listEnvironments(params: EnvironmentProjectParams): Promise<Result<EnvironmentCatalog>>
+  /** 导入已有环境引用。 Register an existing environment reference. */
+  saveEnvironment(params: SaveEnvironmentParams): Promise<Result<EnvironmentCatalog>>
+  /** 移除登记，不删除环境。 Remove a reference without deleting the environment. */
+  removeEnvironment(params: RemoveEnvironmentParams): Promise<Result<EnvironmentCatalog>>
+  /** 显式检查登记入口。 Explicitly probe registered tools. */
+  probeEnvironment(params: EnvironmentParams): Promise<Result<EnvironmentCatalog>>
+  /** 保存项目默认与信任。 Save project environment and trust. */
+  bindEnvironment(params: BindEnvironmentParams): Promise<Result<EnvironmentCatalog>>
+  /** 保存后续执行预算。 Save budgets for future launches. */
+  saveExecutionSettings(params: SaveExecutionSettings): Promise<Result<EnvironmentCatalog>>
+  /** 原生选择已存在路径。 Select an existing path natively. */
+  chooseEnvironmentPath(params: ChooseEnvironmentPathParams): Promise<Result<DirectorySelection>>
+  /** 项目 / 会话程序卡片。 Query project/session program cards. */
+  listPrograms(params: ListProgramsParams): Promise<Result<ProgramPage>>
+  /** 实际状态与有界输出。 Read real state and bounded output. */
+  getProgram(params: GetProgramParams): Promise<Result<ProgramView>>
+  /** 停止自有程序。 Stop an owned process. */
+  stopProgram(programId: string): Promise<Result<ProgramView>>
+  /** 用户点击后打开已确认服务地址。 Open a confirmed service on user click. */
+  openProgram(programId: string): Promise<Result<object>>
+  /** 用户点击后打开 HTTP(S) 资料，不自动打开模型链接。 Open web references only on user clicks. */
+  openWebUrl(url: string): Promise<Result<object>>
+  /** 按会话分页修改成果。 Page saved changes within a session. */
+  listChanges(params: ListChangesParams): Promise<Result<ChangePage>>
+  /** 读取保存的基线差异，不直接读取项目文件。 Read a saved baseline diff, not live project files. */
+  getChange(params: GetChangeParams): Promise<Result<ChangeView>>
+  /** 保存任务并创建首会话，不调用模型。 Save a task and its first session without model calls. */
+  createTask(params: CreateTaskParams): Promise<Result<CreateTaskResult>>
+  /** 读取任务分页。 Read a project task page. */
+  listTasks(params: ListSessionsParams): Promise<Result<TaskPage>>
+  /** 读取最新共享信息。 Read current shared task facts. */
+  getTask(taskId: string): Promise<Result<TaskView>>
+  /** 以版本校验保存用户结论。 Save user facts with revision checks. */
+  updateTask(params: UpdateTaskParams): Promise<Result<TaskView>>
+  /** 显式补齐或打开首会话。 Explicitly recover or open the first session. */
+  ensureTaskSession(taskId: string): Promise<Result<CreateTaskResult>>
+  /** 保存用户指定的会话归属与分工。 Save user-selected session ownership and scope. */
+  assignSession(params: AssignSessionParams): Promise<Result<SessionSummary>>
   /** 创建项目会话，不调用模型。 Create a project session without a model request. */
   createSession(params: CreateSessionParams): Promise<Result<SessionSummary>>
+  /** 切换后续请求的模型，保留会话。 Select the next model without replacing the session. */
+  selectSessionModel(params: SelectSessionModelParams): Promise<Result<SessionSummary>>
   /** 分页读取会话。 Page project sessions. */
   listSessions(params: ListSessionsParams): Promise<Result<SessionPage>>
   /** 分页读取历史。 Page session history. */
@@ -59,7 +156,7 @@ export interface DesktopAPI {
   /** 接纳停止，终态通过通知确认。 Accept cancellation; notifications confirm cleanup. */
   cancelRun(runId: string): Promise<Result<SessionSummary>>
   /** 查询跨视图活动运行。 Read the active run across views. */
-  getActiveRun(): Promise<Result<ActiveRunResult>>
+  getActiveRuns(): Promise<Result<ActiveRunResult>>
   /** 监听已校验通知，卸载时注销。 Listen to validated notifications and unsubscribe on unmount. */
   onSessionEvent(listener: (signal: SessionSignal) => void): () => void
   /**

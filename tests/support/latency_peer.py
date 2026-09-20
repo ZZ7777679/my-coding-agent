@@ -6,13 +6,12 @@ import sys
 import time
 from pathlib import Path
 
+from my_agent.bootstrap import build_sessions
 from my_agent.config import resolve_data_dir
+from my_agent.models.timing import RequestTiming
 from my_agent.models.types import ModelTurn, TokenUsage
-from my_agent.projects import ProjectService
 from my_agent.rpc import application
 from my_agent.rpc.server import read_parent_credential, serve
-from my_agent.sessions.service import SessionService
-from my_agent.sessions.store import SessionStore
 
 
 class ImmediateModel:
@@ -27,23 +26,47 @@ class ImmediateModel:
 
         Mark emission and keep the stream open briefly for DOM observation.
         """
-        record = {"before_text_ms": time.time_ns() / 1_000_000}
-        await kwargs["on_text"]("LATENCY_PROBE")
-        record["after_text_ms"] = time.time_ns() / 1_000_000
-        await asyncio.sleep(0.3)
+        streaming = kwargs["messages"][-1]["content"] == "streaming probe"
+        parts = (
+            [f"STREAM_PART_{index}\n" for index in range(1, 13)] if streaming else ["LATENCY_PROBE"]
+        )
+        timing = RequestTiming(kwargs.get("on_progress"))
+        if streaming:
+            await timing.received(32)
+            await timing.set_phase("reasoning")
+            await asyncio.sleep(0.6)
+        emissions = []
+        text = ""
+        for part in parts:
+            text += part
+            await timing.received(len(part.encode("utf-8")))
+            await timing.text()
+            emission = {"before_text_ms": time.time_ns() / 1_000_000, "chars": len(text)}
+            await kwargs["on_text"](part)
+            emission["after_text_ms"] = time.time_ns() / 1_000_000
+            emissions.append(emission)
+            await asyncio.sleep(0.25 if streaming else 0.3)
+        await timing.set_phase("completed")
+        record = {
+            "before_text_ms": emissions[0]["before_text_ms"],
+            "after_text_ms": emissions[-1]["after_text_ms"],
+            "emissions": emissions,
+        }
         with report.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(record) + "\n")
         return ModelTurn(
-            text="LATENCY_PROBE",
+            text=text,
             tool_calls=[],
-            native={"role": "assistant", "content": "LATENCY_PROBE"},
+            native={"role": "assistant", "content": text},
             usage=TokenUsage(input_tokens=1, output_tokens=1),
         )
 
 
-def build_probe(storage, worker, credential, *, http=None):
+def build_probe(storage, worker, credential, *, http=None, programs=None):
     """仅替换模型，沿用生产服务、存储和协议。 Replace only the model in the production stack."""
-    return SessionService(SessionStore(storage), ProjectService(storage), worker, ImmediateModel)
+    service = build_sessions(storage, worker, credential, http=http, programs=programs)
+    service.model_factory = ImmediateModel
+    return service
 
 
 if __name__ == "__main__":

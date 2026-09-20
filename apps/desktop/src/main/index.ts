@@ -24,6 +24,7 @@ import type { DiagnosticReport } from '../generated/protocol'
 let backend: Backend | undefined
 let window: BrowserWindow | undefined
 let quitting = false
+let quitPending = false
 let choosing = false
 let dataDir = ''
 let lastDiagnostic: DiagnosticReport | undefined
@@ -196,6 +197,12 @@ app
       }
     })
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    window.on('close', (event) => {
+      if (!quitting) {
+        event.preventDefault()
+        app.quit()
+      }
+    })
     backend.subscribe((signal) => {
       if (window && !window.isDestroyed()) window.webContents.send('agent:session-event', signal)
     })
@@ -208,10 +215,214 @@ app
       dialog.showErrorBox('界面加载失败', '请重新构建桌面资源后再打开应用。')
     })
     handle('agent:info', 0, async () => (await readyBackend()).info())
+    handle('agent:environments', 1, async (value) =>
+      (await readyBackend()).call(
+        'environments.list',
+        validate('EnvironmentProjectParams', value),
+        'EnvironmentCatalog'
+      )
+    )
+    handle('agent:environment-save', 1, async (value) =>
+      (await readyBackend()).call(
+        'environments.save',
+        validate('SaveEnvironmentParams', value),
+        'EnvironmentCatalog'
+      )
+    )
+    handle('agent:environment-remove', 1, async (value) =>
+      (await readyBackend()).call(
+        'environments.remove',
+        validate('RemoveEnvironmentParams', value),
+        'EnvironmentCatalog'
+      )
+    )
+    handle('agent:environment-bind', 1, async (value) =>
+      (await readyBackend()).call(
+        'environments.bind',
+        validate('BindEnvironmentParams', value),
+        'EnvironmentCatalog'
+      )
+    )
+    handle('agent:execution-settings', 1, async (value) =>
+      (await readyBackend()).call(
+        'execution.configure',
+        validate('SaveExecutionSettings', value),
+        'EnvironmentCatalog'
+      )
+    )
+    handle('agent:environment-probe', 1, async (value) => {
+      const service = await readyBackend()
+      const params = validate('EnvironmentParams', value)
+      const catalog = await service.call(
+        'environments.list',
+        { project_id: params.project_id },
+        'EnvironmentCatalog'
+      )
+      return service.call(
+        'environments.probe',
+        params,
+        'EnvironmentCatalog',
+        (2 * catalog.settings.probe_timeout_seconds +
+          2 * catalog.settings.cleanup_timeout_seconds +
+          5) *
+          1000
+      )
+    })
+    handle('agent:environment-path', 1, async (value) => {
+      const params = validate('ChooseEnvironmentPathParams', value)
+      if (!window) throw new Error('Window unavailable')
+      const selection = await dialog.showOpenDialog(window, {
+        title: params.kind === 'directory' ? '选择已有环境目录' : '选择已有环境的 .exe 入口',
+        defaultPath: projectDialogDirectory(),
+        properties: params.kind === 'directory' ? ['openDirectory'] : ['openFile'],
+        ...(params.kind === 'executable'
+          ? { filters: [{ name: '可执行程序', extensions: ['exe'] }] }
+          : {})
+      })
+      return validate('DirectorySelection', {
+        path: selection.canceled ? null : (selection.filePaths[0] ?? null)
+      })
+    })
+    handle('agent:programs', 1, async (value) =>
+      (await readyBackend()).call(
+        'programs.list',
+        validate('ListProgramsParams', value),
+        'ProgramPage'
+      )
+    )
+    handle('agent:program-get', 1, async (value) =>
+      (await readyBackend()).call(
+        'programs.get',
+        validate('GetProgramParams', value),
+        'ProgramView'
+      )
+    )
+    handle('agent:program-stop', 1, async (value) => {
+      const service = await readyBackend()
+      const settings = await service.call(
+        'environments.list',
+        { project_id: null },
+        'EnvironmentCatalog'
+      )
+      return service.call(
+        'programs.stop',
+        validate('ProgramParams', value),
+        'ProgramView',
+        (settings.settings.cleanup_timeout_seconds + 5) * 1000
+      )
+    })
+    handle('agent:web-open', 1, async (value) => {
+      const params = validate('OpenWebUrlParams', value)
+      const url = new URL(params.url)
+      if (
+        !['http:', 'https:'].includes(url.protocol) ||
+        !url.hostname ||
+        url.username ||
+        url.password
+      )
+        throw new Error('Invalid web URL')
+      await shell.openExternal(url.toString())
+      return {}
+    })
+    handle('agent:program-open', 1, async (value) => {
+      const view = await (
+        await readyBackend()
+      ).call('programs.get', validate('ProgramParams', value), 'ProgramView')
+      if (view.summary.status !== 'ready' || !view.summary.url)
+        throw new Error('Service unavailable')
+      const url = new URL(view.summary.url)
+      const local =
+        url.hostname === 'localhost' ||
+        url.hostname === '[::1]' ||
+        /^127\.\d+\.\d+\.\d+$/.test(url.hostname)
+      if (!local || !['http:', 'https:'].includes(url.protocol) || url.username || url.password)
+        throw new Error('Invalid service URL')
+      await shell.openExternal(url.toString())
+      return {}
+    })
+    handle('agent:task-create', 1, async (value) =>
+      (await readyBackend()).call(
+        'tasks.create',
+        validate('CreateTaskParams', value),
+        'CreateTaskResult'
+      )
+    )
+    handle('agent:tasks-list', 1, async (value) =>
+      (await readyBackend()).call('tasks.list', validate('ListSessionsParams', value), 'TaskPage')
+    )
+    handle('agent:task-get', 1, async (value) =>
+      (await readyBackend()).call('tasks.get', validate('TaskParams', value), 'TaskView')
+    )
+    handle('agent:task-update', 1, async (value) =>
+      (await readyBackend()).call('tasks.update', validate('UpdateTaskParams', value), 'TaskView')
+    )
+    handle('agent:task-session', 1, async (value) =>
+      (await readyBackend()).call(
+        'tasks.ensure_session',
+        validate('TaskParams', value),
+        'CreateTaskResult'
+      )
+    )
+    handle('agent:session-assign', 1, async (value) =>
+      (await readyBackend()).call(
+        'sessions.assign',
+        validate('AssignSessionParams', value),
+        'SessionSummary'
+      )
+    )
+    handle('agent:collaboration-list', 1, async (value) =>
+      (await readyBackend()).call(
+        'collaboration.list',
+        validate('CollaborationPageParams', value),
+        'CollaborationPage'
+      )
+    )
+    handle('agent:collaboration-arrange', 1, async (value) =>
+      (await readyBackend()).call(
+        'collaboration.arrange',
+        validate('ArrangeSessionWorkParams', value),
+        'CollaborationRequest'
+      )
+    )
+    handle('agent:collaboration-connect', 1, async (value) =>
+      (await readyBackend()).call(
+        'collaboration.connect',
+        validate('ConnectSessionsParams', value),
+        'CollaborationLink'
+      )
+    )
+    handle('agent:collaboration-history', 1, async (value) =>
+      (await readyBackend()).call(
+        'collaboration.history',
+        validate('CollaborationHistoryParams', value),
+        'SessionView'
+      )
+    )
+    handle('agent:collaboration-request', 1, async (value) =>
+      (await readyBackend()).call(
+        'collaboration.request',
+        validate('CollaborationRequestParams', value),
+        'CollaborationRequest'
+      )
+    )
+    handle('agent:collaboration-control', 1, async (value) =>
+      (await readyBackend()).call(
+        'collaboration.control',
+        validate('ControlCollaborationParams', value),
+        'CollaborationRequest'
+      )
+    )
     handle('agent:session-create', 1, async (value) =>
       (await readyBackend()).call(
         'sessions.create',
         validate('CreateSessionParams', value),
+        'SessionSummary'
+      )
+    )
+    handle('agent:session-model', 1, async (value) =>
+      (await readyBackend()).call(
+        'sessions.select_model',
+        validate('SelectSessionModelParams', value),
         'SessionSummary'
       )
     )
@@ -243,8 +454,44 @@ app
         'EmptyParams'
       )
     )
-    handle('agent:run-start', 1, async (value) =>
-      (await readyBackend()).call('runs.start', validate('StartRunParams', value), 'SessionSummary')
+    handle('agent:run-start', 1, async (value) => {
+      const params = validate('StartRunParams', value)
+      const core = await readyBackend()
+      // Plan 切换可能等待前一 Goal 的实际进程清理，不能沿用短控制超时。
+      // A Plan switch may await actual process cleanup, rather than a short control acknowledgement.
+      if (params.mode === 'plan') {
+        const catalog = await core.call(
+          'environments.list',
+          { project_id: null },
+          'EnvironmentCatalog'
+        )
+        return core.call(
+          'runs.start',
+          params,
+          'SessionSummary',
+          Math.max(8000, (catalog.settings.cleanup_timeout_seconds * 2 + 5) * 1000)
+        )
+      }
+      return core.call('runs.start', params, 'SessionSummary')
+    })
+    handle('agent:goal-create', 1, async (value) =>
+      (await readyBackend()).call('goals.create', validate('CreateGoalParams', value), 'GoalView')
+    )
+    handle('agent:goals-list', 1, async (value) =>
+      (await readyBackend()).call('goals.list', validate('ListGoalsParams', value), 'GoalPage')
+    )
+    handle('agent:goal-control', 1, async (value) =>
+      (await readyBackend()).call('goals.control', validate('ControlGoalParams', value), 'GoalView')
+    )
+    handle('agent:changes-list', 1, async (value) =>
+      (await readyBackend()).call(
+        'changes.list',
+        validate('ListChangesParams', value),
+        'ChangePage'
+      )
+    )
+    handle('agent:change-get', 1, async (value) =>
+      (await readyBackend()).call('changes.get', validate('GetChangeParams', value), 'ChangeView')
     )
     handle('agent:run-cancel', 1, async (value) =>
       (await readyBackend()).call(
@@ -425,6 +672,37 @@ app.on('window-all-closed', () => app.quit())
 app.on('before-quit', (event) => {
   if (quitting) return
   event.preventDefault()
-  quitting = true
-  void (backend?.stop() ?? Promise.resolve()).finally(() => app.exit(0))
+  if (quitPending) return
+  quitPending = true
+  void (async () => {
+    try {
+      if (backend) {
+        try {
+          const [execution, active] = await Promise.all([
+            backend.call('execution.status', {}, 'ExecutionStatus'),
+            backend.call('runs.active', {}, 'ActiveRunResult')
+          ])
+          if (execution.programs.length || execution.probe_count || active.sessions.length) {
+            const choice = await dialog.showMessageBox({
+              type: 'question',
+              title: '停止并退出',
+              buttons: ['返回应用', '停止并退出'],
+              defaultId: 0,
+              cancelId: 0,
+              message: `退出将停止 ${execution.programs.length} 个程序及 ${active.sessions.length} 个 Agent 运行。`,
+              detail: '已保存的任务、会话和文件会保留；下次启动不会自动重跑程序。'
+            })
+            if (choice.response !== 1) return
+          }
+        } catch {
+          log('SHUTDOWN_STATUS_UNAVAILABLE')
+        }
+      }
+      quitting = true
+      await backend?.stop()
+      app.exit(0)
+    } finally {
+      quitPending = false
+    }
+  })()
 })

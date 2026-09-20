@@ -28,8 +28,8 @@ def build_schema() -> str:
         definitions[name] = schema
     document = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://my-coding-agent.local/protocol-v2.schema.json",
-        "title": "ProtocolV2",
+        "$id": "https://my-coding-agent.local/protocol-v3.schema.json",
+        "title": "ProtocolV3",
         "type": "object",
         "additionalProperties": False,
         "properties": {name: {"$ref": "#/$defs/" + name} for name in PUBLIC_TYPES},
@@ -48,7 +48,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    path = ROOT / "schemas/protocol-v2.schema.json"
+    path = ROOT / "schemas/protocol-v3.schema.json"
     content = build_schema()
     if args.check:
         if not path.exists() or path.read_text(encoding="utf-8") != content:

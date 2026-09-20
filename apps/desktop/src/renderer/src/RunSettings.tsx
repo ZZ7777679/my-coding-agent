@@ -12,7 +12,7 @@ const fields: {
   { key: 'max_requests', label: '模型请求次数', min: 1 },
   { key: 'max_tools', label: '工具调用次数', min: 1 },
   { key: 'max_seconds', label: '总运行时间（秒）', min: 1 },
-  { key: 'request_timeout_seconds', label: '单请求等待（秒）', min: 1 },
+  { key: 'request_timeout_seconds', label: '单请求总时限（秒）', min: 1 },
   { key: 'max_output_tokens', label: '输出 token 上限', min: 1 },
   { key: 'max_context_bytes', label: '估算上下文容量（字节）', min: 4096 },
   { key: 'max_response_bytes', label: '单回合内容容量（字节）', min: 1024, max: 262144 },
@@ -55,6 +55,7 @@ export function RunSettings({ config, disabled, onSaved }: Props) {
     <details className="detail-card run-settings">
       <summary>高级运行预算与读取规则</summary>
       <p className="muted">容量是本地保护预算，不代表模型真实上下文上限。修改只影响下一次运行。</p>
+      <p className="muted">单请求总时限包含连接、等待及完整生成；收到流式数据不会重置此计时。</p>
       <form
         onSubmit={(event) => {
           event.preventDefault()

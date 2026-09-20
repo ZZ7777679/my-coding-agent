@@ -15,7 +15,38 @@ from pydantic import (
     field_validator,
 )
 
+from my_agent.changes.types import ChangePage, ChangeView, GetChangeParams, ListChangesParams
+from my_agent.collaboration.types import (
+    ArrangeSessionWorkParams,
+    CollaborationHistoryParams,
+    CollaborationLink,
+    CollaborationPage,
+    CollaborationPageParams,
+    CollaborationRequest,
+    CollaborationRequestParams,
+    ConnectSessionsParams,
+    ControlCollaborationParams,
+)
 from my_agent.errors import DataSource
+from my_agent.execution.types import (
+    BindEnvironmentParams,
+    ChooseEnvironmentPathParams,
+    EnvironmentCatalog,
+    EnvironmentParams,
+    EnvironmentProjectParams,
+    ExecutionSettings,
+    ExecutionStatus,
+    GetProgramParams,
+    ListProgramsParams,
+    ProgramPage,
+    ProgramParams,
+    ProgramView,
+    RemoveEnvironmentParams,
+    SaveEnvironmentParams,
+    SaveExecutionSettings,
+)
+from my_agent.goals.dto import ControlGoalParams, CreateGoalParams, ListGoalsParams
+from my_agent.goals.types import GoalPage, GoalView
 from my_agent.models.connections import (
     ConnectionProbeParams,
     ConnectionSettings,
@@ -23,6 +54,7 @@ from my_agent.models.connections import (
     ModelConnectionProbeParams,
 )
 from my_agent.models.types import ModelId as ModelId
+from my_agent.runtime.modes import RunMode
 from my_agent.runtime.settings import RunLimits
 from my_agent.sessions.types import (
     SessionId,
@@ -31,6 +63,17 @@ from my_agent.sessions.types import (
     SessionSummary,
     SessionView,
 )
+from my_agent.tasks.types import (
+    AssignSessionParams,
+    CreateTaskParams,
+    CreateTaskResult,
+    TaskFields,
+    TaskPage,
+    TaskParams,
+    TaskView,
+    UpdateTaskParams,
+)
+from my_agent.web.types import OpenWebUrlParams, WebPageResult, WebSearchResult
 
 Text = Annotated[str, StringConstraints(min_length=1, max_length=4096)]
 Identifier = Annotated[str, StringConstraints(min_length=1, max_length=128)]
@@ -169,8 +212,8 @@ class AppInfo(DTO):
 
     name: Text
     app_version: Text
-    protocol_version: Literal[2]
-    stage: Literal["M1"]
+    protocol_version: Literal[3]
+    stage: Literal["M2"]
 
 
 class StorageInfo(DTO):
@@ -250,7 +293,7 @@ class InitializeParams(DTO):
     """
 
     app_version: Text
-    protocol_version: Literal[2]
+    protocol_version: Literal[3]
     data_schema_version: Literal[1]
 
 
@@ -279,6 +322,19 @@ class InitializeResult(DTO):
             "connections.test_model",
             "shutdown",
             "sessions.create",
+            "sessions.select_model",
+            "tasks.create",
+            "tasks.list",
+            "tasks.get",
+            "tasks.update",
+            "tasks.ensure_session",
+            "sessions.assign",
+            "collaboration.list",
+            "collaboration.connect",
+            "collaboration.history",
+            "collaboration.request",
+            "collaboration.control",
+            "collaboration.arrange",
             "sessions.list",
             "sessions.get",
             "sessions.attach",
@@ -286,6 +342,21 @@ class InitializeResult(DTO):
             "runs.start",
             "runs.cancel",
             "runs.active",
+            "goals.create",
+            "goals.list",
+            "goals.control",
+            "changes.list",
+            "changes.get",
+            "environments.list",
+            "environments.save",
+            "environments.remove",
+            "environments.probe",
+            "environments.bind",
+            "execution.configure",
+            "programs.list",
+            "programs.get",
+            "programs.stop",
+            "execution.status",
         ]
     ]
 
@@ -424,11 +495,26 @@ class RpcResponse(RootModel[RpcSuccess | RpcFailure]):
     model_config = ConfigDict(strict=True)
 
 
+class SelectSessionModelParams(DTO):
+    """选择既有会话的后续模型，不创建会话或发请求。
+
+    Select a session's next model without creating sessions or sending requests.
+    """
+
+    session_id: SessionId
+    operation_id: SessionId
+    model_id: ModelId
+
+
 class CreateSessionParams(DTO):
     """选择项目与模型，不发起运行。 Select project and model without starting a run."""
 
     project_id: Identifier
     model_id: ModelId
+    task_id: SessionId | None = None
+    operation_id: SessionId | None = None
+    role: Annotated[str, Field(max_length=4096)] = ""
+    scope: Annotated[str, Field(max_length=16000)] = ""
 
 
 class ListSessionsParams(DTO):
@@ -457,6 +543,8 @@ class StartRunParams(SessionParams):
     operation_id: SessionId
     prompt: Annotated[str, Field(min_length=1, max_length=64000)]
     limits: RunLimits | None
+    mode: RunMode = "plan"
+    plan_document: Annotated[str, Field(min_length=1, max_length=4096)] | None = None
 
 
 class CancelRunParams(DTO):
@@ -466,9 +554,12 @@ class CancelRunParams(DTO):
 
 
 class ActiveRunResult(DTO):
-    """公开全局运行状态，切换视图仍能停止。 Global run state remains stoppable across views."""
+    """各会话的活动运行列表，切换视图仍可逐项停止。
 
-    session: SessionSummary | None
+    Active runs per session remain independently stoppable across views.
+    """
+
+    sessions: list[SessionSummary]
 
 
 class SessionEventNotification(DTO):
@@ -519,10 +610,55 @@ PUBLIC_TYPES: dict[str, type[BaseModel]] = {
         StartRunParams,
         CancelRunParams,
         ActiveRunResult,
+        CreateGoalParams,
+        ListGoalsParams,
+        ControlGoalParams,
+        GoalPage,
+        GoalView,
         SessionEventNotification,
         SessionSummary,
+        SelectSessionModelParams,
         SessionView,
         SessionPage,
         SessionSignal,
+        TaskFields,
+        TaskView,
+        TaskPage,
+        TaskParams,
+        CreateTaskParams,
+        CreateTaskResult,
+        UpdateTaskParams,
+        AssignSessionParams,
+        ChangePage,
+        ChangeView,
+        GetChangeParams,
+        ListChangesParams,
+        EnvironmentCatalog,
+        EnvironmentProjectParams,
+        SaveEnvironmentParams,
+        RemoveEnvironmentParams,
+        EnvironmentParams,
+        BindEnvironmentParams,
+        ExecutionSettings,
+        SaveExecutionSettings,
+        ListProgramsParams,
+        ProgramParams,
+        GetProgramParams,
+        ProgramPage,
+        ProgramView,
+        ChooseEnvironmentPathParams,
+        ExecutionStatus,
+        OpenWebUrlParams,
+        WebSearchResult,
+        WebPageResult,
+        CollaborationHistoryParams,
+        CollaborationLink,
+        CollaborationPage,
+        CollaborationPageParams,
+        CollaborationRequest,
+        CollaborationRequestParams,
+        ConnectSessionsParams,
+        ControlCollaborationParams,
+        ArrangeSessionWorkParams,
     )
 }

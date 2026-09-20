@@ -30,7 +30,7 @@ async def check(root: Path) -> bool:
     report_path = root / "report.json"
     try:
         initialized = await app.dispatch(
-            "initialize", {"app_version": "0", "protocol_version": 2, "data_schema_version": 1}
+            "initialize", {"app_version": "0", "protocol_version": 3, "data_schema_version": 1}
         )
         assert isinstance(initialized, InitializeResult)
         for model in initialized.config.allowed_models:

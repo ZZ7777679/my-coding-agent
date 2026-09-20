@@ -1,7 +1,6 @@
 """三个只读工具及有界搜索辅助。 Three read-only tools and bounded search support."""
 
 import asyncio
-import hashlib
 import json
 import os
 import shutil
@@ -28,7 +27,7 @@ class ListFilesArgs(ModelData):
 
 
 class ReadFileArgs(ModelData):
-    """按行读取参数，不开放绝对路径。 Line-based reading without absolute path access."""
+    """按行读取明确指定的文件。 Read an explicitly selected file by line range."""
 
     path: Annotated[str, Field(min_length=1, max_length=4096)]
     start_line: Annotated[int, Field(ge=1)] = 1
@@ -76,6 +75,11 @@ class ReadTools:
         self.stop = stop
 
     @staticmethod
+    def is_mutating(name: str) -> bool:
+        """只读集合不执行副作用。 Read-only tools have no project side effects."""
+        return False
+
+    @staticmethod
     def definitions() -> list[JsonObject]:
         """由参数 schema 构造模型工具定义。 Build model tools from validated argument schemas."""
         definitions: list[JsonObject] = []
@@ -83,12 +87,14 @@ class ReadTools:
             (
                 "list_files",
                 ListFilesArgs,
-                "List readable project files. Paths are project-relative.",
+                "List files. Accepts paths relative to the project or absolute paths. "
+                "Workspace discovery honors ignores; an explicit subdirectory is listed directly.",
             ),
             (
                 "read_file",
                 ReadFileArgs,
-                "Read UTF-8 source lines with path, hash and line numbers.",
+                "Read UTF-8 lines at an explicit path, even if ignored by discovery. "
+                "Accepts paths relative to the project or absolute paths; returns line metadata.",
             ),
             (
                 "search",
@@ -108,8 +114,11 @@ class ReadTools:
             )
         return definitions
 
-    def _read(self, name: str) -> tuple[str, str, str]:
-        """分块读取可靠 UTF-8 文件，检测版本改变与二进制。 Read stable, bounded UTF-8 source."""
+    def _read(self, name: str) -> tuple[str, bytes, str]:
+        """读取文本、原始字节与编码；原始字节供编辑保留格式和比较当前内容。
+
+        Read text, original bytes and encoding for format-preserving edits and content comparison.
+        """
         path = self.policy.target(name)
         try:
             with path.open("rb") as stream:
@@ -132,20 +141,25 @@ class ReadTools:
                 )
             text = raw.decode("utf-8-sig")
             encoding = "utf-8-bom" if raw.startswith(b"\xef\xbb\xbf") else "utf-8"
-            return text, hashlib.sha256(raw).hexdigest(), encoding
+            return text, raw, encoding
         except UnicodeError as exc:
             raise AgentError("FILE_ENCODING", "无法按 UTF-8 可靠解码文件。") from exc
+        except FileNotFoundError as exc:
+            raise AgentError("FILE_NOT_FOUND", "读取时目标已不存在，请调整路径。") from exc
         except OSError as exc:
             raise AgentError("FILE_UNAVAILABLE", "读取文件失败。") from exc
 
     def _read_file(self, args: ReadFileArgs) -> JsonObject:
-        """返回有行号和版本的片段，明确结果截断。
+        """返回有行号的正文与编码信息，明确结果截断。
 
-        Return versioned lines with explicit truncation.
+        Return numbered content and encoding with explicit truncation.
         """
         from my_agent.storage import utc_now
 
-        text, digest, encoding = self._read(args.path)
+        target = self.policy.target(args.path)
+        text, _, encoding = self._read(args.path)
+        if self.policy.target(args.path) != target:
+            raise AgentError("FILE_CHANGED", "读取期间目标路径改变，请重新读取。")
         lines = text.splitlines()
         selected: list[str] = []
         size = 0
@@ -162,7 +176,6 @@ class ReadTools:
             "start_line": args.start_line,
             "end_line": args.start_line + len(selected) - 1 if selected else None,
             "total_lines": len(lines),
-            "sha256": digest,
             "encoding": encoding,
             "newline": newline_kind(text),
             "read_at": utc_now(),
@@ -246,7 +259,7 @@ class ReadTools:
         size = 0
         for file in candidates:
             try:
-                text, digest, _ = self._read(file)
+                text, _, _ = self._read(file)
             except AgentError as exc:
                 if exc.code == "CANCELLED":
                     raise
@@ -256,7 +269,7 @@ class ReadTools:
                 checkpoint(self.stop)
                 if args.query not in line:
                     continue
-                match: JsonObject = {"path": file, "line": number, "text": line, "sha256": digest}
+                match: JsonObject = {"path": file, "line": number, "text": line}
                 size += len(encode(match).encode("utf-8"))
                 if len(matches) >= args.limit or size > self.limits.max_tool_bytes // 2:
                     scan.truncated = True
@@ -295,7 +308,7 @@ class ReadTools:
             elif call.name == "search":
                 result = self._search(SearchArgs.model_validate(call.arguments))
             else:
-                raise AgentError("TOOL_NOT_ALLOWED", "M1 只支持列目录、读文件和字面搜索。")
+                raise AgentError("TOOL_NOT_ALLOWED", "当前工具集合不支持此调用。")
             content = encode(result)
             if len(content.encode("utf-8")) > self.limits.max_tool_bytes:
                 raise AgentError("TOOL_OUTPUT_LIMIT", "工具结果超过预算，请缩小范围。")

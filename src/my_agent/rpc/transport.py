@@ -37,6 +37,7 @@ async def run_transport(
     stop_reader = threading.Event()
     stop_transport = asyncio.Event()
     auxiliaries: set[asyncio.Task[None]] = set()
+    execution_probes: set[asyncio.Task[None]] = set()
     resync: dict[str, SessionSignal] = {}
 
     def read_frames() -> None:
@@ -224,9 +225,12 @@ async def run_transport(
                 continue
             if request.method in {
                 "runs.cancel",
+                "goals.control",
                 "diagnostics.get",
                 "connections.test",
                 "connections.test_model",
+                "environments.probe",
+                "programs.stop",
             }:
                 if len(auxiliaries) >= 8:
                     if isinstance(request, RpcRequest):
@@ -239,6 +243,9 @@ async def run_transport(
                 task = asyncio.create_task(handle(request))
                 auxiliaries.add(task)
                 task.add_done_callback(auxiliaries.discard)
+                if request.method == "environments.probe":
+                    execution_probes.add(task)
+                    task.add_done_callback(execution_probes.discard)
             else:
                 if controls.full():
                     if isinstance(request, RpcRequest):
@@ -249,6 +256,10 @@ async def run_transport(
                     controls.put_nowait(request)
     finally:
         stop_reader.set()
+        # 退出时取消环境探测，探测自己收回句柄；不占住普通控制队列。
+        # Cancel environment probes at exit; their own cleanup reaps process handles.
+        for task in execution_probes:
+            task.cancel()
         # EOF 仍处理已经收到的普通控制，再停止运行；关闭不会自动重发。
         # Drain accepted control work at EOF, then stop runs without replaying requests.
         if output_task.done():

@@ -4,22 +4,72 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
-from my_agent.models.types import ModelData, ModelId, ModelProgress, ModelTurn, ToolCall, ToolResult
+from my_agent.execution.types import ProgramView
+from my_agent.goals.types import (
+    GoalControl,
+    GoalCreated,
+    GoalInputQueued,
+    GoalSettled,
+    GoalStopped,
+    GoalView,
+)
+from my_agent.identifiers import EntityId
+from my_agent.models.types import (
+    ModelData,
+    ModelId,
+    ModelProgress,
+    ModelTurn,
+    TokenUsage,
+    ToolCall,
+    ToolResult,
+)
+from my_agent.runtime.modes import RunMode
 from my_agent.runtime.settings import RunLimits
+from my_agent.sessions.recovery_types import SessionRecovered
+from my_agent.web.types import WebPageResult, WebSearchResult
+from my_agent.workflow.types import WorkId, WorkMethod, WorkReport
 
-SessionId = Annotated[
-    str, Field(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
-]
+SessionId = EntityId
+
 RunStatus = Literal[
     "running", "stopping", "completed", "failed", "cancelled", "budget_exceeded", "interrupted"
 ]
 
 
 class SessionCreated(ModelData):
-    """会话的不可变项目与模型身份。 Immutable project and model identity."""
+    """会话的不可变项目与初始模型选择。 Immutable project and initial model selection."""
 
     kind: Literal["session.created"] = "session.created"
     project_id: str
+    model_id: ModelId
+    task_id: SessionId | None = None
+    creation_operation_id: SessionId | None = None
+    role: str = ""
+    scope: str = ""
+    initial_mode: RunMode = "plan"
+
+
+class SessionAssigned(ModelData):
+    """用户修改归属与分工，追加事实而不重写旧对话。
+
+    Append user membership changes without rewriting chats.
+    """
+
+    kind: Literal["session.assigned"] = "session.assigned"
+    operation_id: SessionId
+    task_id: SessionId
+    role: str
+    scope: str
+
+
+class SessionModelChanged(ModelData):
+    """用户选择后续请求的模型，保留原会话与历史。
+
+    Select the next model without replacing history.
+    """
+
+    kind: Literal["session.model_changed"] = "session.model_changed"
+    operation_id: SessionId
     model_id: ModelId
 
 
@@ -31,6 +81,15 @@ class RunAccepted(ModelData):
     prompt: str
     limits: RunLimits
     requested_limits: RunLimits | None
+    mode: RunMode = "plan"
+    plan_document: str | None = None
+    goal_id: SessionId | None = None
+    goal_role: Literal["work", "question"] | None = None
+    active_time_limit_seconds: Annotated[float, Field(gt=0)] | None = None
+    work_id: WorkId | None = None
+    method: WorkMethod | None = None
+    method_version: str | None = None
+    collaboration_id: SessionId | None = None
 
 
 class RequestStarted(ModelData):
@@ -38,6 +97,33 @@ class RequestStarted(ModelData):
 
     kind: Literal["request.started"] = "request.started"
     message_id: SessionId
+    model_id: ModelId | None = None
+    task_id: SessionId | None = None
+    task_revision: Annotated[int, Field(ge=1)] | None = None
+
+
+class AuxiliaryStarted(ModelData):
+    """工具内辅助模型请求在发送前入账，不改变主对话配对。
+
+    Charge an auxiliary model request before sending without changing chat pairing.
+    """
+
+    kind: Literal["auxiliary.started"] = "auxiliary.started"
+    request_id: SessionId
+    tool_call_id: str
+    model_id: ModelId
+    purpose: Literal["web_search"] = "web_search"
+
+
+class AuxiliaryCompleted(ModelData):
+    """保存辅助请求实际用量，失败或中断未报告用量保持未知。
+
+    Store reported auxiliary usage; failed or interrupted requests remain unknown.
+    """
+
+    kind: Literal["auxiliary.completed"] = "auxiliary.completed"
+    request_id: SessionId
+    usage: TokenUsage
 
 
 class AssistantCommitted(ModelData):
@@ -45,6 +131,7 @@ class AssistantCommitted(ModelData):
 
     kind: Literal["assistant.committed"] = "assistant.committed"
     message_id: SessionId
+    model_id: ModelId | None = None
     turn: ModelTurn
     model_progress: ModelProgress | None = None
 
@@ -63,6 +150,13 @@ class ToolCompleted(ModelData):
     result: ToolResult
 
 
+class ToolSkipped(ModelData):
+    """明确未执行的调用，与实际完成区分。 Explicitly skipped calls, distinct from completed work."""
+
+    kind: Literal["tool.skipped"] = "tool.skipped"
+    result: ToolResult
+
+
 class RunFinished(ModelData):
     """清理后的终态与公开错误。 Terminal state and public error after cleanup."""
 
@@ -71,16 +165,47 @@ class RunFinished(ModelData):
     code: str | None
     message: str | None
     model_progress: ModelProgress | None = None
+    # 仅记录宿主单调时钟测得的活跃耗时，旧日志 / 崩溃未知时保留 None。
+    # Record host-measured monotonic active time; old logs and crashes remain unknown.
+    elapsed_seconds: Annotated[float, Field(ge=0)] | None = None
+    report: WorkReport | None = None
+    # 宿主只在完整配对边界让出执行；不是模型自行宣布一个工作单元完成。
+    # Only the host yields at a paired boundary; this is not a model's completion claim.
+    checkpoint: bool = False
+
+
+class ProgressSynced(ModelData):
+    """报告已同步到共享进度的确认；不将跨文件保存冒充事务。
+
+    Acknowledge report synchronization without claiming a cross-file transaction.
+    """
+
+    kind: Literal["progress.synced"] = "progress.synced"
+    result_seq: Annotated[int, Field(ge=1)]
+    task_id: SessionId | None
+    task_revision: Annotated[int, Field(ge=1)] | None
 
 
 FactData = Annotated[
     SessionCreated
+    | SessionAssigned
+    | SessionModelChanged
     | RunAccepted
     | RequestStarted
+    | AuxiliaryStarted
+    | AuxiliaryCompleted
     | AssistantCommitted
     | ToolStarted
     | ToolCompleted
-    | RunFinished,
+    | ToolSkipped
+    | RunFinished
+    | ProgressSynced
+    | GoalCreated
+    | GoalControl
+    | GoalSettled
+    | GoalStopped
+    | GoalInputQueued
+    | SessionRecovered,
     Field(discriminator="kind"),
 ]
 
@@ -108,6 +233,14 @@ class RunView(ModelData):
     limits: RunLimits
     code: str | None
     message: str | None
+    mode: RunMode = "plan"
+    plan_document: str | None = None
+    progress_sync: Literal["none", "pending", "synced"] = "none"
+    goal_id: SessionId | None = None
+    goal_role: Literal["work", "question"] | None = None
+    work_id: WorkId | None = None
+    method: WorkMethod | None = None
+    method_version: str | None = None
 
 
 class SessionSummary(ModelData):
@@ -122,6 +255,10 @@ class SessionSummary(ModelData):
     can_continue: bool
     issue: str | None
     run: RunView | None
+    task_id: SessionId | None = None
+    role: str = ""
+    scope: str = ""
+    mode: RunMode = "plan"
 
 
 class ChatEntry(ModelData):
@@ -130,10 +267,25 @@ class ChatEntry(ModelData):
     seq: int
     run_id: SessionId | None
     message_id: SessionId | None
-    kind: Literal["user", "assistant", "tool.started", "tool.completed", "run.finished"]
+    kind: Literal[
+        "user",
+        "assistant",
+        "tool.started",
+        "tool.completed",
+        "tool.skipped",
+        "run.finished",
+        "goal.event",
+        "collaboration.request",
+        "session.recovered",
+    ]
     text: str
+    reasoning: str = ""
+    model_id: ModelId | None = None
     call: ToolCall | None
     result: ToolResult | None
+    web_result: WebSearchResult | WebPageResult | None = None
+    program_result: ProgramView | None = None
+    goal_result: GoalView | None = None
 
 
 class SessionView(ModelData):
@@ -145,7 +297,9 @@ class SessionView(ModelData):
     watermark: int
     process_epoch: SessionId
     stream_message_id: SessionId | None
+    stream_model_id: ModelId | None = None
     stream_text: str
+    stream_reasoning: str = ""
     delta_index: int
     model_progress: ModelProgress | None = None
 
@@ -155,7 +309,7 @@ class SessionPage(ModelData):
 
     sessions: list[SessionSummary]
     next_cursor: str | None
-    active_session_id: SessionId | None
+    active_session_ids: list[SessionId]
     unavailable_count: Annotated[int, Field(ge=0)]
 
 
@@ -168,7 +322,7 @@ class SessionSignal(ModelData):
     session_id: SessionId
     run_id: SessionId | None
     process_epoch: SessionId
-    kind: Literal["changed", "text.delta", "model.progress", "resync"]
+    kind: Literal["changed", "text.delta", "reasoning.delta", "model.progress", "resync"]
     seq: int
     message_id: SessionId | None
     delta_index: int

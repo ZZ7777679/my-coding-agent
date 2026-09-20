@@ -1,27 +1,48 @@
-/** 项目只读对话：快照、流式预览与可核对工具结果。 Read-only chat with snapshots and tool evidence. */
-import { useCallback, useEffect, useRef, useState } from 'react'
+/** 项目对话：模式、快照、流式预览与工具证据。 Project chat with modes, snapshots and tool evidence. */
+import { useEffect, useRef, useState } from 'react'
 import type {
   ChatEntry,
   ModelId,
-  ModelProgress,
   ProjectSummary,
   SessionSummary,
   SessionView,
-  SessionSignal
+  SessionSignal,
+  GoalView,
+  GoalBudget,
+  CreateGoalParams
 } from '../../generated/protocol'
+import { SessionMembership } from './SessionMembership'
+import { Collaboration } from './Collaboration'
+import { Changes } from './Changes'
+import { ProgramCall, programTools } from './ProgramCards'
+import { Goals, GoalBudgetFields, GoalHistory } from './Goals'
+import { WebReferences } from './WebReferences'
+import { ModelActivity } from './ModelActivity'
+import { Reasoning } from './Reasoning'
+import type { WorkspaceSelection } from './TaskNavigation'
 
 type Props = {
   project: ProjectSummary | null
-  defaultModel: ModelId
+  selected: string | null
   connected: boolean
   visible: boolean
   active: SessionSummary | null
+  onStop: (runId: string) => void
   onRunChange: () => void
+  onSelect: (selection: WorkspaceSelection) => void
 }
 
 const names: Record<ModelId, string> = {
   'glm-5.3-flash': 'GLM-5.3-Flash',
   'deepseek-v4.1-flash': 'DeepSeek V4.1 Flash'
+}
+const collaborationActivities: Record<string, string> = {
+  list_collaborators: '读取协作约定',
+  read_session: '读取协作会话历史',
+  request_collaboration: '发送协作请求',
+  read_collaboration: '读取 / 等待协作结果',
+  list_changes: '读取修改成果索引',
+  read_change: '读取历史差异'
 }
 const statuses = {
   running: '正在运行',
@@ -32,17 +53,6 @@ const statuses = {
   budget_exceeded: '预算已用尽',
   interrupted: '上次运行已中断'
 }
-const phases: Record<ModelProgress['phase'], string> = {
-  preparing: '准备请求',
-  connecting: '建立连接',
-  tls: '建立安全连接',
-  waiting: '等待模型响应',
-  receiving: '已收到响应，等待正文',
-  reasoning: '模型正在思考',
-  text: '正在输出正文',
-  completed: '本次请求结束'
-}
-
 /** 将工具正文按原行展示，元信息仍可核对。 Show original source lines alongside tool metadata. */
 function toolText(content: string): string {
   try {
@@ -62,7 +72,17 @@ function toolText(content: string): string {
 }
 
 /** 将后端确认的工具内容作为纯文本显示。 Render backend-confirmed tool content as plain text. */
-function HistoryEntry({ entry }: { entry: ChatEntry }) {
+function HistoryEntry({
+  entry,
+  reasoningOpen,
+  onReasoningToggle
+}: {
+  entry: ChatEntry
+  reasoningOpen: boolean
+  onReasoningToggle: (open: boolean) => void
+}) {
+  if (entry.goal_result) return <GoalHistory goal={entry.goal_result} />
+  if (entry.web_result) return <WebReferences result={entry.web_result} />
   if (entry.kind === 'tool.started')
     return (
       <details className="tool-entry">
@@ -70,35 +90,65 @@ function HistoryEntry({ entry }: { entry: ChatEntry }) {
         <pre>{JSON.stringify(entry.call?.arguments, null, 2)}</pre>
       </details>
     )
-  if (entry.kind === 'tool.completed')
+  if (entry.kind === 'tool.completed' || entry.kind === 'tool.skipped')
     return (
       <details className={'tool-entry ' + (entry.result?.is_error ? 'tool-error' : '')}>
-        <summary>{entry.result?.is_error ? '工具未完成' : '工具结果'}</summary>
+        <summary>
+          {entry.kind === 'tool.skipped'
+            ? '工具已跳过'
+            : entry.result?.is_error
+              ? '工具未完成'
+              : '工具结果'}
+        </summary>
         <pre>{toolText(entry.result?.content ?? '')}</pre>
       </details>
     )
-  if (entry.kind === 'run.finished') return <p className="run-end">{entry.text}</p>
-  if (entry.kind === 'assistant' && !entry.text) return null
+  if (entry.kind === 'run.finished' || entry.kind === 'goal.event')
+    return <p className="run-end">{entry.text}</p>
+  if (entry.kind === 'assistant' && !entry.text && !entry.reasoning) return null
   return (
     <article className={'chat-message ' + entry.kind}>
-      <strong>{entry.kind === 'user' ? '你' : 'Agent'}</strong>
-      <pre>{entry.text}</pre>
+      <strong>
+        {entry.kind === 'user' ? '你' : entry.model_id ? names[entry.model_id] : 'Agent'}
+      </strong>
+      <Reasoning
+        text={entry.reasoning ?? ''}
+        open={reasoningOpen}
+        onToggle={onReasoningToggle}
+        streaming={false}
+      />
+      {entry.text && <pre>{entry.text}</pre>}
     </article>
   )
 }
 
 /** 管理会话归属、快照交接与有界事件缓冲。 Manage session ownership and bounded snapshot handoff. */
-export function Chat({ project, defaultModel, connected, visible, active, onRunChange }: Props) {
-  const [sessions, setSessions] = useState<SessionSummary[]>([])
-  const [cursor, setCursor] = useState<string | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
-  const [model, setModel] = useState<ModelId>(defaultModel)
+export function Chat({
+  project,
+  selected,
+  connected,
+  visible,
+  active,
+  onStop,
+  onRunChange,
+  onSelect
+}: Props) {
   const [snapshot, setSnapshot] = useState<SessionView | null>(null)
   const [older, setOlder] = useState<ChatEntry[]>([])
   const [olderCursor, setOlderCursor] = useState<number | null>(null)
   const [prompt, setPrompt] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [mode, setMode] = useState<'normal' | 'plan' | 'goal'>('plan')
+  const [goal, setGoal] = useState<GoalView | null>(null)
+  const [criteria, setCriteria] = useState('')
+  const [goalBudget, setGoalBudget] = useState<GoalBudget>({})
+  const [planDocument, setPlanDocument] = useState('')
+  const [showChanges, setShowChanges] = useState(false)
+  const [foldedReasoning, setFoldedReasoning] = useState<Record<string, boolean>>({})
+  const [changingModel, setChangingModel] = useState(false)
+  const notifyRun = useRef(onRunChange)
+  notifyRun.current = onRunChange
   const generation = useRef(0)
   const historyElement = useRef<HTMLDivElement>(null)
   const followLatest = useRef(true)
@@ -107,60 +157,32 @@ export function Chat({ project, defaultModel, connected, visible, active, onRunC
   currentProject.current = projectId
   const currentSelection = useRef(selected)
   currentSelection.current = selected
-  useEffect(() => setModel(defaultModel), [defaultModel])
-
-  /** 分页读取真实会话，不在刷新时发模型请求。 Page actual sessions without issuing model requests. */
-  const loadList = useCallback(
-    async (page: string | null = null) => {
-      if (!projectId || !connected) return
-      try {
-        const result = await window.agent.listSessions({
-          project_id: projectId,
-          cursor: page,
-          limit: 20
-        })
-        if (currentProject.current !== projectId) return
-        if (!result.ok) {
-          setError(result.error.message)
-          return
-        }
-        setSessions((previous) =>
-          page ? [...previous, ...result.data.sessions] : result.data.sessions
-        )
-        setCursor(result.data.next_cursor)
-        if (result.data.unavailable_count)
-          setError(
-            `${result.data.unavailable_count} 条记录无法读取或确认归属，原文件已保留；其他会话仍可使用。`
-          )
-      } catch {
-        if (currentProject.current === projectId) setError('无法读取会话列表，请检查后端连接。')
-      }
-    },
-    [projectId, connected]
-  )
-
   useEffect(() => {
     ++generation.current
-    setSelected(null)
     setSnapshot(null)
     setOlder([])
-    setSessions([])
     setPrompt('')
     setError('')
-    setModel(defaultModel)
+    setPlanDocument('')
+    setGoal(null)
+    setCriteria('')
+    setGoalBudget({})
+    setFoldedReasoning({})
     followLatest.current = true
-    // 默认模型变化只影响新会话，不改变已选历史会话。
-    // Default model changes never mutate an existing session.
-  }, [projectId])
+  }, [projectId, selected])
+
+  useEffect(() => {
+    if (snapshot) setMode(snapshot.summary.mode ?? 'plan')
+  }, [snapshot?.summary.session_id])
+
+  useEffect(() => {
+    if (snapshot?.summary.run) notifyRun.current()
+  }, [snapshot?.summary.run?.run_id, snapshot?.summary.run?.status])
 
   useEffect(() => {
     if (followLatest.current && historyElement.current)
       historyElement.current.scrollTop = historyElement.current.scrollHeight
   }, [snapshot?.watermark, snapshot?.delta_index])
-
-  useEffect(() => {
-    if (visible) void loadList()
-  }, [visible, loadList, active?.run?.run_id])
 
   useEffect(() => {
     if (!selected || !connected) return
@@ -200,7 +222,7 @@ export function Chat({ project, defaultModel, connected, visible, active, onRunC
         value = { ...value, model_progress: signal.model_progress }
         return true
       }
-      if (signal.kind !== 'text.delta')
+      if (signal.kind !== 'text.delta' && signal.kind !== 'reasoning.delta')
         return signal.seq <= value.watermark && signal.kind !== 'resync'
       if (signal.seq < value.watermark) return true
       if (signal.seq !== value.watermark || signal.message_id !== value.stream_message_id)
@@ -209,7 +231,9 @@ export function Chat({ project, defaultModel, connected, visible, active, onRunC
       if (signal.delta_index !== value.delta_index + 1) return false
       value = {
         ...value,
-        stream_text: value.stream_text + signal.text,
+        stream_text: value.stream_text + (signal.kind === 'text.delta' ? signal.text : ''),
+        stream_reasoning:
+          (value.stream_reasoning ?? '') + (signal.kind === 'reasoning.delta' ? signal.text : ''),
         delta_index: signal.delta_index,
         model_progress: signal.model_progress
       }
@@ -277,41 +301,69 @@ export function Chat({ project, defaultModel, connected, visible, active, onRunC
     }
   }, [selected, connected])
 
-  /** 创建指定模型的新会话，模型切换通过新会话完成。 Create a fresh session when choosing a model. */
-  const create = async () => {
-    if (!projectId || busy) return
-    const target = projectId
-    setBusy(true)
-    setError('')
-    try {
-      const result = await window.agent.createSession({ project_id: target, model_id: model })
-      if (currentProject.current !== target) return
-      if (!result.ok) {
-        setError(result.error.message)
-        return
-      }
-      setSessions((previous) => [result.data, ...previous])
-      setSelected(result.data.session_id)
-    } catch {
-      setError('会话创建未确认，请刷新列表后检查。')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const goalRunning = goal?.status === 'active'
+  const localInterruption = goalRunning && active?.run?.status !== 'stopping'
+  const blockedByRun = !!active && !localInterruption
+  const unfinishedGoal = !!goal && goal.status !== 'completed' && goal.status !== 'cancelled'
 
   /** 只在发送动作生成操作 ID，失败不自动重发。 Generate operation IDs on explicit send only. */
   const send = async () => {
-    if (!selected || busy || active || !prompt.trim() || snapshot?.summary.project_id !== projectId)
+    if (
+      !selected ||
+      busy ||
+      blockedByRun ||
+      !prompt.trim() ||
+      snapshot?.summary.project_id !== projectId
+    )
       return
     const sessionId = selected
     setBusy(true)
     setError('')
     try {
+      if (mode === 'goal') {
+        if (unfinishedGoal) {
+          setError('此会话已有未结束 Goal，请先接续或取消它。')
+          return
+        }
+        const descriptions = criteria
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+        const first = descriptions.shift() ?? prompt
+        const params: CreateGoalParams = {
+          session_id: sessionId,
+          goal_id: crypto.randomUUID(),
+          objective: prompt,
+          criteria: [
+            { criterion_id: 'criterion-1', description: first },
+            ...descriptions.map((description, index) => ({
+              criterion_id: `criterion-${index + 2}`,
+              description
+            }))
+          ],
+          budget: goalBudget,
+          limits: null
+        }
+        const result = await window.agent.createGoal(params)
+        if (currentSelection.current !== sessionId) return
+        if (!result.ok) {
+          setError(result.error.message)
+          return
+        }
+        setGoal(result.data)
+        setPrompt('')
+        setCriteria('')
+        setMode('normal')
+        onRunChange()
+        return
+      }
       const result = await window.agent.startRun({
         session_id: sessionId,
         operation_id: crypto.randomUUID(),
         prompt,
-        limits: null
+        limits: null,
+        mode,
+        plan_document: mode === 'plan' && planDocument.trim() ? planDocument.trim() : null
       })
       if (currentSelection.current !== sessionId) return
       if (!result.ok) {
@@ -320,7 +372,6 @@ export function Chat({ project, defaultModel, connected, visible, active, onRunC
       }
       setPrompt('')
       onRunChange()
-      void loadList()
     } catch {
       setError('发送状态尚未确认，请先查看活动运行；未自动重发。')
     } finally {
@@ -353,73 +404,70 @@ export function Chat({ project, defaultModel, connected, visible, active, onRunC
     ...new Map([...older, ...(snapshot?.entries ?? [])].map((entry) => [entry.seq, entry])).values()
   ].sort((a, b) => a.seq - b.seq)
   const run = snapshot?.summary.run
+  const pendingTool = [...history]
+    .reverse()
+    .find(
+      (entry) =>
+        entry.kind === 'tool.started' &&
+        entry.run_id === run?.run_id &&
+        !history.some(
+          (result) =>
+            (result.kind === 'tool.completed' || result.kind === 'tool.skipped') &&
+            result.run_id === entry.run_id &&
+            result.result?.tool_call_id === entry.call?.tool_call_id
+        )
+    )
+
+  /** 以消息身份保留折叠选择，流结束变成历史时不自动展开。 Preserve folding across stream commit. */
+  const toggleReasoning = (messageId: string, open: boolean) =>
+    setFoldedReasoning((current) => ({ ...current, [messageId]: !open }))
+
+  /** 保存当前会话的选择，活动请求完成后再使用新模型。 Persist the next model without interrupting a request. */
+  const changeModel = async (modelId: ModelId) => {
+    if (!selected || !connected || changingModel) return
+    const sessionId = selected
+    setChangingModel(true)
+    setError('')
+    try {
+      const result = await window.agent.selectSessionModel({
+        session_id: sessionId,
+        operation_id: crypto.randomUUID(),
+        model_id: modelId
+      })
+      if (currentSelection.current !== sessionId) return
+      if (!result.ok) setError(result.error.message)
+      else {
+        setSnapshot((current) =>
+          current
+            ? { ...current, summary: { ...current.summary, model_id: result.data.model_id } }
+            : current
+        )
+        onRunChange()
+      }
+    } catch {
+      if (currentSelection.current === sessionId) setError('模型选择保存未确认，请查看当前选择。')
+    } finally {
+      if (currentSelection.current === sessionId) setChangingModel(false)
+    }
+  }
+
   return (
-    <div className="chat-layout">
-      <aside className="session-sidebar">
-        <h2>项目会话</h2>
-        <p className="muted">{project?.name ?? '请先选择项目'}</p>
-        <label>
-          新会话模型
-          <select
-            aria-label="新会话模型"
-            value={model}
-            onChange={(event) =>
-              setModel(
-                event.target.value === 'deepseek-v4.1-flash'
-                  ? 'deepseek-v4.1-flash'
-                  : 'glm-5.3-flash'
-              )
-            }
-          >
-            <option value="glm-5.3-flash">GLM-5.3-Flash</option>
-            <option value="deepseek-v4.1-flash">DeepSeek V4.1 Flash</option>
-          </select>
-        </label>
-        <button
-          className="primary"
-          onClick={() => void create()}
-          disabled={!connected || !project?.available || busy}
-        >
-          新建会话
-        </button>
-        {active && active.project_id === projectId && (
-          <button className="text-button" onClick={() => setSelected(active.session_id)}>
-            查看当前运行
-          </button>
-        )}
-        <nav aria-label="会话列表">
-          {sessions.map((session) => (
-            <button
-              key={session.session_id}
-              className={'session-item ' + (selected === session.session_id ? 'selected' : '')}
-              onClick={() => setSelected(session.session_id)}
-            >
-              <strong>{session.title}</strong>
-              <small>{names[session.model_id]}</small>
-            </button>
-          ))}
-        </nav>
-        {!sessions.length && <p className="muted">还没有会话。新建后即可开始阅读代码。</p>}
-        {cursor && <button onClick={() => void loadList(cursor)}>更多会话</button>}
-        <button className="text-button" onClick={() => void loadList()}>
-          刷新会话
-        </button>
-      </aside>
-      <section className="chat-panel" aria-label="只读对话">
-        <header className="chat-heading">
-          <strong>{snapshot ? names[snapshot.summary.model_id] : '阅读和理解你的代码'}</strong>
-          <span className="tag">只读 · 不执行项目命令</span>
-        </header>
+    <div className={'chat-layout' + (showChanges && selected ? ' with-changes' : '')}>
+      <section className="chat-panel" aria-label="代码对话">
         {error && (
           <div className="notice" role="alert">
             {error}
           </div>
         )}
-        {snapshot?.summary.issue && (
+        {snapshot?.summary.issue ? (
           <div className="notice" role="alert">
-            记录不完整（{snapshot.summary.issue}）。已保存内容仍可查看，请新建会话继续。
+            {snapshot.summary.issue === 'UNPAIRED_TOOL_CALLS'
+              ? '上次工具结果未完整保存。下次发送或接续 Goal 时会核对现有成果。'
+              : snapshot.summary.issue === 'PROGRESS_SYNC_PENDING'
+                ? '工作结果已保存，共同进度待同步。下次发送前会补同步，已有文件和程序不会重做。'
+                : `记录不完整（${snapshot.summary.issue}）。已保存内容仍可查看，请新建会话继续。`}
           </div>
-        )}
+        ) : null}
         <div
           className="chat-history"
           data-testid="chat-history"
@@ -444,81 +492,320 @@ export function Chat({ project, defaultModel, connected, visible, active, onRunC
           )}
           {selected && !snapshot && <p>正在读取会话…</p>}
           {snapshot && !history.length && (
-            <p className="muted">输入问题后，Agent 会按需要搜索和读取项目文件。</p>
+            <p className="muted">
+              描述本次目标。常规模式可编辑代码并使用项目默认环境执行；Plan 用于讨论和制定方案。
+            </p>
           )}
-          {history.map((entry) => (
-            <HistoryEntry key={entry.seq} entry={entry} />
-          ))}
-          {snapshot?.stream_text && (
+          {history.map((entry) => {
+            if (project && selected && entry.call && programTools.has(entry.call.name)) {
+              const paired = history.find(
+                (item) =>
+                  item.kind === 'tool.started' &&
+                  item.run_id === entry.run_id &&
+                  item.call?.tool_call_id === entry.call?.tool_call_id
+              )
+              if (entry.kind !== 'tool.started' && paired) return null
+              const result = history.find(
+                (item) =>
+                  (item.kind === 'tool.completed' || item.kind === 'tool.skipped') &&
+                  item.run_id === entry.run_id &&
+                  item.result?.tool_call_id === entry.call?.tool_call_id
+              )
+              return (
+                <ProgramCall
+                  key={`${entry.run_id}:${entry.call.tool_call_id}`}
+                  entry={entry}
+                  result={result}
+                  projectId={project.project_id}
+                  sessionId={selected}
+                  visible={visible}
+                  running={
+                    run?.run_id === entry.run_id &&
+                    (run.status === 'running' || run.status === 'stopping')
+                  }
+                />
+              )
+            }
+            return (
+              <HistoryEntry
+                key={entry.seq}
+                entry={entry}
+                reasoningOpen={!foldedReasoning[entry.message_id ?? String(entry.seq)]}
+                onReasoningToggle={(open) =>
+                  toggleReasoning(entry.message_id ?? String(entry.seq), open)
+                }
+              />
+            )
+          })}
+          {(snapshot?.stream_text || snapshot?.stream_reasoning) && (
             <article className="chat-message assistant stream">
-              <strong>Agent · 未提交预览</strong>
-              <pre>{snapshot.stream_text}</pre>
+              <strong>
+                {snapshot.stream_model_id ? names[snapshot.stream_model_id] : 'Agent'} · 未提交预览
+              </strong>
+              <Reasoning
+                text={snapshot.stream_reasoning ?? ''}
+                open={!foldedReasoning[snapshot.stream_message_id ?? 'live']}
+                onToggle={(open) => toggleReasoning(snapshot.stream_message_id ?? 'live', open)}
+                streaming={snapshot.model_progress?.phase === 'reasoning'}
+              />
+              {snapshot.stream_text && <pre>{snapshot.stream_text}</pre>}
             </article>
           )}
         </div>
-        {run && (
-          <div className="run-metrics" data-testid="run-status">
-            <span>{statuses[run.status]}</span>
-            {snapshot?.model_progress && (
-              <span data-testid="model-progress">
-                {run.status === 'running' || snapshot.model_progress.phase === 'completed'
-                  ? phases[snapshot.model_progress.phase]
-                  : `结束于：${phases[snapshot.model_progress.phase]}`}
-                {snapshot.model_progress.first_text_ms != null &&
-                  ` · 本次请求首字 ${(snapshot.model_progress.first_text_ms / 1000).toFixed(2)} 秒`}
-              </span>
-            )}
-            <span>
-              请求 {run.requests}/{run.limits.max_requests}
-            </span>
-            <span>
-              工具 {run.tools}/{run.limits.max_tools}
-            </span>
-            <span>
-              Token 输入 {run.input_tokens ?? '未知'} / 输出 {run.output_tokens ?? '未知'}
-            </span>
-            <span>费用未知</span>
-            {run.message && (
-              <p>
-                {run.code} · {run.message}
-              </p>
-            )}
-          </div>
-        )}
-        <form
-          className="chat-composer"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void send()
-          }}
-        >
-          <textarea
-            aria-label="输入问题"
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            placeholder="描述你想理解的代码或问题…"
-            rows={3}
-            disabled={!selected || !connected}
-          />
-          <div>
-            <small>工具结果提供实际文件、行号和版本；历史内容可能已变化。</small>
-            <button
-              className="primary"
-              type="submit"
-              disabled={
-                !snapshot?.summary.can_continue ||
-                !project?.available ||
-                !connected ||
-                busy ||
-                !!active ||
-                !prompt.trim()
+        <div className="composer-dock">
+          {selected && snapshot && (
+            <Goals
+              key={selected}
+              sessionId={selected}
+              revision={snapshot.watermark}
+              connected={connected}
+              visible={visible}
+              running={!!active}
+              run={run ?? null}
+              onValue={setGoal}
+              onChanged={onRunChange}
+            />
+          )}
+          {run && (
+            <div className="run-status-area" data-testid="run-status">
+              <details className="run-metrics">
+                <summary aria-label="运行详情">
+                  <span>{statuses[run.status]}</span>
+                  {run.status === 'running' && pendingTool && (
+                    <span data-testid="tool-progress">
+                      {collaborationActivities[pendingTool.call?.name ?? ''] ??
+                        (pendingTool.call?.name === 'web_search'
+                          ? '正在联网搜索 · DeepSeek V4.1 Flash'
+                          : pendingTool.call?.name === 'web_fetch'
+                            ? '正在读取网页'
+                            : ['create_file', 'edit_file'].includes(pendingTool.call?.name ?? '')
+                              ? '正在保存文件'
+                              : pendingTool.call?.name === 'run_command'
+                                ? '正在执行代码'
+                                : pendingTool.call?.name === 'start_service'
+                                  ? '启动服务并检查响应'
+                                  : pendingTool.call?.name === 'stop_program'
+                                    ? '正在清理程序'
+                                    : pendingTool.call?.name === 'report_work'
+                                      ? '保存工作结果'
+                                      : pendingTool.call?.name === 'read_work_status'
+                                        ? '核对进度与来源'
+                                        : ['execution_environment', 'read_program'].includes(
+                                              pendingTool.call?.name ?? ''
+                                            )
+                                          ? '读取运行状态'
+                                          : '正在读取项目')}{' '}
+                      · {pendingTool.call?.name}
+                    </span>
+                  )}
+                  {snapshot?.model_progress && !(run.status === 'running' && pendingTool) && (
+                    <span className="compact-model-progress">
+                      <ModelActivity
+                        key={snapshot.stream_message_id ?? run.run_id}
+                        progress={snapshot.model_progress}
+                        active={run.status === 'running'}
+                        compact
+                      />
+                    </span>
+                  )}
+                  <span>
+                    请求 {run.requests}/{run.limits.max_requests}
+                  </span>
+                  <span>
+                    工具 {run.tools}/{run.limits.max_tools}
+                  </span>
+                  <span className="metrics-disclosure">详情</span>
+                </summary>
+                <div className="metrics-details">
+                  {snapshot?.model_progress && (
+                    <span data-testid="model-progress">
+                      <ModelActivity
+                        key={snapshot.stream_message_id ?? run.run_id}
+                        progress={snapshot.model_progress}
+                        active={run.status === 'running'}
+                      />
+                    </span>
+                  )}
+                  <span>
+                    Token 输入 {run.input_tokens ?? '未知'} / 输出 {run.output_tokens ?? '未知'}
+                  </span>
+                  <span>费用未知</span>
+                </div>
+              </details>
+              {run.message && (
+                <p className="run-message">
+                  {run.code} · {run.message}
+                </p>
+              )}
+            </div>
+          )}
+          <div
+            className="chat-composer"
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                event.preventDefault()
+                void send()
               }
-            >
-              {busy ? '正在处理…' : '发送'}
-            </button>
+            }}
+          >
+            {mode === 'goal' && (
+              <details className="goal-setup">
+                <summary>Goal 完成条件与预算（可选）</summary>
+                <label>
+                  完成条件（每行一项；留空沿用目标全文）
+                  <textarea
+                    aria-label="Goal 完成条件"
+                    value={criteria}
+                    onChange={(event) => setCriteria(event.target.value)}
+                    rows={2}
+                  />
+                </label>
+                <GoalBudgetFields value={goalBudget} onChange={setGoalBudget} disabled={busy} />
+              </details>
+            )}
+            <textarea
+              aria-label="输入问题"
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              placeholder={
+                mode === 'goal'
+                  ? '设定一个局部目标，Agent 将持续推进直到完成、停止或需要你答复…'
+                  : mode === 'plan'
+                    ? '讨论目标、约束和实现方案…'
+                    : goalRunning
+                      ? '插入普通问题，回答后继续原 Goal…'
+                      : '描述本次问题或需要实现的代码…'
+              }
+              rows={2}
+              disabled={!selected || !connected}
+            />
+            <div className="composer-footer">
+              <div className="run-mode">
+                <select
+                  aria-label="会话模型"
+                  value={snapshot?.summary.model_id ?? 'glm-5.3-flash'}
+                  title="切换同一会话的后续请求模型；已经发出的请求保持原模型"
+                  disabled={!snapshot || !connected || changingModel}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    if (value === 'glm-5.3-flash' || value === 'deepseek-v4.1-flash')
+                      void changeModel(value)
+                  }}
+                >
+                  {Object.entries(names).map(([id, name]) => (
+                    <option value={id} key={id}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="本次模式"
+                  title="选择本次对话模式"
+                  value={mode}
+                  disabled={busy || blockedByRun || !snapshot}
+                  onChange={(event) =>
+                    setMode(
+                      event.target.value === 'goal'
+                        ? 'goal'
+                        : event.target.value === 'normal'
+                          ? 'normal'
+                          : 'plan'
+                    )
+                  }
+                >
+                  <option value="normal">常规 · 对话与执行</option>
+                  <option value="plan">Plan · 讨论与规划</option>
+                  <option value="goal" disabled={unfinishedGoal}>
+                    Goal · 持续推进
+                  </option>
+                </select>
+                {snapshot && (
+                  <details className="composer-options">
+                    <summary aria-label="会话选项" title="分工、协作与修改成果">
+                      ···
+                    </summary>
+                    <div className="composer-options-body">
+                      <SessionMembership
+                        session={snapshot.summary}
+                        onSelect={onSelect}
+                        onChanged={onRunChange}
+                      />
+                      <Collaboration
+                        key={selected}
+                        session={snapshot.summary}
+                        goal={goal?.session_id === selected ? goal : null}
+                        onSelect={onSelect}
+                        onChanged={onRunChange}
+                      />
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={(event) => {
+                          setShowChanges((value) => !value)
+                          const menu = event.currentTarget.closest('details')
+                          if (menu) menu.open = false
+                        }}
+                      >
+                        {showChanges ? '收起修改成果' : '查看修改成果'}
+                      </button>
+                    </div>
+                  </details>
+                )}
+                {mode === 'plan' && (
+                  <input
+                    aria-label="允许保存的计划文档"
+                    title="留空只读；填写路径仅授权保存该计划文档"
+                    value={planDocument}
+                    disabled={busy || blockedByRun}
+                    onChange={(event) => setPlanDocument(event.target.value)}
+                    placeholder="计划文档路径（可选）"
+                  />
+                )}
+              </div>
+              <div className="composer-actions">
+                {active?.run && (
+                  <button
+                    type="button"
+                    className="stop-run"
+                    disabled={active.run.status === 'stopping'}
+                    onClick={() => active.run && onStop(active.run.run_id)}
+                  >
+                    {active.run.status === 'stopping' ? '正在停止…' : '停止运行'}
+                  </button>
+                )}
+                <button
+                  className="primary"
+                  data-testid="send-message"
+                  type="button"
+                  onClick={() => void send()}
+                  disabled={
+                    (!snapshot?.summary.can_continue &&
+                      snapshot?.summary.issue !== 'UNPAIRED_TOOL_CALLS' &&
+                      !localInterruption) ||
+                    !project?.available ||
+                    !connected ||
+                    busy ||
+                    blockedByRun ||
+                    (mode === 'goal' && unfinishedGoal) ||
+                    !prompt.trim()
+                  }
+                >
+                  {busy
+                    ? '正在处理…'
+                    : mode === 'goal'
+                      ? '启动 Goal'
+                      : goalRunning && mode === 'normal'
+                        ? '发送插话'
+                        : '发送'}
+                </button>
+              </div>
+            </div>
           </div>
-        </form>
+        </div>
       </section>
+      {selected && showChanges && (
+        <Changes key={selected} sessionId={selected} revision={snapshot?.watermark ?? 0} />
+      )}
     </div>
   )
 }
