@@ -8,7 +8,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -75,7 +74,10 @@ class GoalService:
         self.work_loader = work_loader
 
     def driver(self, session_id: str) -> GoalDriver | None:
-        """仅返回仍有实际任务的控制器。 Return only a controller with a live task."""
+        """仅返回仍有实际任务的控制器。
+
+        Return only a controller with a live task.
+        """
         driver = self.drivers.get(session_id)
         return driver if driver and driver.task and not driver.task.done() else None
 
@@ -87,7 +89,7 @@ class GoalService:
         driver = self.driver(log.session_id)
         active = self.sessions.active_for(log.session_id)
         live_seconds = (
-            {active.run_id: max(0.0, time.monotonic() - active.started_at)}
+            {active.run_id: active.active_seconds()}
             if active and active.log.session_id == log.session_id
             else None
         )
@@ -105,6 +107,15 @@ class GoalService:
         )
         if result is None:
             raise AgentError("GOAL_NOT_FOUND", "该会话内没有此 Goal。")
+        if self.sessions.delegations:
+            extra = self.sessions.delegations.live_seconds(log.session_id, goal_id=goal_id)
+            result = result.model_copy(
+                update={
+                    "usage": result.usage.model_copy(
+                        update={"active_seconds": result.usage.active_seconds + extra}
+                    )
+                }
+            )
         return result
 
     def _ensure_idle(self, session_id: str) -> None:
@@ -561,6 +572,12 @@ class GoalService:
                 if self.closing or self.sessions.closing:
                     await self._stop(log, goal_id, "APP_CLOSED", interrupted=True)
                 self.sessions.signal_log(log)
+            if self.sessions.memory and not self.sessions.closing:
+                if states(log.facts)[goal_id].status == "completed":
+                    await self.sessions.memory.schedule(log)
+                else:
+                    self.sessions.memory.pending.discard(log.session_id)
+                    await self.sessions.memory._drain()
 
     async def close(self) -> None:
         """停止控制器及在途工作，绝不在退出清理后拉起下一 Run。

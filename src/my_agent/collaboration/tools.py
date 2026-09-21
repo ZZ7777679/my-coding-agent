@@ -17,6 +17,7 @@ from my_agent.collaboration.types import (
     CollaborationRequest,
     CollaborationRequestParams,
     ScopeText,
+    SendMessageParams,
 )
 from my_agent.errors import AgentError
 from my_agent.models.types import JsonObject, ModelData, ToolCall, ToolResult
@@ -27,13 +28,19 @@ from my_agent.tools.policy import checkpoint
 
 
 class PeerArgs(ModelData):
-    """现有目标会话身份。 Identity of an existing peer session."""
+    """现有目标会话身份。
+
+    Identity of an existing peer session.
+    """
 
     target_session_id: SessionId
 
 
 class ReadPeerArgs(PeerArgs):
-    """读取公开历史所需游标。 Cursor for reading public history."""
+    """读取公开历史所需游标。
+
+    Cursor for reading public history.
+    """
 
     before_seq: Annotated[int, Field(ge=1)] | None = None
     limit: Annotated[int, Field(ge=1, le=100)] = 10
@@ -42,7 +49,10 @@ class ReadPeerArgs(PeerArgs):
 
 
 class RequestPeerArgs(PeerArgs):
-    """职责内协作目标与结果要求。 A scoped assignment and expected result."""
+    """职责内协作目标与结果要求。
+
+    A scoped assignment and expected result.
+    """
 
     objective: ScopeText
     inputs: Annotated[str, Field(max_length=8000)] = ""
@@ -50,8 +60,20 @@ class RequestPeerArgs(PeerArgs):
     mode: RunMode = "plan"
 
 
+class MessagePeerArgs(PeerArgs):
+    """已有角色间的普通补充，不启动独立工作。
+
+    Ordinary supplements between arranged peers do not start separate work.
+    """
+
+    content: ScopeText
+
+
 class ReadCollaborationArgs(ModelData):
-    """读取或按事件等待已有请求。 Read or await an existing request by event."""
+    """读取或按事件等待已有请求。
+
+    Read or await an existing request by event.
+    """
 
     request_id: SessionId
     wait: bool = True
@@ -59,7 +81,10 @@ class ReadCollaborationArgs(ModelData):
 
 
 class ListPeersArgs(ModelData):
-    """列出已有约定，不接受全局搜索范围。 List agreements without global search scope."""
+    """列出已有约定，不接受全局搜索范围。
+
+    List agreements without global search scope.
+    """
 
     cursor: SessionId | None = None
     limit: Annotated[int, Field(ge=1, le=50)] = 20
@@ -90,7 +115,10 @@ def text_page(data: JsonObject, field: str, text: str, offset: int, max_bytes: i
         raise AgentError("INVALID_TOOL_ARGUMENTS", "offset 超出内容长度，请从 0 开始读取。")
 
     def encode_page(end: int) -> str:
-        """每页包含准确续读位置。 Include an exact continuation offset in each page."""
+        """每页包含准确续读位置。
+
+        Include an exact continuation offset in each page.
+        """
         return json.dumps(
             {
                 **data,
@@ -116,7 +144,10 @@ def text_page(data: JsonObject, field: str, text: str, offset: int, max_bytes: i
 
 
 class ListChangeArgs(ModelData):
-    """按本会话或获准来源读取修改索引。 Read own or permitted change metadata."""
+    """按本会话或获准来源读取修改索引。
+
+    Read own or permitted change metadata.
+    """
 
     session_id: SessionId | None = None
     cursor: SessionId | None = None
@@ -147,12 +178,18 @@ class CollaborationTools:
         service: CollaborationService,
         changes: ChangeStore,
     ) -> None:
-        """绑定当前身份，模型不能伪造来源会话。 Bind identity so models cannot forge the sender."""
+        """绑定当前身份，模型不能伪造来源会话。
+
+        Bind identity so models cannot forge the sender.
+        """
         self.context, self.delegate, self.service = context, delegate, service
         self.changes = changes
 
     def is_mutating(self, name: str) -> bool:
-        """标记会投递工作的工具，读取不会启动运行。 Mark delivery tools; reads never start runs."""
+        """标记会投递工作的工具，读取不会启动运行。
+
+        Mark delivery tools; reads never start runs.
+        """
         return name == "request_collaboration" or self.delegate.is_mutating(name)
 
     def definitions(self) -> list[JsonObject]:
@@ -162,6 +199,20 @@ class CollaborationTools:
         """
         result = self.delegate.definitions()
         for name, model, description in (
+            (
+                "send_peer_message",
+                MessagePeerArgs,
+                (
+                    "Send a supplement or question to an arranged peer. Busy peers receive "
+                    "it at their next request boundary; idle peers only receive it. Use "
+                    "request_collaboration to assign work."
+                ),
+            ),
+            (
+                "read_peer_messages",
+                ListPeersArgs,
+                "Read sent and received ordinary peer messages. No model call or execution.",
+            ),
             (
                 "list_changes",
                 ListChangeArgs,
@@ -223,6 +274,8 @@ class CollaborationTools:
         Validate complete arguments and return actual service failures.
         """
         names = {
+            "send_peer_message",
+            "read_peer_messages",
             "list_collaborators",
             "read_session",
             "request_collaboration",
@@ -235,7 +288,42 @@ class CollaborationTools:
         try:
             checkpoint(self.context.stop)
             failed = False
-            if call.name in {"list_changes", "read_change"}:
+            if call.name == "send_peer_message":
+                peer_message = MessagePeerArgs.model_validate(call.arguments)
+                sent = await self.service.send_message(
+                    SendMessageParams(
+                        operation_id=str(
+                            uuid5(
+                                NAMESPACE_URL, f"message:{self.context.run_id}:{call.tool_call_id}"
+                            )
+                        ),
+                        source_session_id=self.context.session_id,
+                        **peer_message.model_dump(),
+                    )
+                )
+                content = json.dumps(
+                    {
+                        "message_id": sent.message_id,
+                        "status": "saved",
+                        "target_session_id": sent.params.target_session_id,
+                    }
+                )
+            elif call.name == "read_peer_messages":
+                peers = ListPeersArgs.model_validate(call.arguments)
+                page_messages = await self.service.messages(
+                    CollaborationPageParams(
+                        session_id=self.context.session_id, **peers.model_dump()
+                    )
+                )
+                content = page_messages.model_dump_json()
+                while (
+                    len(content.encode("utf-8")) > self.context.limits.max_tool_bytes
+                    and len(page_messages.messages) > 1
+                ):
+                    page_messages.messages.pop()
+                    page_messages.next_cursor = page_messages.messages[-1].message_id
+                    content = page_messages.model_dump_json()
+            elif call.name in {"list_changes", "read_change"}:
                 content = await self._change(call)
             elif call.name == "list_collaborators":
                 peers = ListPeersArgs.model_validate(call.arguments)

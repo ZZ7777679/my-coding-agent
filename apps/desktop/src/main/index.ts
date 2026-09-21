@@ -283,6 +283,84 @@ app
         path: selection.canceled ? null : (selection.filePaths[0] ?? null)
       })
     })
+    handle('agent:context-get', 1, async (value) =>
+      (await readyBackend()).call('context.get', validate('ContextParams', value), 'ContextView')
+    )
+    handle('agent:context-configure', 1, async (value) =>
+      (await readyBackend()).call(
+        'context.configure',
+        validate('ConfigureContextParams', value),
+        'ContextView'
+      )
+    )
+    handle('agent:context-compact', 1, async (value) =>
+      (await readyBackend()).call(
+        'context.compact',
+        validate('ContextParams', value),
+        'ContextView'
+      )
+    )
+    handle('agent:context-cancel', 1, async (value) =>
+      (await readyBackend()).call('context.cancel', validate('ContextParams', value), 'ContextView')
+    )
+    handle('agent:context-history', 1, async (value) =>
+      (await readyBackend()).call(
+        'context.history',
+        validate('HistoryParams', value),
+        'HistoryPage'
+      )
+    )
+    handle('agent:memory-list', 1, async (value) =>
+      (await readyBackend()).call('memory.list', validate('ListMemoryParams', value), 'MemoryPage')
+    )
+    handle('agent:memory-save', 1, async (value) =>
+      (await readyBackend()).call('memory.save', validate('SaveMemoryParams', value), 'MemoryPage')
+    )
+    handle('agent:memory-forget', 1, async (value) =>
+      (await readyBackend()).call(
+        'memory.forget',
+        validate('ForgetMemoryParams', value),
+        'MemoryPage'
+      )
+    )
+    handle('agent:memory-configure', 1, async (value) =>
+      (await readyBackend()).call(
+        'memory.configure',
+        validate('ConfigureMemoryParams', value),
+        'MemoryPage'
+      )
+    )
+    handle('agent:memory-maintain', 1, async (value) =>
+      (await readyBackend()).call(
+        'memory.maintain',
+        validate('MaintainMemoryParams', value),
+        'MemoryPage'
+      )
+    )
+    handle('agent:memory-cancel', 1, async (value) =>
+      (await readyBackend()).call('memory.cancel', validate('MemoryParams', value), 'MemoryPage')
+    )
+    handle('agent:peer-message', 1, async (value) =>
+      (await readyBackend()).call(
+        'collaboration.message',
+        validate('SendMessageParams', value),
+        'PeerMessage'
+      )
+    )
+    handle('agent:peer-messages', 1, async (value) =>
+      (await readyBackend()).call(
+        'collaboration.messages',
+        validate('CollaborationPageParams', value),
+        'PeerMessagePage'
+      )
+    )
+    handle('agent:project-relocate', 1, async (value) =>
+      (await readyBackend()).call(
+        'projects.relocate',
+        validate('RelocateProjectParams', value),
+        'ProjectsView'
+      )
+    )
     handle('agent:programs', 1, async (value) =>
       (await readyBackend()).call(
         'programs.list',
@@ -368,6 +446,27 @@ app
         'sessions.assign',
         validate('AssignSessionParams', value),
         'SessionSummary'
+      )
+    )
+    handle('agent:workers-list', 1, async (value) =>
+      (await readyBackend()).call(
+        'workers.list',
+        validate('WorkerSessionParams', value),
+        'WorkerPage'
+      )
+    )
+    handle('agent:workers-configure', 1, async (value) =>
+      (await readyBackend()).call(
+        'workers.configure',
+        validate('ConfigureWorkersParams', value),
+        'WorkerPage'
+      )
+    )
+    handle('agent:workers-control', 1, async (value) =>
+      (await readyBackend()).call(
+        'workers.control',
+        validate('WorkerControlParams', value),
+        'WorkerPage'
       )
     )
     handle('agent:collaboration-list', 1, async (value) =>

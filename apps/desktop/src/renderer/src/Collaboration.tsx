@@ -4,7 +4,8 @@ import type {
   CollaborationPage,
   SessionSummary,
   SessionView,
-  GoalView
+  GoalView,
+  PeerMessagePage
 } from '../../generated/protocol'
 import type { Result } from '../../shared/api'
 import type { WorkspaceSelection } from './TaskNavigation'
@@ -32,6 +33,8 @@ export function Collaboration({
   onChanged: () => void
 }) {
   const [open, setOpen] = useState(false)
+  const [mailbox, setMailbox] = useState<PeerMessagePage | null>(null)
+  const [message, setMessage] = useState('')
   const [page, setPage] = useState<CollaborationPage | null>(null)
   const [peers, setPeers] = useState<SessionSummary[]>([])
   const [target, setTarget] = useState('')
@@ -40,6 +43,7 @@ export function Collaboration({
   const [objective, setObjective] = useState('')
   const [kind, setKind] = useState<'request' | 'handoff' | 'review'>('request')
   const [notes, setNotes] = useState('')
+  const [contextMode, setContextMode] = useState<'isolated' | 'inherit'>('isolated')
   const [transfer, setTransfer] = useState(true)
   const [history, setHistory] = useState<SessionView | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -72,6 +76,8 @@ export function Collaboration({
           cursor,
           limit: 20
         })
+        const inbox = await window.agent.listPeerMessages({ session_id: session.session_id })
+        if (!disposed && inbox.ok) setMailbox(inbox.data)
         if (!disposed) {
           if (result.ok) setPage(result.data)
           else setError(result.error.message)
@@ -174,6 +180,7 @@ export function Collaboration({
       mode,
       kind,
       notes,
+      contextMode,
       transfer,
       transferGoal,
       transferRun
@@ -191,6 +198,7 @@ export function Collaboration({
             kind,
             objective,
             notes,
+            context_mode: contextMode,
             transfer_goal_id: kind === 'handoff' && transfer ? transferGoal : null,
             transfer_run_id: kind === 'handoff' && transfer ? transferRun : null
           }),
@@ -267,6 +275,58 @@ export function Collaboration({
           <p className="muted">
             选择同任务的已有会话并约定分工。读取不调用模型；发送请求后，接收方可用时才开始工作。
           </p>
+          <details>
+            <summary>普通协作消息（空闲时只收件）</summary>
+            <textarea
+              aria-label="协作消息"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+            />
+            <button
+              type="button"
+              disabled={busy || !target || !message.trim()}
+              onClick={() =>
+                void perform(
+                  () =>
+                    window.agent.sendPeerMessage({
+                      operation_id: crypto.randomUUID(),
+                      source_session_id: session.session_id,
+                      target_session_id: target,
+                      content: message
+                    }),
+                  () => setMessage('')
+                )
+              }
+            >
+              发送给所选会话
+            </button>
+            {mailbox?.messages.map((item) => (
+              <details key={item.message_id}>
+                <summary>
+                  {label(item.params.source_session_id)} → {label(item.params.target_session_id)} ·{' '}
+                  {item.delivered_run_id ? '已纳入模型输入' : '已保存待接收'}
+                </summary>
+                <pre>{item.params.content}</pre>
+              </details>
+            ))}
+            {mailbox?.next_cursor && (
+              <button
+                type="button"
+                onClick={() =>
+                  void perform(
+                    () =>
+                      window.agent.listPeerMessages({
+                        session_id: session.session_id,
+                        cursor: mailbox.next_cursor
+                      }),
+                    setMailbox
+                  )
+                }
+              >
+                下一页消息
+              </button>
+            )}
+          </details>
           <label>
             协作会话
             <select
@@ -399,6 +459,20 @@ export function Collaboration({
                     onChange={(event) => setNotes(event.target.value)}
                     placeholder="补充接口约定、未决事项或下一步；已有任务和成果由应用带入。"
                   />
+                </label>
+              )}
+              {kind === 'handoff' && (
+                <label>
+                  接续上下文
+                  <select
+                    value={contextMode}
+                    onChange={(event) =>
+                      setContextMode(event.target.value === 'inherit' ? 'inherit' : 'isolated')
+                    }
+                  >
+                    <option value="isolated">独立：共同事实与交接简报</option>
+                    <option value="inherit">继承：来源的有效上下文快照</option>
+                  </select>
                 </label>
               )}
               {kind === 'handoff' && (

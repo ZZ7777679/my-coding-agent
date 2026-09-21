@@ -1,4 +1,7 @@
-"""工作项、成果引用与 HITL 的严格契约。 Strict work, evidence and HITL contracts."""
+"""工作项、成果引用与 HITL 的严格契约。
+
+Strict work, evidence and HITL contracts.
+"""
 
 from typing import Annotated, Literal, Self
 
@@ -75,6 +78,16 @@ class CriterionResult(ModelData):
     evidence: list[EvidenceRef] = Field(default_factory=list)
 
 
+class SharedDecision(ModelData):
+    """本任务内需共享的决定，明确区分用户要求和建议。
+
+    Task-local decisions distinguish user direction from proposals.
+    """
+
+    text: Description
+    status: Literal["user_confirmed", "proposal"] = "user_confirmed"
+
+
 class WorkReport(ModelData):
     """一次完整工作运行的结构化结果；不会自行改变用户目标或任务状态。
 
@@ -88,6 +101,7 @@ class WorkReport(ModelData):
     criteria: list[CriterionResult] = Field(default_factory=list)
     work_items: list[WorkItem] = Field(default_factory=list)
     question: HumanQuestion | None = None
+    decisions: list[SharedDecision] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def consistent_result(self) -> Self:
@@ -114,6 +128,27 @@ class SourcedWorkItem(ModelData):
     source: EventRef
 
 
+class MemberProgress(ModelData):
+    """各成员最新报告与宿主来源。
+
+    Each member's latest report and host provenance.
+    """
+
+    report: WorkReport
+    source: EventRef
+    updated_at: str
+
+
+class SourcedDecision(ModelData):
+    """共同决定保留聊天来源，不覆盖用户手写字段。
+
+    Shared decisions retain sources without replacing user fields.
+    """
+
+    decision: SharedDecision
+    source: EventRef
+
+
 class TaskWork(ModelData):
     """任务当前工作图与最近一次报告，历史在任务版本日志保留。
 
@@ -123,3 +158,5 @@ class TaskWork(ModelData):
     items: list[SourcedWorkItem] = Field(default_factory=list)
     last_report: WorkReport | None = None
     source: EventRef | None = None
+    members: list[MemberProgress] = Field(default_factory=list)
+    decisions: list[SourcedDecision] = Field(default_factory=list)

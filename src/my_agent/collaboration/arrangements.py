@@ -15,6 +15,7 @@ from my_agent.collaboration.types import (
     CollaborationRequestParams,
     SessionWorkBrief,
 )
+from my_agent.config import load_config
 from my_agent.errors import AgentError
 from my_agent.goals.state import states
 from my_agent.goals.types import GoalControl
@@ -220,6 +221,14 @@ class SessionArrangements:
                 source_run=source_run,
                 changes=await self.worker.call(self.changes.list, log.session_id, None, 20),
                 captured_at=utc_now(),
+                inherited_context=await self.sessions.contexts.capture(
+                    log,
+                    source_run.limits.max_context_bytes
+                    if source_run
+                    else load_config(self.sessions.store.storage.location).run.max_context_bytes,
+                )
+                if params.context_mode == "inherit" and self.sessions.contexts
+                else "",
             )
             # 用户安排本身已明确接收方可读来源；不再要求第二次权限确认。
             # The user's arrangement permits reading the source without a second confirmation.

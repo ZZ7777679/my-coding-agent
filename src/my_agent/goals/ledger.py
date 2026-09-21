@@ -5,6 +5,7 @@ Derive goal ledgers from session facts without a divergent counter store.
 
 from collections.abc import Sequence
 
+from my_agent.delegation.types import DelegatedUsage
 from my_agent.errors import AgentError
 from my_agent.goals.types import GoalBudget, GoalUsage
 from my_agent.sessions.types import (
@@ -35,10 +36,13 @@ def usage(
     relevant = [fact for fact in facts if fact.run_id in accepted and fact.run_id is not None]
     ends = {fact.run_id: fact.data for fact in relevant if isinstance(fact.data, RunFinished)}
     requests = sum(isinstance(fact.data, (RequestStarted, AuxiliaryStarted)) for fact in relevant)
+    delegated = [fact.data for fact in relevant if isinstance(fact.data, DelegatedUsage)]
+    requests += sum(item.requests for item in delegated)
     tokens = [
         fact.data.turn.usage for fact in relevant if isinstance(fact.data, AssistantCommitted)
     ]
     tokens.extend(fact.data.usage for fact in relevant if isinstance(fact.data, AuxiliaryCompleted))
+    tokens.extend(item.usage for item in delegated if item.usage is not None)
     complete_usage = requests == len(tokens)
     measured = 0.0
     reserved = 0.0
@@ -58,8 +62,9 @@ def usage(
             uncertain.append(run_id)
     return GoalUsage(
         requests=requests,
-        tools=sum(isinstance(fact.data, ToolStarted) for fact in relevant),
-        active_seconds=measured,
+        tools=sum(isinstance(fact.data, ToolStarted) for fact in relevant)
+        + sum(item.tools for item in delegated),
+        active_seconds=measured + sum(item.active_seconds for item in delegated),
         reserved_seconds=reserved,
         uncertain_run_ids=uncertain,
         input_tokens=sum(item.input_tokens or 0 for item in tokens)

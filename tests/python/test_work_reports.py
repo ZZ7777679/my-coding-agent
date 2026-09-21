@@ -23,12 +23,18 @@ class ReportModel:
     """
 
     def __init__(self) -> None:
-        """记录请求数，不连接任何 provider。 Count requests without connecting to a provider."""
+        """记录请求数，不连接任何 provider。
+
+        Count requests without connecting to a provider.
+        """
         self.calls = 0
         self.reference = None
 
     def check_available(self) -> None:
-        """离线模型不读取凭据。 The offline model never reads credentials."""
+        """离线模型不读取凭据。
+
+        The offline model never reads credentials.
+        """
 
     async def complete(self, **kwargs):
         """返回完整工具参数，复制结果所带来源，不猜序号。
@@ -112,15 +118,24 @@ class ObserveModel:
     """
 
     def __init__(self) -> None:
-        """保存明确请求次数与收到的上下文。 Store request count and received context."""
+        """保存明确请求次数与收到的上下文。
+
+        Store request count and received context.
+        """
         self.calls = 0
         self.messages = []
 
     def check_available(self) -> None:
-        """本地观察无需凭据。 Local observation requires no credentials."""
+        """本地观察无需凭据。
+
+        Local observation requires no credentials.
+        """
 
     async def complete(self, **kwargs):
-        """返回一次普通回答，不请求新工具。 Return one ordinary answer without requesting tools."""
+        """返回一次普通回答，不请求新工具。
+
+        Return one ordinary answer without requesting tools.
+        """
         self.calls += 1
         self.messages = kwargs["messages"]
         return ModelTurn(
@@ -233,7 +248,9 @@ def test_report_ends_work_and_sync_recovers_without_replaying(tmp_path):
             assert observation.calls == 1
             assert "已创建页面，尚未运行预览。" in observation.messages[0]["content"]
             current = resumed.tasks.store.get(created.task.task_id)
-            assert current.fields.status == "active" and current.revision == 2
+            # 后续只读回合增加成员观察，保留原明确报告及来源。
+            # The read-only turn adds an observation without replacing the explicit report.
+            assert current.fields.status == "active" and current.revision == 3
             assert current.work.items[0].item.work_id == "page"
             assert current.work.source.seq == finish.seq
             assert current.source == "run_report"
@@ -241,7 +258,7 @@ def test_report_ends_work_and_sync_recovers_without_replaying(tmp_path):
             assert not (project / "must-not-run.txt").exists()
             assert (await resumed.sessions.view(session_id)).summary.issue is None
             final_log = resumed.sessions.store.load(session_id)
-            assert sum(isinstance(fact.data, ProgressSynced) for fact in final_log.facts) == 1
+            assert sum(isinstance(fact.data, ProgressSynced) for fact in final_log.facts) == 2
         finally:
             await resumed.close()
 

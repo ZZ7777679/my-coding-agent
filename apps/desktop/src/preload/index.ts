@@ -5,18 +5,18 @@
 
 import { contextBridge, ipcRenderer } from 'electron'
 import type { DesktopAPI, Result } from '../shared/api'
-import type { ProtocolV3 } from '../generated/protocol'
+import type { ProtocolV4 } from '../generated/protocol'
 import { validate } from '../shared/validation'
 
 /**
  * 校验 IPC 结果封装与方法契约，拒绝混合成功和失败字段。
  * Validate the IPC envelope and method contract, rejecting mixed success/error fields.
  */
-async function invoke<K extends keyof ProtocolV3>(
+async function invoke<K extends keyof ProtocolV4>(
   channel: string,
   contract: K,
   args: unknown[] = []
-): Promise<Result<ProtocolV3[K]>> {
+): Promise<Result<ProtocolV4[K]>> {
   const raw: unknown = await ipcRenderer.invoke(channel, ...args)
   if (typeof raw !== 'object' || raw === null || !('ok' in raw)) throw new Error('IPC_INVALID')
   if (raw.ok === false && 'error' in raw && !('data' in raw)) {
@@ -53,6 +53,23 @@ const api: DesktopAPI = {
     invoke('agent:execution-settings', 'EnvironmentCatalog', [params]),
   chooseEnvironmentPath: (params) =>
     invoke('agent:environment-path', 'DirectorySelection', [params]),
+  listWorkers: (params) => invoke('agent:workers-list', 'WorkerPage', [params]),
+  configureWorkers: (params) => invoke('agent:workers-configure', 'WorkerPage', [params]),
+  controlWorker: (params) => invoke('agent:workers-control', 'WorkerPage', [params]),
+  getContext: (params) => invoke('agent:context-get', 'ContextView', [params]),
+  configureContext: (params) => invoke('agent:context-configure', 'ContextView', [params]),
+  compactContext: (params) => invoke('agent:context-compact', 'ContextView', [params]),
+  cancelCompaction: (params) => invoke('agent:context-cancel', 'ContextView', [params]),
+  readHistory: (params) => invoke('agent:context-history', 'HistoryPage', [params]),
+  listMemory: (params) => invoke('agent:memory-list', 'MemoryPage', [params]),
+  saveMemory: (params) => invoke('agent:memory-save', 'MemoryPage', [params]),
+  forgetMemory: (params) => invoke('agent:memory-forget', 'MemoryPage', [params]),
+  configureMemory: (params) => invoke('agent:memory-configure', 'MemoryPage', [params]),
+  maintainMemory: (params) => invoke('agent:memory-maintain', 'MemoryPage', [params]),
+  cancelMemory: (params) => invoke('agent:memory-cancel', 'MemoryPage', [params]),
+  sendPeerMessage: (params) => invoke('agent:peer-message', 'PeerMessage', [params]),
+  listPeerMessages: (params) => invoke('agent:peer-messages', 'PeerMessagePage', [params]),
+  relocateProject: (params) => invoke('agent:project-relocate', 'ProjectsView', [params]),
   listPrograms: (params) => invoke('agent:programs', 'ProgramPage', [params]),
   getProgram: (params) => invoke('agent:program-get', 'ProgramView', [params]),
   stopProgram: (programId) =>

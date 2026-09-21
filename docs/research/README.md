@@ -1,5 +1,7 @@
 # 大模型应用与 Coding Agent 调研
 
+> **2026-09-21 近期保留专项：** [14 压缩后保留什么](14-compaction-retention-comparison.md) 对照 DSH / Pi 固定源码、OpenCode V2、Claude Code 与 Codex 官方说明，区分手动 / 自动选区、原文 / 序列化材料 / 原生压缩项，并纠正第二版草案的未经验证假设；不涉及其他独立源码专题的执行状态。
+
 > 本轮检索截止：**2026-09-16**。十一篇专题分别保存；本文提供阅读入口、跨专题分析和范围说明。针对深度、完整性与时效性的再次检查见[复查与补充记录](00-review-2026-09-16.md)。发布日期、访问深度、维护状态及证据限制见[证据与时效台账](00-evidence-register.md)。执行记录见[调研进度](../progress/research.md)。
 
 > **2026-09-18 专项补充：** [12 上下文压缩](12-context-compaction.md) 对照 Claude Code、Codex、Cursor、Factory、DSH、Pi 与 OpenCode 的压缩机制和效果证据，并连接本项目的 [上下文管理方案](../plan/context-management-plan.md)。该专题有独立截止日期与 [进度记录](../progress/context-compaction-research.md)，不将前十一篇的历史检索日期改写为本次重新核查。

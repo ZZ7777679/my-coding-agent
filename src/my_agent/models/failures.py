@@ -7,6 +7,22 @@ import httpx
 
 from my_agent.errors import AgentError
 from my_agent.models.timing import RequestTiming
+from my_agent.models.types import TokenUsage
+
+
+class ModelResponseError(AgentError):
+    """保留失败响应的结束原因与真实用量，不携带模型原文。
+
+    Retain a failed response's stop reason and usage without carrying response text.
+    """
+
+    def __init__(
+        self, code: str, message: str, usage: TokenUsage, finish_reason: str | None
+    ) -> None:
+        """向调用方交付已观察到的统计。 Pass observed statistics to the caller."""
+        super().__init__(code, message)
+        self.usage = usage
+        self.finish_reason = finish_reason
 
 
 def request_failure(error: BaseException, timing: RequestTiming, timeout: float) -> AgentError:

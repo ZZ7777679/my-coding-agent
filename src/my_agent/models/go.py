@@ -10,7 +10,7 @@ from pydantic import JsonValue, TypeAdapter, ValidationError
 
 from my_agent.credentials import ResolvedCredential
 from my_agent.errors import AgentError, http_error_code
-from my_agent.models.failures import request_failure
+from my_agent.models.failures import ModelResponseError, request_failure
 from my_agent.models.http import ModelHttpPool, public_request_headers
 from my_agent.models.timing import RequestTiming
 from my_agent.models.types import (
@@ -135,11 +135,13 @@ class TurnBuffer:
                     setattr(buffer, key, getattr(buffer, key) + fragment)
         reason = choice.get("finish_reason")
         if reason is not None:
-            if self.finish_reason is not None or reason not in {"stop", "tool_calls"}:
-                raise AgentError(
-                    "MODEL_INCOMPLETE", "模型未完整结束回答或工具参数，请调整预算或重试。"
-                )
-            self.finish_reason = str(reason)
+            if not isinstance(reason, str):
+                raise AgentError("MODEL_PROTOCOL", "模型结束原因不是文本。")
+            if self.finish_reason is not None and self.finish_reason != reason:
+                raise self.failure("MODEL_PROTOCOL", "同一响应返回了不同的结束原因。")
+            # 先读完尾部 usage；重复的相同标记不代表回答不完整。
+            # Consume trailing usage first; identical repeated stop markers are harmless.
+            self.finish_reason = reason
         payload_size = len(self.text.encode("utf-8")) + len(
             json.dumps(self.native_extra, ensure_ascii=False).encode("utf-8")
         )
@@ -157,10 +159,30 @@ class TurnBuffer:
             return "reasoning"
         return None
 
+    def failure(self, code: str, message: str) -> ModelResponseError:
+        """仅携带原因和统计，正文 / 思考不进入异常。
+
+        Carry reasons and statistics, never answer or reasoning text, in failures.
+        """
+        return ModelResponseError(code, message, self.usage, self.finish_reason)
+
     def finish(self) -> ModelTurn:
         """完整结束标记与参数校验通过后才返回回合。 Return only a fully validated finished turn."""
         if self.finish_reason is None:
-            raise AgentError("MODEL_INCOMPLETE", "模型流提前结束，未执行残缺工具调用。")
+            raise self.failure("MODEL_INCOMPLETE", "模型流提前结束，未执行残缺工具调用。")
+        if self.finish_reason == "length":
+            reasoning = self.native_extra.get("reasoning_content")
+            reasoning_chars = len(reasoning) if isinstance(reasoning, str) else 0
+            raise self.failure(
+                "MODEL_OUTPUT_TRUNCATED",
+                "模型因输出额度结束（finish_reason=length）；"
+                f"已收到正文 {len(self.text)} 字符、思考 {reasoning_chars} 字符。"
+                "本次回答未完整完成，可提高输出预算后重试。",
+            )
+        if self.finish_reason == "content_filter":
+            raise self.failure("MODEL_CONTENT_FILTERED", "模型服务以 content_filter 结束响应。")
+        if self.finish_reason not in {"stop", "tool_calls"}:
+            raise self.failure("MODEL_STOP_REASON", "模型返回了未支持的响应结束原因。")
         calls: list[ToolCall] = []
         native_calls: list[JsonValue] = []
         for _, value in sorted(self.calls.items()):
@@ -185,7 +207,7 @@ class TurnBuffer:
         if len({call.tool_call_id for call in calls}) != len(calls):
             raise AgentError("MODEL_PROTOCOL", "模型返回了重复工具 ID。")
         if bool(calls) != (self.finish_reason == "tool_calls"):
-            raise AgentError("MODEL_INCOMPLETE", "模型结束原因与工具调用不一致。")
+            raise self.failure("MODEL_INCOMPLETE", "模型结束原因与工具调用不一致。")
         native: JsonObject = {
             "role": "assistant",
             "content": self.text or None,
@@ -413,8 +435,7 @@ class GoClient:
             if done:
                 break
         if not done:
-            raise AgentError("MODEL_INCOMPLETE", "模型流未正常结束，未执行残缺工具调用。")
-        result = turn.finish()
+            raise turn.failure("MODEL_INCOMPLETE", "模型流未正常结束，未执行残缺工具调用。")
         # DONE 是 SSE 结束，不是 HTTP EOF；有界读完尾部才能复用连接。
         # SSE DONE is not HTTP EOF: drain a bounded tail to permit connection reuse.
         timing.progress = timing.progress.model_copy(update={"response_complete": False})
@@ -428,7 +449,7 @@ class GoClient:
                 else:
                     timing.progress = timing.progress.model_copy(update={"response_complete": True})
         except (TimeoutError, httpx.HTTPError):
-            # 已完成且验证的回合不因可选连接回收失败变成业务失败。
-            # A validated complete turn survives failed optional reuse; context exit closes it.
+            # 可选连接回收失败不改变已收到的结束原因；退出上下文会关闭流。
+            # Optional connection reuse never changes the received stop reason; exit closes it.
             pass
-        return result
+        return turn.finish()

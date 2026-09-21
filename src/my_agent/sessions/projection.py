@@ -5,6 +5,7 @@ Public projections exclude native provider data.
 
 from pydantic import TypeAdapter, ValidationError
 
+from my_agent.delegation.types import DelegatedUsage
 from my_agent.execution.types import ProgramView
 from my_agent.goals.state import TERMINAL_GOALS
 from my_agent.goals.state import views as goal_views
@@ -22,6 +23,7 @@ from my_agent.sessions.types import (
     RunAccepted,
     RunFinished,
     RunView,
+    RunWaitChanged,
     SessionAssigned,
     SessionCreated,
     SessionModelChanged,
@@ -38,7 +40,10 @@ WEB_RESULT: TypeAdapter[WebSearchResult | WebPageResult] = TypeAdapter(
 
 
 def selected_model(log: SessionLog) -> ModelId:
-    """读取最近用户选择；旧会话沿用创建时的模型。 Use the latest choice or the initial model."""
+    """读取最近用户选择；旧会话沿用创建时的模型。
+
+    Use the latest choice or the initial model.
+    """
     for fact in reversed(log.facts):
         if isinstance(fact.data, (SessionCreated, SessionModelChanged)):
             return fact.data.model_id
@@ -72,7 +77,7 @@ def summarize(log: SessionLog, *, active: bool = False, stopping: bool = False) 
         and isinstance(accepted.data, RunAccepted)
         and accepted.run_id is not None
     ):
-        tail = log.facts[accepted.seq :]
+        tail = [fact for fact in log.facts[accepted.seq :] if fact.run_id == accepted.run_id]
         finished = next(
             (fact.data for fact in reversed(tail) if isinstance(fact.data, RunFinished)), None
         )
@@ -81,16 +86,33 @@ def summarize(log: SessionLog, *, active: bool = False, stopping: bool = False) 
         ]
         tokens.extend(fact.data.usage for fact in tail if isinstance(fact.data, AuxiliaryCompleted))
         requests = sum(isinstance(fact.data, (RequestStarted, AuxiliaryStarted)) for fact in tail)
+        delegated = [fact.data for fact in tail if isinstance(fact.data, DelegatedUsage)]
+        requests += sum(item.requests for item in delegated)
+        tokens.extend(item.usage for item in delegated if item.usage is not None)
         usage_known = len(tokens) == requests
         input_known = usage_known and all(item.input_tokens is not None for item in tokens)
         output_known = usage_known and all(item.output_tokens is not None for item in tokens)
         run = RunView(
             run_id=accepted.run_id,
+            waiting_for=next(
+                (
+                    fact.data.request_id
+                    for fact in reversed(tail)
+                    if isinstance(fact.data, RunWaitChanged)
+                ),
+                None,
+            )
+            if active
+            else None,
+            waited_seconds=sum(
+                fact.data.waited_seconds for fact in tail if isinstance(fact.data, RunWaitChanged)
+            ),
             status=("stopping" if stopping else "running")
             if active
             else (finished.status if finished else "interrupted"),
             requests=requests,
-            tools=sum(isinstance(fact.data, ToolStarted) for fact in tail),
+            tools=sum(isinstance(fact.data, ToolStarted) for fact in tail)
+            + sum(item.tools for item in delegated),
             input_tokens=sum(item.input_tokens or 0 for item in tokens) if input_known else None,
             output_tokens=sum(item.output_tokens or 0 for item in tokens) if output_known else None,
             limits=accepted.data.limits,

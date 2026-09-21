@@ -15,6 +15,8 @@ import type {
 import type { Result } from '../../shared/api'
 import { Settings } from './Settings'
 import { Chat } from './Chat'
+import type { KnowledgeUi } from './ContextMemory'
+import type { QuestionMaterial } from './KnowledgeDetails'
 import { TaskNavigation, type WorkspaceSelection } from './TaskNavigation'
 import { TaskPanel } from './TaskPanel'
 import { ProgramCards } from './ProgramCards'
@@ -51,6 +53,8 @@ function FolderIcon({ size = 22 }: { size?: number }) {
  * Display project and settings state, serialize actions and discard stale async responses.
  */
 function App() {
+  const knowledgeCache = useRef(new Map<string, KnowledgeUi>())
+  const materialCache = useRef(new Map<string, QuestionMaterial[]>())
   const [info, setInfo] = useState<InitializeResult | null>(null)
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
   const [busy, setBusy] = useState(false)
@@ -277,7 +281,7 @@ function App() {
           <span data-testid="connection-status">
             {phase === 'loading' ? '正在连接后端' : connected ? '本地后端已连接' : '后端不可用'}
           </span>
-          <small>{info?.app.stage ?? 'M2'}</small>
+          <small>{info?.app.stage ?? 'M3'}</small>
         </div>
       </aside>
 
@@ -354,6 +358,34 @@ function App() {
                         ? '项目选择已保存。重新打开应用时，会恢复到这里。'
                         : '原来的记录已保留。请连接磁盘，或重新选择项目目录。'}
                     </p>
+                    <button
+                      className="text-button"
+                      disabled={busy}
+                      onClick={() => {
+                        void (async () => {
+                          const choice = await window.agent.chooseStartupDirectory({
+                            kind: 'project'
+                          })
+                          if (!choice.ok) {
+                            setNotice(errorNotice(choice.error))
+                            return
+                          }
+                          if (!choice.data.path) return
+                          const result = await window.agent.relocateProject({
+                            project_id: project.project_id,
+                            path: choice.data.path
+                          })
+                          if (result.ok) {
+                            setInfo((current) =>
+                              current ? { ...current, projects: result.data } : current
+                            )
+                            setTreeRevision((value) => value + 1)
+                          } else setNotice(errorNotice(result.error))
+                        })()
+                      }}
+                    >
+                      重新定位目录（保留任务与记忆）
+                    </button>
                     <button
                       className="text-button"
                       onClick={() =>
@@ -446,6 +478,8 @@ function App() {
         </div>
         <div className="chat-page" hidden={view !== 'chat'}>
           <Chat
+            knowledgeCache={knowledgeCache.current}
+            materialCache={materialCache.current}
             visible={view === 'chat'}
             key={selection?.sessionId ?? 'empty'}
             project={project ?? null}

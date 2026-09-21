@@ -1,6 +1,8 @@
 # M3 模块计划三：多会话协作与可选子 Agent
 
-> 日期：2026-09-18。状态：待实施。属于 [M3 总体方案](m3-implementation-plan.md) 的 D 批，复用 A–C 的任务概览、历史回读与记忆。
+> 更新：2026-09-20。首版已接入，实际验收见 [M3 进度](../progress/m3.md)。属于 [M3 总体方案](m3-implementation-plan.md) 的 D 批，复用任务概览、历史回读与基础记忆，不等待可选记忆实验。
+
+实现说明：普通邮箱在下一模型请求送达，不启动空闲会话；需要对方执行时仍使用协作请求。被动等待已持久化并从活跃时间中扣除。内部子 agent 默认关闭，沿既有 SessionService 运行，但不进入用户会话树；源安排共用请求 / 工具 / 活跃秒预算，Goal 插话期间保持归属。继承的是完整工具边界的公开有效上下文，超过容量时提供明确预览与 `read_parent_history` 回读，不复制 provider 私有状态。用户 handoff 同样可选独立 / 继承模式。
 >
 > 研究依据：[联合调研](../research/13-m3-context-memory-collaboration.md) 中的 Claude Projects / Agent Teams、Codex、DSH、Pi、Cursor、OpenHands。本文扩展 M2 协作，不重建 agent 核心。
 

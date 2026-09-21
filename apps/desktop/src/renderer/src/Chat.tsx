@@ -1,5 +1,8 @@
 /** 项目对话：模式、快照、流式预览与工具证据。 Project chat with modes, snapshots and tool evidence. */
 import { useEffect, useRef, useState } from 'react'
+import { ContextMemory, type KnowledgeUi } from './ContextMemory'
+import type { QuestionMaterial } from './KnowledgeDetails'
+import { Workers } from './Workers'
 import type {
   ChatEntry,
   ModelId,
@@ -30,6 +33,8 @@ type Props = {
   onStop: (runId: string) => void
   onRunChange: () => void
   onSelect: (selection: WorkspaceSelection) => void
+  knowledgeCache: Map<string, KnowledgeUi>
+  materialCache: Map<string, QuestionMaterial[]>
 }
 
 const names: Record<ModelId, string> = {
@@ -131,12 +136,30 @@ export function Chat({
   active,
   onStop,
   onRunChange,
-  onSelect
+  onSelect,
+  knowledgeCache,
+  materialCache
 }: Props) {
   const [snapshot, setSnapshot] = useState<SessionView | null>(null)
   const [older, setOlder] = useState<ChatEntry[]>([])
   const [olderCursor, setOlderCursor] = useState<number | null>(null)
   const [prompt, setPrompt] = useState('')
+  const [questionMaterials, setQuestionMaterials] = useState<Record<string, QuestionMaterial[]>>(
+    () => Object.fromEntries(materialCache)
+  )
+  /** 材料选择同步保存在会话缓存中，切换会话不丢选择。
+   * Cache selected materials synchronously across session switches. */
+  function changeMaterials(
+    change: (current: Record<string, QuestionMaterial[]>) => Record<string, QuestionMaterial[]>
+  ) {
+    setQuestionMaterials((current) => {
+      const next = change(current)
+      for (const [sid, materials] of Object.entries(next)) {
+        if (materials !== current[sid]) materialCache.set(sid, materials)
+      }
+      return next
+    })
+  }
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<'normal' | 'plan' | 'goal'>('plan')
@@ -317,6 +340,28 @@ export function Chat({
     )
       return
     const sessionId = selected
+    const submittedMaterials = questionMaterials[sessionId] ?? []
+    // 选中的公开片段作为明确标记的参考输入保存，重启后可从普通历史回读。
+    // Persist selected public excerpts as labeled reference input in ordinary history.
+    const submittedPrompt =
+      prompt +
+      (submittedMaterials.length
+        ? '\n\n本次选择的参考材料（历史资料，不是新执行结果）：\n' +
+          JSON.stringify(
+            submittedMaterials.map(({ title, source, text }) => ({ title, source, text })),
+            null,
+            2
+          )
+        : '')
+    /** 只移除实际发送的快照，保留等待期间新选或更新的材料。
+     * Remove only submitted snapshots, keeping materials added or changed during admission. */
+    const clearSubmittedMaterials = () => {
+      const remaining = (materialCache.get(sessionId) ?? []).filter(
+        (item) => !submittedMaterials.includes(item)
+      )
+      materialCache.set(sessionId, remaining)
+      setQuestionMaterials((current) => ({ ...current, [sessionId]: remaining }))
+    }
     setBusy(true)
     setError('')
     try {
@@ -333,7 +378,7 @@ export function Chat({
         const params: CreateGoalParams = {
           session_id: sessionId,
           goal_id: crypto.randomUUID(),
-          objective: prompt,
+          objective: submittedPrompt,
           criteria: [
             { criterion_id: 'criterion-1', description: first },
             ...descriptions.map((description, index) => ({
@@ -345,13 +390,14 @@ export function Chat({
           limits: null
         }
         const result = await window.agent.createGoal(params)
+        if (result.ok) clearSubmittedMaterials()
         if (currentSelection.current !== sessionId) return
         if (!result.ok) {
           setError(result.error.message)
           return
         }
         setGoal(result.data)
-        setPrompt('')
+        setPrompt((current) => (current === prompt ? '' : current))
         setCriteria('')
         setMode('normal')
         onRunChange()
@@ -360,17 +406,20 @@ export function Chat({
       const result = await window.agent.startRun({
         session_id: sessionId,
         operation_id: crypto.randomUUID(),
-        prompt,
+        prompt: submittedPrompt,
         limits: null,
         mode,
         plan_document: mode === 'plan' && planDocument.trim() ? planDocument.trim() : null
       })
+      if (result.ok) clearSubmittedMaterials()
       if (currentSelection.current !== sessionId) return
       if (!result.ok) {
         setError(result.error.message)
         return
       }
-      setPrompt('')
+      // 接纳回包可能晚于用户开始下一条输入，保留新草稿。
+      // Admission can arrive after the next draft begins; preserve that new input.
+      setPrompt((current) => (current === prompt ? '' : current))
       onRunChange()
     } catch {
       setError('发送状态尚未确认，请先查看活动运行；未自动重发。')
@@ -554,6 +603,33 @@ export function Chat({
         </div>
         <div className="composer-dock">
           {selected && snapshot && (
+            <ContextMemory
+              key={selected}
+              sessionId={selected}
+              revision={snapshot.watermark}
+              connected={connected}
+              cache={knowledgeCache}
+              onAttach={(material) =>
+                changeMaterials((current) => ({
+                  ...current,
+                  [selected]: [
+                    ...(current[selected] ?? []).filter((item) => item.key !== material.key),
+                    material
+                  ]
+                }))
+              }
+            />
+          )}
+          {selected && snapshot && (
+            <Workers
+              key={selected}
+              sessionId={selected}
+              revision={snapshot.watermark}
+              connected={connected}
+              active={!!active}
+            />
+          )}
+          {selected && snapshot && (
             <Goals
               key={selected}
               sessionId={selected}
@@ -570,7 +646,7 @@ export function Chat({
             <div className="run-status-area" data-testid="run-status">
               <details className="run-metrics">
                 <summary aria-label="运行详情">
-                  <span>{statuses[run.status]}</span>
+                  <span>{run.waiting_for ? '等待协作' : statuses[run.status]}</span>
                   {run.status === 'running' && pendingTool && (
                     <span data-testid="tool-progress">
                       {collaborationActivities[pendingTool.call?.name ?? ''] ??
@@ -662,6 +738,28 @@ export function Chat({
                 </label>
                 <GoalBudgetFields value={goalBudget} onChange={setGoalBudget} disabled={busy} />
               </details>
+            )}
+            {selected && (questionMaterials[selected] ?? []).length > 0 && (
+              <div className="question-materials" data-testid="question-materials">
+                <span>本次材料（发送后带入）：</span>
+                {(questionMaterials[selected] ?? []).map((item) => (
+                  <button
+                    type="button"
+                    key={item.key}
+                    title={`移除 ${item.title}`}
+                    onClick={() =>
+                      changeMaterials((current) => ({
+                        ...current,
+                        [selected]: (current[selected] ?? []).filter(
+                          (value) => value.key !== item.key
+                        )
+                      }))
+                    }
+                  >
+                    {item.title} ×
+                  </button>
+                ))}
+              </div>
             )}
             <textarea
               aria-label="输入问题"

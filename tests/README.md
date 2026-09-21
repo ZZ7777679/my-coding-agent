@@ -34,6 +34,25 @@ uv run --locked python scripts/check.py --desktop
 | `support/` | Node 入口定位、共用依赖解析与测试专用模型装配 | 由各测试组引用 | 不单独执行 |
 | `models/` | 显式启用的 Go 双模型真实工具回合 | `.venv\Scripts\python.exe tests/models/go_roundtrip.py --enable-real-models` | 联网、使用现有 Go 凭据；每模型最多 3 请求 / 3 分钟，默认 CI 不运行 |
 
+## M3 定向入口
+
+- 压缩收益修正：`python/test_context_memory.py` 的 `test_old_lookup_outputs_retire_without_changing_current_chain_or_history`、`test_larger_summary_keeps_previous_window_without_stopping_run`、`test_work_status_pages_without_duplicating_or_omitting_references` 覆盖当前工具链保留 / 旧输出回读、检索自我排除、无收益摘要不采用与不重复自动请求、证据分页。沿用隔离模型与数据；桌面 knowledge 场景同时展示压缩前后大小。
+- 记忆实际使用修正：`python/test_context_memory.py::test_memory_correction_uses_relevant_entries_and_actual_program_output` 使用本机隔离 Python 输出与可控模型验证相关候选、原条目修订和后续召回；`test_memory_search_pinning_and_inactive_replacement` 覆盖搜索与固定召回分开、固定条目后台保护和失效替代。状态工具场景同时核对预览字段不会误导模型。均不调用真实模型。
+- `python/test_context_memory.py`：超窗历史分段整理、最新输入保留、原历史不变、摘要预算继承 / 旧默认迁移 / 显式覆盖、截断用量与失败归属、独立整理不阻塞普通运行；记忆改正 / 遗忘 / 启用边界、知识页来源失效、项目重新定位、归档分页与可选摘要故障。`python/test_go.py` 同时覆盖末尾 usage、length / content_filter 区分及重复结束标记兼容；均使用模型或 HTTP 替身。
+- `python/test_context_memory.py::test_context_token_display_uses_latest_main_usage_and_model_window`：单次主请求实际 token 与累计费用分离，模型切换 / 摘要后等待新计量，缺失 usage 不回填旧值。`desktop/knowledge.spec.ts` 同时检查 K / M 与比例显示及压缩后的待计量状态；仍用原隔离桌面场景，不请求真实模型。
+- `python/test_delegation.py`：内部子任务结果、源安排共享预算、停止清理及 Goal 插话期间继续工作。`python/test_collaboration.py` 继续覆盖既有会话队列与等待。
+- M3 增量审查回归沿用 `python/test_delegation.py`：运行中修改开关仍可返回结果、续跑失败不串用旧答案、可选配置损坏不拦普通对话且可显式恢复；`python/test_context_memory.py::test_user_memory_changes_invalidate_other_project_derivatives` 覆盖用户级记忆纠错 / 遗忘跨项目传播，召回范围保持不变。均为隔离离线验证。
+- `python/test_m3_journey.py`：真正空目录中创建 / 修改计数器、本机命令、摘要后接续、协作 README、继承上下文的子任务、新会话使用记忆。只替换模型决策，不替换文件、进程、RPC 或存储。
+- `desktop/knowledge.spec.ts`：实际 Electron 验证上下文 / 历史 / 记忆入口、分层折叠与 Escape、长原文续读 / 分页、关闭及页面切换后的查询 / 草稿 / 材料保留，发送材料和摘要 / 能力重载；先构建，再运行 `npm.cmd --prefix apps/desktop run test:desktop -- knowledge.spec.ts`，仅模型是替身。
+- `python/test_context_memory.py` 同时核对实际请求材料与输入一致、修改记忆不改写旧清单，以及 `get_context_status` 分页和 `compact_context` 使用既有作业 / 预算。不请求真实模型。
+- `models/m3_knowledge_checks.py --enable-real-models`：显式授权后运行，GLM / DeepSeek 的摘要与记忆专项；最多 8 请求 / 600 秒，失败不重试，素材来自隔离合成历史。报告 `.artifacts/tests/m3-models-*/report.json`。不加入普通 CI。
+- 压缩第二版仍由 `python/test_context_memory.py` 验证：手动 / 自动切点、绝对 token 迁移、usage 基准失效、头尾与配对、零模型请求减量及重启恢复、只含最新要求时不发无效摘要。原来“每次新提问自动裁剪”的预期已按新策略替换。
+- 最终方案沿用同一文件：800K 新默认与旧值保留、摘要逐条来源、Unicode 中段命中与精确分页、跨 Run 重复调用 ID 关联、无收益前缀去重（含减量成功组合）与有效输出容量；桌面 knowledge 场景补充从头查看和关联结果折叠；共享契约含新字段与旧响应兼容。
+- `.venv/Scripts/python.exe -X utf8 tests/models/context_compaction_v2_checks.py --enable-real-models`：新版本专项，GLM / DeepSeek 各 1 次摘要 + 2 次主请求（关键词命中历史中段 / 最终回答），总计最多 6 次 / 600 秒。生产 RPC / 工具 / Go，合成准备阶段替换模型；产物 `.artifacts/tests/compaction-v2-live-*/report.json`。可显式 `--resume-report <报告路径>` 接续脚本准备故障，已记录请求仍占用原总预算和原截止时间，不重复已成功摘要。不会在普通 CI 执行。
+- 同入口加 `--scenario mid-turn`：一轮最多 10 次 / 600 秒，用较低的测试触发点让大日志读取后自动压缩，再回读旧错误、完成回答、接收新的端口纠正。完整尾部可超过默认 15K 目标；样本末行放在工具实际交付范围内，避免把源工具首次截断误认作压缩丢失。该模式同样需要显式真实模型授权，不更改产品默认值。
+
+本地最小组合：`.venv/Scripts/python.exe -X utf8 -m pytest tests/python/test_context_memory.py tests/python/test_delegation.py tests/python/test_m3_journey.py -q`。各文件继续被统一检查入口自动发现，是否运行按本次影响选择。
+
 模型能力、首次回复延迟与网络诊断按需显式运行，不加入默认回归：
 
 - `python tests/models/go_latency.py --enable-real-models --case glm-default`：使用生产适配器，记录客户端、TCP / TLS、首事件和首个正文时间；也支持 `deepseek-default`。重复 `--case` 在同一事件循环中连续请求，默认 `--client-mode pooled` 共用生产连接池；`--client-mode fresh` 模拟逐请求新建连接，`--gap-seconds 6` 可验证跨短暂停顿的复用。`--output` 可复用同一个隔离报告目录，累计最多 8 次尝试，每次 60 秒，无重试；请求不含项目内容，报告不含回答 / 思考正文 / 凭据。客户端获取时间包含在诊断首字中，生产指标单独记录模型调用入口口径。

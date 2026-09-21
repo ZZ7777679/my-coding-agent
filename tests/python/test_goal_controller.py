@@ -16,6 +16,7 @@ from my_agent.config import DEFAULTS, resolve_data_dir
 from my_agent.credentials import ResolvedCredential
 from my_agent.errors import AgentError
 from my_agent.goals.types import GoalBudget, GoalControl, GoalCreated, GoalCriterion
+from my_agent.memory.types import MemorySettings
 from my_agent.models.types import ModelTurn, TokenUsage, ToolCall
 from my_agent.rpc.application import RpcApplication
 from my_agent.rpc.dto import CredentialInfo
@@ -63,7 +64,10 @@ def turn(*calls, text=""):
 
 
 def call(name, **arguments):
-    """每次工具调用使用独立身份。 Give each actual tool call a distinct identity."""
+    """每次工具调用使用独立身份。
+
+    Give each actual tool call a distinct identity.
+    """
     return ToolCall(tool_call_id=str(uuid4()), name=name, arguments=arguments)
 
 
@@ -115,7 +119,7 @@ async def create_session(app, project):
     """
     project.mkdir()
     opened = await app.dispatch("projects.open", {"path": str(project)})
-    return await app.dispatch(
+    created = await app.dispatch(
         "tasks.create",
         {
             "operation_id": str(uuid4()),
@@ -124,6 +128,10 @@ async def create_session(app, project):
             "fields": {"title": "Goal test", "goal": "Build small files"},
         },
     )
+    # M2 调度用例只测前台请求；M3 用例显式开启并验证独立维护。
+    # M2 scenarios count foreground requests; M3 tests explicitly enable maintenance.
+    await app.sessions.memory.configure(created.session.session_id, MemorySettings(automatic=False))
+    return created
 
 
 def definition(**budget):
@@ -140,7 +148,10 @@ def definition(**budget):
 
 
 async def control(goals, session_id, action, **fields):
-    """以最新显示版本发送明确用户操作。 Send an explicit control against its latest view."""
+    """以最新显示版本发送明确用户操作。
+
+    Send an explicit control against its latest view.
+    """
     view = (await goals.list(session_id))[-1]
     return await goals.control(
         session_id,
@@ -161,12 +172,18 @@ class SequenceModel:
     """
 
     def __init__(self):
-        """保留请求数和工作步骤。 Keep request counts and work steps."""
+        """保留请求数和工作步骤。
+
+        Keep request counts and work steps.
+        """
         self.calls = 0
         self.step = 0
 
     def check_available(self):
-        """不连接 provider。 Do not connect to a provider."""
+        """不连接 provider。
+
+        Do not connect to a provider.
+        """
 
     async def complete(self, **kwargs):
         """从真实索引报告进度，完整工作单元间不多调总结请求。
@@ -248,15 +265,24 @@ class BlockingTools:
     """
 
     def __init__(self, delegate, entered, release):
-        """保存该运行的委托和测试事件。 Bind the run's delegate and test events."""
+        """保存该运行的委托和测试事件。
+
+        Bind the run's delegate and test events.
+        """
         self.delegate, self.entered, self.release = delegate, entered, release
 
     def definitions(self):
-        """保留真实工具 schema。 Preserve real tool schemas."""
+        """保留真实工具 schema。
+
+        Preserve real tool schemas.
+        """
         return self.delegate.definitions()
 
     def is_mutating(self, name):
-        """保留真实写入分类。 Preserve real mutation classification."""
+        """保留真实写入分类。
+
+        Preserve real mutation classification.
+        """
         return self.delegate.is_mutating(name)
 
     async def execute(self, tool_call):
@@ -357,7 +383,10 @@ def test_goal_progress_without_report_gates_or_argument_abort(tmp_path):
         report = None
 
         def check_available(self):
-            """不连接真实模型。 Never connect to a real model."""
+            """不连接真实模型。
+
+            Never connect to a real model.
+            """
 
         async def complete(self, **kwargs):
             """模型根据反馈修正参数，最后无需补造证据表即可收尾。
@@ -453,15 +482,24 @@ def test_goal_continues_after_missing_file_in_empty_project(tmp_path):
     """
 
     class MissingFileModel:
-        """依据真实缺失与保存结果推进，不隐式重试。 Advance from actual missing/save results."""
+        """依据真实缺失与保存结果推进，不隐式重试。
+
+        Advance from actual missing/save results.
+        """
 
         calls = 0
 
         def check_available(self):
-            """只使用离线模型。 Use an offline model only."""
+            """只使用离线模型。
+
+            Use an offline model only.
+            """
 
         async def complete(self, **kwargs):
-            """读不存在文件、创建文件、报告完成。 Read a missing file, create it, then report."""
+            """读不存在文件、创建文件、报告完成。
+
+            Read a missing file, create it, then report.
+            """
             self.calls += 1
             if self.calls == 1:
                 return turn(call("read_file", path="README.md"))
@@ -507,7 +545,10 @@ def test_goal_continues_after_file_conflict_and_unreadable_change(tmp_path, monk
         change_id = None
 
         def check_available(self):
-            """仅替换模型，不使用网络。 Substitute only the model without network use."""
+            """仅替换模型，不使用网络。
+
+            Substitute only the model without network use.
+            """
 
         async def complete(self, **kwargs):
             """按原任务推进，断言两次局部错误后仍能收到后续请求。
@@ -634,7 +675,10 @@ def test_interrupted_effect_reconciliation_without_replay(tmp_path, tool_name, c
         calls = 0
 
         def check_available(self):
-            """不访问真实模型。 Never access a real model."""
+            """不访问真实模型。
+
+            Never access a real model.
+            """
 
         async def complete(self, **kwargs):
             """恢复后只回答明确的新问题，不重新发送原始调用。
@@ -731,7 +775,10 @@ def test_interrupted_effect_reconciliation_without_replay(tmp_path, tool_name, c
                 """
 
                 def __init__(self, context):
-                    """保留实际工具装配。 Keep actual tool composition."""
+                    """保留实际工具装配。
+
+                    Keep actual tool composition.
+                    """
                     self.delegate = original_factory(context)
 
                 def definitions(self):
@@ -823,12 +870,18 @@ class DecisionModel:
     """
 
     def __init__(self):
-        """保存固定问题身份和实际请求次数。 Keep a stable question identity and request count."""
+        """保存固定问题身份和实际请求次数。
+
+        Keep a stable question identity and request count.
+        """
         self.calls, self.step = 0, 0
         self.question_id = str(uuid4())
 
     def check_available(self):
-        """不读取凭据。 Do not read credentials."""
+        """不读取凭据。
+
+        Do not read credentials.
+        """
 
     async def complete(self, **kwargs):
         """普通问答不会改变步骤；答复后故障不重试，恢复最终报告原目标。
@@ -956,13 +1009,19 @@ class WaitingModel:
     """
 
     def __init__(self):
-        """记录进入和清理事件。 Track entry and cancellation cleanup."""
+        """记录进入和清理事件。
+
+        Track entry and cancellation cleanup.
+        """
         self.entered = asyncio.Event()
         self.cleaned = asyncio.Event()
         self.calls = 0
 
     def check_available(self):
-        """无需网络。 Require no network."""
+        """无需网络。
+
+        Require no network.
+        """
 
     async def complete(self, **kwargs):
         """等待控制器取消，始终发出清理确认。

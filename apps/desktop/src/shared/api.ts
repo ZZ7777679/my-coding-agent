@@ -4,6 +4,26 @@
  */
 
 import type {
+  WorkerSessionParams,
+  ConfigureWorkersParams,
+  WorkerControlParams,
+  WorkerPage,
+  SendMessageParams,
+  PeerMessage,
+  PeerMessagePage,
+  RelocateProjectParams,
+  ConfigureContextParams,
+  ConfigureMemoryParams,
+  ContextParams,
+  ContextView,
+  ForgetMemoryParams,
+  HistoryPage,
+  HistoryParams,
+  ListMemoryParams,
+  MaintainMemoryParams,
+  MemoryPage,
+  MemoryParams,
+  SaveMemoryParams,
   ArrangeSessionWorkParams,
   CollaborationPage,
   CollaborationPageParams,
@@ -81,6 +101,42 @@ export type Result<T> = { ok: true; data: T } | { ok: false; error: OperationErr
  * The renderer's trusted entry point, without filesystem, secret or arbitrary-command access.
  */
 export interface DesktopAPI {
+  /** Read internal workers. */
+  listWorkers(params: WorkerSessionParams): Promise<Result<WorkerPage>>
+  /** Configure optional delegation. */
+  configureWorkers(params: ConfigureWorkersParams): Promise<Result<WorkerPage>>
+  /** Control one internal worker. */
+  controlWorker(params: WorkerControlParams): Promise<Result<WorkerPage>>
+  /** 按已选身份调用本地服务。 Call the local service for selected identities. */
+  sendPeerMessage(params: SendMessageParams): Promise<Result<PeerMessage>>
+  /** 按已选身份调用本地服务。 Call the local service for selected identities. */
+  listPeerMessages(params: CollaborationPageParams): Promise<Result<PeerMessagePage>>
+  /** 按已选身份调用本地服务。 Call the local service for selected identities. */
+  relocateProject(params: RelocateProjectParams): Promise<Result<ProjectsView>>
+
+  /** context.get: 读取或更新本地知识状态。 Read or update local knowledge state. */
+  getContext(params: ContextParams): Promise<Result<ContextView>>
+  /** context.configure: 读取或更新本地知识状态。 Read or update local knowledge state. */
+  configureContext(params: ConfigureContextParams): Promise<Result<ContextView>>
+  /** context.compact: 读取或更新本地知识状态。 Read or update local knowledge state. */
+  compactContext(params: ContextParams): Promise<Result<ContextView>>
+  /** context.cancel: 读取或更新本地知识状态。 Read or update local knowledge state. */
+  cancelCompaction(params: ContextParams): Promise<Result<ContextView>>
+  /** context.history: 读取或更新本地知识状态。 Read or update local knowledge state. */
+  readHistory(params: HistoryParams): Promise<Result<HistoryPage>>
+  /** memory.list: 读取或更新本地知识状态。 Read or update local knowledge state. */
+  listMemory(params: ListMemoryParams): Promise<Result<MemoryPage>>
+  /** memory.save: 读取或更新本地知识状态。 Read or update local knowledge state. */
+  saveMemory(params: SaveMemoryParams): Promise<Result<MemoryPage>>
+  /** memory.forget: 读取或更新本地知识状态。 Read or update local knowledge state. */
+  forgetMemory(params: ForgetMemoryParams): Promise<Result<MemoryPage>>
+  /** memory.configure: 读取或更新本地知识状态。 Read or update local knowledge state. */
+  configureMemory(params: ConfigureMemoryParams): Promise<Result<MemoryPage>>
+  /** memory.maintain: 读取或更新本地知识状态。 Read or update local knowledge state. */
+  maintainMemory(params: MaintainMemoryParams): Promise<Result<MemoryPage>>
+  /** memory.cancel: 读取或更新本地知识状态。 Read or update local knowledge state. */
+  cancelMemory(params: MemoryParams): Promise<Result<MemoryPage>>
+
   /** 读取双方协作状态。 Read collaboration status for both parties. */
   listCollaboration(params: CollaborationPageParams): Promise<Result<CollaborationPage>>
   /** 保存用户协作约定。 Save a user-defined agreement. */

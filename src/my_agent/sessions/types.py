@@ -1,9 +1,13 @@
-"""持久事实与公开视图分离。 Separate durable facts from public session views."""
+"""持久事实与公开视图分离。
+
+Separate durable facts from public session views.
+"""
 
 from typing import Annotated, Literal
 
 from pydantic import Field
 
+from my_agent.delegation.types import DelegatedUsage
 from my_agent.execution.types import ProgramView
 from my_agent.goals.types import (
     GoalControl,
@@ -23,6 +27,7 @@ from my_agent.models.types import (
     ToolCall,
     ToolResult,
 )
+from my_agent.runtime.context import ContextManifest
 from my_agent.runtime.modes import RunMode
 from my_agent.runtime.settings import RunLimits
 from my_agent.sessions.recovery_types import SessionRecovered
@@ -37,7 +42,10 @@ RunStatus = Literal[
 
 
 class SessionCreated(ModelData):
-    """会话的不可变项目与初始模型选择。 Immutable project and initial model selection."""
+    """会话的不可变项目与初始模型选择。
+
+    Immutable project and initial model selection.
+    """
 
     kind: Literal["session.created"] = "session.created"
     project_id: str
@@ -47,6 +55,8 @@ class SessionCreated(ModelData):
     role: str = ""
     scope: str = ""
     initial_mode: RunMode = "plan"
+    worker_owner_session_id: SessionId | None = None
+    inherited_context: str = ""
 
 
 class SessionAssigned(ModelData):
@@ -74,7 +84,10 @@ class SessionModelChanged(ModelData):
 
 
 class RunAccepted(ModelData):
-    """一次原子接纳事实包含输入、幂等标识与预算。 Atomic acceptance with input and budgets."""
+    """一次原子接纳事实包含输入、幂等标识与预算。
+
+    Atomic acceptance with input and budgets.
+    """
 
     kind: Literal["run.accepted"] = "run.accepted"
     operation_id: SessionId
@@ -93,13 +106,17 @@ class RunAccepted(ModelData):
 
 
 class RequestStarted(ModelData):
-    """请求发出前计数并保存消息身份。 Count a request and persist its message ID before sending."""
+    """请求发出前计数并保存消息身份。
+
+    Count a request and persist its message ID before sending.
+    """
 
     kind: Literal["request.started"] = "request.started"
     message_id: SessionId
     model_id: ModelId | None = None
     task_id: SessionId | None = None
     task_revision: Annotated[int, Field(ge=1)] | None = None
+    context: ContextManifest | None = None
 
 
 class AuxiliaryStarted(ModelData):
@@ -112,7 +129,7 @@ class AuxiliaryStarted(ModelData):
     request_id: SessionId
     tool_call_id: str
     model_id: ModelId
-    purpose: Literal["web_search"] = "web_search"
+    purpose: Literal["web_search", "compaction"] = "web_search"
 
 
 class AuxiliaryCompleted(ModelData):
@@ -127,7 +144,10 @@ class AuxiliaryCompleted(ModelData):
 
 
 class AssistantCommitted(ModelData):
-    """完整回合事实，含仅供模型续接的原生字段。 Complete turn with private continuation."""
+    """完整回合事实，含仅供模型续接的原生字段。
+
+    Complete turn with private continuation.
+    """
 
     kind: Literal["assistant.committed"] = "assistant.committed"
     message_id: SessionId
@@ -137,28 +157,51 @@ class AssistantCommitted(ModelData):
 
 
 class ToolStarted(ModelData):
-    """执行前保存工具意图。 Persist tool intent before execution."""
+    """执行前保存工具意图。
+
+    Persist tool intent before execution.
+    """
 
     kind: Literal["tool.started"] = "tool.started"
     call: ToolCall
 
 
 class ToolCompleted(ModelData):
-    """实际工具结果事实。 Fact containing the actual tool result."""
+    """实际工具结果事实。
+
+    Fact containing the actual tool result.
+    """
 
     kind: Literal["tool.completed"] = "tool.completed"
     result: ToolResult
 
 
 class ToolSkipped(ModelData):
-    """明确未执行的调用，与实际完成区分。 Explicitly skipped calls, distinct from completed work."""
+    """明确未执行的调用，与实际完成区分。
+
+    Explicitly skipped calls, distinct from completed work.
+    """
 
     kind: Literal["tool.skipped"] = "tool.skipped"
     result: ToolResult
 
 
+class RunWaitChanged(ModelData):
+    """协作等待是运行内持久事实，区别于 HITL。
+
+    Collaboration waits are durable run facts, distinct from HITL.
+    """
+
+    kind: Literal["run.wait_changed"] = "run.wait_changed"
+    request_id: SessionId | None
+    waited_seconds: Annotated[float, Field(ge=0)] = 0.0
+
+
 class RunFinished(ModelData):
-    """清理后的终态与公开错误。 Terminal state and public error after cleanup."""
+    """清理后的终态与公开错误。
+
+    Terminal state and public error after cleanup.
+    """
 
     kind: Literal["run.finished"] = "run.finished"
     status: Literal["completed", "failed", "cancelled", "budget_exceeded", "interrupted"]
@@ -199,6 +242,8 @@ FactData = Annotated[
     | ToolCompleted
     | ToolSkipped
     | RunFinished
+    | RunWaitChanged
+    | DelegatedUsage
     | ProgressSynced
     | GoalCreated
     | GoalControl
@@ -211,7 +256,10 @@ FactData = Annotated[
 
 
 class Fact(ModelData):
-    """版本化单行记录，序号区别于 RPC ID。 Versioned record with a sequence independent of RPC."""
+    """版本化单行记录，序号区别于 RPC ID。
+
+    Versioned record with a sequence independent of RPC.
+    """
 
     schema_version: Literal[1] = 1
     session_id: SessionId
@@ -222,7 +270,10 @@ class Fact(ModelData):
 
 
 class RunView(ModelData):
-    """公开运行计数；未知用量与未结束清理明确呈现。 Public counts and explicit unknown usage."""
+    """公开运行计数；未知用量与未结束清理明确呈现。
+
+    Public counts and explicit unknown usage.
+    """
 
     run_id: SessionId
     status: RunStatus
@@ -241,10 +292,15 @@ class RunView(ModelData):
     work_id: WorkId | None = None
     method: WorkMethod | None = None
     method_version: str | None = None
+    waiting_for: SessionId | None = None
+    waited_seconds: float = 0.0
 
 
 class SessionSummary(ModelData):
-    """会话列表条目，不泄露原生模型状态。 Session list entry without native provider state."""
+    """会话列表条目，不泄露原生模型状态。
+
+    Session list entry without native provider state.
+    """
 
     session_id: SessionId
     project_id: str
@@ -262,7 +318,10 @@ class SessionSummary(ModelData):
 
 
 class ChatEntry(ModelData):
-    """显式投影的可公开历史记录。 Explicitly projected public history record."""
+    """显式投影的可公开历史记录。
+
+    Explicitly projected public history record.
+    """
 
     seq: int
     run_id: SessionId | None
@@ -289,7 +348,10 @@ class ChatEntry(ModelData):
 
 
 class SessionView(ModelData):
-    """有界快照含历史水位与实时预览。 Bounded snapshot with history watermark and live preview."""
+    """有界快照含历史水位与实时预览。
+
+    Bounded snapshot with history watermark and live preview.
+    """
 
     summary: SessionSummary
     entries: list[ChatEntry]
@@ -305,7 +367,10 @@ class SessionView(ModelData):
 
 
 class SessionPage(ModelData):
-    """项目会话的游标页。 Cursor page of project sessions."""
+    """项目会话的游标页。
+
+    Cursor page of project sessions.
+    """
 
     sessions: list[SessionSummary]
     next_cursor: str | None

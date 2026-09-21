@@ -1,4 +1,7 @@
-"""集中验证连接控制、探测与保存边界，不访问外网。 Test pool controls and probes offline."""
+"""集中验证连接控制、探测与保存边界，不访问外网。
+
+Test pool controls and probes offline.
+"""
 
 import asyncio
 import json
@@ -18,7 +21,10 @@ from my_agent.rpc.dto import CredentialInfo
 
 
 def credential():
-    """只创建哨兵凭据，不读取环境密钥。 Create a sentinel without reading environment secrets."""
+    """只创建哨兵凭据，不读取环境密钥。
+
+    Create a sentinel without reading environment secrets.
+    """
     return ResolvedCredential(
         SecretStr("connection-test-sentinel"),
         CredentialInfo(env_var="OPENCODE_API_KEY", source="process", present=True),
@@ -42,12 +48,18 @@ def test_model_tests_select_targets_and_keep_independent_results(tmp_path):
         streams = []
 
         class Stream(httpx.AsyncByteStream):
-            """在首字后暂停，允许读取中间状态并测试其他模型。 Pause after text for live checks."""
+            """在首字后暂停，允许读取中间状态并测试其他模型。
+
+            Pause after text for live checks.
+            """
 
             closed = False
 
             async def __aiter__(self):
-                """先给正文，再等待完整结束。 Emit text, then wait before finishing."""
+                """先给正文，再等待完整结束。
+
+                Emit text, then wait before finishing.
+                """
                 yield (
                     b'data: {"choices":[{"index":0,"delta":{"content":"OK"},'
                     b'"finish_reason":null}]}\n\n'
@@ -60,11 +72,17 @@ def test_model_tests_select_targets_and_keep_independent_results(tmp_path):
                 )
 
             async def aclose(self):
-                """记录取消和完成时的资源释放。 Track cleanup on cancellation and completion."""
+                """记录取消和完成时的资源释放。
+
+                Track cleanup on cancellation and completion.
+                """
                 self.closed = True
 
         def respond(request):
-            """核对实际目标、无工具短消息及受信请求头。 Verify target, short prompt and headers."""
+            """核对实际目标、无工具短消息及受信请求头。
+
+            Verify target, short prompt and headers.
+            """
             body = json.loads(request.content)
             requests.append(body["model"])
             assert request.method == "POST" and request.url.path == "/zen/go/v1/chat/completions"
@@ -85,7 +103,7 @@ def test_model_tests_select_targets_and_keep_independent_results(tmp_path):
         task = None
         try:
             await app.dispatch(
-                "initialize", {"app_version": "0", "protocol_version": 3, "data_schema_version": 1}
+                "initialize", {"app_version": "0", "protocol_version": 4, "data_schema_version": 1}
             )
             initial = await app.dispatch("connections.get", {})
             assert len(initial.models) == 2 and not requests
@@ -141,15 +159,24 @@ def test_model_tests_select_targets_and_keep_independent_results(tmp_path):
 
 @pytest.mark.parametrize("case", ["timeout", "cancel", "missing"])
 def test_model_probe_failure_cleans_up_without_retries(tmp_path, case):
-    """小数超时、取消和缺凭据保持模型结果明确且不重试。 Bound failures without retries."""
+    """小数超时、取消和缺凭据保持模型结果明确且不重试。
+
+    Bound failures without retries.
+    """
 
     async def scenario():
-        """在等待响应头时中断；缺凭据时禁止请求。 Interrupt headers or reject missing keys."""
+        """在等待响应头时中断；缺凭据时禁止请求。
+
+        Interrupt headers or reject missing keys.
+        """
         entered = asyncio.Event()
         requests = []
 
         async def respond(request):
-            """保持请求挂起直到取消，不发出真实网络请求。 Stall a mock request until cancelled."""
+            """保持请求挂起直到取消，不发出真实网络请求。
+
+            Stall a mock request until cancelled.
+            """
             requests.append(request)
             entered.set()
             await asyncio.Event().wait()
@@ -159,7 +186,7 @@ def test_model_probe_failure_cleans_up_without_retries(tmp_path, case):
         app.http.transport = httpx.MockTransport(respond)
         try:
             await app.dispatch(
-                "initialize", {"app_version": "0", "protocol_version": 3, "data_schema_version": 1}
+                "initialize", {"app_version": "0", "protocol_version": 4, "data_schema_version": 1}
             )
             task = asyncio.create_task(
                 app.dispatch(
@@ -204,11 +231,17 @@ def test_rpc_settings_probe_and_restart_preserve_other_configuration(tmp_path, m
     """
 
     async def scenario():
-        """使用实际 RPC 服务与隔离存储，仅替换 HTTP 传输。 Use real RPC with mock HTTP."""
+        """使用实际 RPC 服务与隔离存储，仅替换 HTTP 传输。
+
+        Use real RPC with mock HTTP.
+        """
         requests = []
 
         def respond(request):
-            """只允许一次目录 GET 的公开头，无生成内容。 Accept catalog GETs without credentials."""
+            """只允许一次目录 GET 的公开头，无生成内容。
+
+            Accept catalog GETs without credentials.
+            """
             requests.append(request)
             assert request.method == "GET" and request.url.path == "/zen/go/v1/models"
             assert "authorization" not in request.headers and not request.content
@@ -221,7 +254,7 @@ def test_rpc_settings_probe_and_restart_preserve_other_configuration(tmp_path, m
         location = resolve_data_dir(str(tmp_path / "data"))
         app = RpcApplication(location, credential(), None)
         app.http.transport = httpx.MockTransport(respond)
-        initialization = {"app_version": "0", "protocol_version": 3, "data_schema_version": 1}
+        initialization = {"app_version": "0", "protocol_version": 4, "data_schema_version": 1}
         try:
             await app.dispatch("initialize", initialization)
             before = await app.dispatch("connections.get", {})
@@ -240,7 +273,10 @@ def test_rpc_settings_probe_and_restart_preserve_other_configuration(tmp_path, m
             old = (location.root / "config.toml").read_bytes()
 
             def fail_save(value):
-                """模拟写入失败，不修改文件。 Fail before changing the configuration file."""
+                """模拟写入失败，不修改文件。
+
+                Fail before changing the configuration file.
+                """
                 raise AgentError("STORAGE_WRITE_FAILED", "sentinel write failure")
 
             with monkeypatch.context() as patch:
@@ -293,17 +329,26 @@ def test_releasing_and_toggling_pool_does_not_interrupt_an_active_answer(tmp_pat
     """
 
     async def scenario():
-        """用受控 SSE 等待模拟未结束回答，避免真实模型请求。 Hold an SSE answer locally."""
+        """用受控 SSE 等待模拟未结束回答，避免真实模型请求。
+
+        Hold an SSE answer locally.
+        """
         finish = asyncio.Event()
         first_text = asyncio.Event()
 
         class Stream(httpx.AsyncByteStream):
-            """在首字之后等待，结束时记录资源清理。 Pause after text and track cleanup."""
+            """在首字之后等待，结束时记录资源清理。
+
+            Pause after text and track cleanup.
+            """
 
             closed = False
 
             async def __aiter__(self):
-                """分开发出首字和合法结束标记。 Emit text separately from completion."""
+                """分开发出首字和合法结束标记。
+
+                Emit text separately from completion.
+                """
                 yield (
                     b'data: {"choices":[{"index":0,"delta":{"content":"ok"},'
                     b'"finish_reason":null}]}\n\n'
@@ -315,7 +360,10 @@ def test_releasing_and_toggling_pool_does_not_interrupt_an_active_answer(tmp_pat
                 )
 
             async def aclose(self):
-                """确认退出响应时关闭流。 Mark response cleanup."""
+                """确认退出响应时关闭流。
+
+                Mark response cleanup.
+                """
                 self.closed = True
 
         stream = Stream()
@@ -329,7 +377,10 @@ def test_releasing_and_toggling_pool_does_not_interrupt_an_active_answer(tmp_pat
         text = []
 
         async def receive(delta):
-            """正文到达后开放切换操作。 Allow controls after text actually arrives."""
+            """正文到达后开放切换操作。
+
+            Allow controls after text actually arrives.
+            """
             text.append(delta)
             first_text.set()
 
@@ -378,13 +429,22 @@ def test_releasing_and_toggling_pool_does_not_interrupt_an_active_answer(tmp_pat
 
 @pytest.mark.parametrize("case", ["timeout", "auth", "invalid"])
 def test_probe_errors_remain_distinct_and_bounded(case):
-    """区分超时、目录要求认证和无效返回，不假称模型通过。 Preserve distinct probe failures."""
+    """区分超时、目录要求认证和无效返回，不假称模型通过。
+
+    Preserve distinct probe failures.
+    """
 
     async def scenario():
-        """只用本地替身制造响应或挂起。 Produce errors or a stalled response locally."""
+        """只用本地替身制造响应或挂起。
+
+        Produce errors or a stalled response locally.
+        """
 
         async def respond(request):
-            """构造指定故障，不访问外网。 Construct the requested failure offline."""
+            """构造指定故障，不访问外网。
+
+            Construct the requested failure offline.
+            """
             if case == "timeout":
                 await asyncio.Event().wait()
             if case == "auth":

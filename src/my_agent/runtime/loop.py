@@ -1,4 +1,7 @@
-"""单次运行循环：预算、完整回合、工具与取消。 Single-run loop with budgets and cancellation."""
+"""单次运行循环：预算、完整回合、工具与取消。
+
+Single-run loop with budgets and cancellation.
+"""
 
 import asyncio
 import json
@@ -7,6 +10,7 @@ from collections.abc import Awaitable, Callable
 from typing import Literal
 from uuid import uuid4
 
+from my_agent.context.tokens import estimate_tokens
 from my_agent.errors import AgentError
 from my_agent.models.types import (
     JsonObject,
@@ -16,7 +20,12 @@ from my_agent.models.types import (
     ToolCall,
     ToolResult,
 )
-from my_agent.runtime.context import SharedContext
+from my_agent.runtime.context import (
+    ContextManifest,
+    PreparedWindow,
+    SharedContext,
+    describe_material,
+)
 from my_agent.runtime.events import RunSink
 from my_agent.runtime.messages import tool_result_message
 from my_agent.runtime.settings import RunLimits
@@ -45,13 +54,19 @@ async def run_loop(
     terminal: Callable[[], bool] | None = None,
     yield_requested: Callable[[], bool] | None = None,
     model_selector: Callable[[], ModelId] | None = None,
+    window_provider: Callable[[list[JsonObject], list[JsonObject]], Awaitable[PreparedWindow]]
+    | None = None,
 ) -> Literal["finished", "yielded"]:
-    """检查预算再请求，完整事实落盘后串行执行工具。 Budget, commit, then execute tools serially."""
+    """检查预算再请求，完整事实落盘后串行执行工具。
+
+    Budget, commit, then execute tools serially.
+    """
     requests = 0
     calls = 0
     context: list[JsonObject] = [{"role": "system", "content": system_prompt}, *messages]
     definitions = tools.definitions()
     while True:
+        definitions = tools.definitions()
         if stop.is_set():
             raise asyncio.CancelledError
         if yield_requested is not None and yield_requested():
@@ -70,10 +85,30 @@ async def run_loop(
                 else ""
             ),
         }
+        materials = []
+        if shared:
+            materials.append(
+                describe_material(
+                    kind="task",
+                    title="任务目标、决定与运行状态",
+                    form="reference",
+                    reason="当前任务共享材料",
+                    source_id=shared.task_id,
+                    revision=shared.revision,
+                    text=shared.text,
+                    read_tool="read_task",
+                )
+            )
+        estimated_input = None
+        if window_provider is not None:
+            prepared = await window_provider(context, definitions)
+            context = prepared.messages
+            materials.extend(prepared.materials)
+            estimated_input = prepared.estimated_input_tokens
         context_bytes = len(json.dumps([context, definitions], ensure_ascii=False).encode("utf-8"))
-        # 只比较真实输入字节与用户预算，不拿 token × 常数推断剩余模型容量。
-        # Compare actual input bytes to the user budget, without token-to-byte capacity guesses.
-        if context_bytes > limits.max_context_bytes:
+        # CLI 和桌面共用 token 上下文服务；仅未注入窗口服务的底层调用沿用字节预算。
+        # CLI and desktop share token policy; only calls without a window provider use byte limits.
+        if window_provider is None and context_bytes > limits.max_context_bytes:
             raise AgentError("BUDGET_CONTEXT", "请求上下文超过字节预算，可在设置中调整后继续。")
         model.check_available()
         message_id = str(uuid4())
@@ -84,6 +119,18 @@ async def run_loop(
                 model_id=request_model,
                 task_id=shared.task_id if shared else None,
                 task_revision=shared.revision if shared else None,
+                context=ContextManifest(
+                    materials=materials,
+                    message_count=len(context),
+                    request_bytes=context_bytes,
+                    tool_names=[
+                        str(function.get("name", ""))
+                        for definition in definitions
+                        if isinstance(function := definition.get("function"), dict)
+                    ],
+                    estimated_input_tokens=estimated_input,
+                    estimated_fixed_tokens=estimate_tokens([context[:1], definitions]),
+                ),
             )
         )
         if stop.is_set():
@@ -98,7 +145,10 @@ async def run_loop(
             await sink.text(identifier, delta)
 
         async def on_progress(progress: ModelProgress, identifier: str = message_id) -> None:
-            """按请求消息 ID 关联阶段。 Correlate phases with their request message."""
+            """按请求消息 ID 关联阶段。
+
+            Correlate phases with their request message.
+            """
             await sink.progress(identifier, progress)
 
         async def on_reasoning(delta: str, identifier: str = message_id) -> None:
@@ -177,25 +227,43 @@ def recoverable_tool_error(call: ToolCall, result: ToolResult) -> bool:
     code = data.get("code")
     # 冲突尚未写入，历史读取没有写入动作；由模型决定后续工具，不自动重放。
     # Conflicts have not written and history reads are read-only; the model chooses the next call.
-    return code in {
-        "INVALID_TOOL_ARGUMENTS",
-        "EDIT_NOT_FOUND",
-        "EDIT_NOT_UNIQUE",
-        "FILE_CHANGED",
-        "FILE_EXISTS",
-        "FILE_NOT_FOUND",
-        "FILE_TYPE",
-        "TOOL_NOT_ALLOWED",
-        "PROGRAM_REQUIRES_SHELL",
-    } or (
-        call.name in {"list_changes", "read_change"}
-        and code
+    return (
+        (
+            call.name
+            in {
+                "read_history",
+                "get_context_status",
+                "read_parent_history",
+                "read_memory",
+                "search_memory",
+            }
+            and code in {"DATA_INVALID", "DATA_UNAVAILABLE", "SESSION_UNAVAILABLE"}
+        )
+        or code
         in {
-            "CHANGE_DAMAGED",
-            "CHANGE_UNAVAILABLE",
-            "CHANGE_STORAGE_INVALID",
-            "CHANGE_ID_INVALID",
+            "INVALID_TOOL_ARGUMENTS",
+            "EDIT_NOT_FOUND",
+            "EDIT_NOT_UNIQUE",
+            "FILE_CHANGED",
+            "FILE_EXISTS",
+            "FILE_NOT_FOUND",
+            "FILE_TYPE",
+            "TOOL_NOT_ALLOWED",
+            "PROGRAM_REQUIRES_SHELL",
+            "MEMORY_NOT_FOUND",
+            "MEMORY_EDITED",
+            "HISTORY_UNAVAILABLE",
         }
+        or (
+            call.name in {"list_changes", "read_change"}
+            and code
+            in {
+                "CHANGE_DAMAGED",
+                "CHANGE_UNAVAILABLE",
+                "CHANGE_STORAGE_INVALID",
+                "CHANGE_ID_INVALID",
+            }
+        )
     )
 
 

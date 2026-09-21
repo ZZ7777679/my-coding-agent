@@ -283,6 +283,8 @@ class ProgramView(ModelData):
     Bounded output page and actual process state."""
 
     summary: ProgramSummary
+    archive_id: str | None = None
+    archive_read: str | None = None
     output: list[OutputChunk]
     next_seq: int
     truncated: bool
@@ -327,13 +329,19 @@ class GetProgramParams(ProgramParams):
 
 
 class ChooseEnvironmentPathParams(ModelData):
-    """选择已有环境入口。 Select existing environment paths through a trusted picker."""
+    """选择已有环境入口。
+
+    Select existing environment paths through a trusted picker.
+    """
 
     kind: Literal["executable", "directory"]
 
 
 class ExecutionStatus(ModelData):
-    """退出前展示实际持有的工作。 Show owned work before application shutdown."""
+    """退出前展示实际持有的工作。
+
+    Show owned work before application shutdown.
+    """
 
     programs: list[ProgramSummary]
     probe_count: int

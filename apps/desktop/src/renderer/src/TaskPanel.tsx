@@ -300,6 +300,24 @@ export function TaskPanel({
           </form>
           {task && (
             <section className="task-session-create">
+              <details>
+                <summary>成员进展与共享决定</summary>
+                {(task.work?.members ?? []).map((member) => (
+                  <div key={member.source.session_id}>
+                    <p>
+                      会话 {member.source.session_id.slice(0, 8)} · {member.updated_at}
+                    </p>
+                    <p>{member.report.summary}</p>
+                    <p className="muted">{member.report.next_action}</p>
+                  </div>
+                ))}
+                {(task.work?.decisions ?? []).map((item, index) => (
+                  <p key={`${item.source.session_id}-${item.source.seq}-${index}`}>
+                    {item.decision.status === 'proposal' ? '建议' : '已确认决定'}：
+                    {item.decision.text}
+                  </p>
+                ))}
+              </details>
               <h2>任务会话</h2>
               <p className="muted">新会话会获得上面的已保存信息；其他会话完整历史尚不自动共享。</p>
               <button

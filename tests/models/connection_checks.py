@@ -1,4 +1,7 @@
-"""显式启用的双模型连接测试验收，最多各一次。 Opt-in checks limited to one call per model."""
+"""显式启用的双模型连接测试验收，最多各一次。
+
+Opt-in checks limited to one call per model.
+"""
 
 import argparse
 import asyncio
@@ -30,7 +33,7 @@ async def check(root: Path) -> bool:
     report_path = root / "report.json"
     try:
         initialized = await app.dispatch(
-            "initialize", {"app_version": "0", "protocol_version": 3, "data_schema_version": 1}
+            "initialize", {"app_version": "0", "protocol_version": 4, "data_schema_version": 1}
         )
         assert isinstance(initialized, InitializeResult)
         for model in initialized.config.allowed_models:
@@ -53,7 +56,10 @@ async def check(root: Path) -> bool:
 
 
 def main() -> None:
-    """要求显式启用，并为每次运行创建独立产物目录。 Require opt-in and isolate each run."""
+    """要求显式启用，并为每次运行创建独立产物目录。
+
+    Require opt-in and isolate each run.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--enable-real-models", action="store_true", required=True)
     parser.parse_args()

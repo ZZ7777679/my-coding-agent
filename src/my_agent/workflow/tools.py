@@ -78,6 +78,7 @@ class WorkStatusArgs(ModelData):
     """
 
     before_seq: Annotated[int, Field(ge=1)] | None = None
+    limit: Annotated[int, Field(ge=1)] = 20
 
 
 class WorkflowTools:
@@ -168,7 +169,9 @@ class WorkflowTools:
                 WorkStatusArgs,
                 "Read this session's durable evidence references and current goal definition. "
                 "References are optional; when citing one, copy its session_id, run_id and seq. "
-                "This is an index; tool content is already in your conversation history.",
+                "This is a paged index (default limit=20); pass returned before_seq to get older "
+                "references. Tool content is already in history. Do not load the whole index "
+                "just to answer a question about context or report progress.",
             ),
             (
                 "report_work",
@@ -199,7 +202,7 @@ class WorkflowTools:
             )
         return result
 
-    def _status(self, before_seq: int | None) -> JsonObject:
+    def _status(self, before_seq: int | None, limit: int) -> JsonObject:
         """返回有界来源索引；不复制 provider 原生字段或伪造执行结果。
 
         Return a bounded evidence index without native provider state or invented results.
@@ -259,6 +262,9 @@ class WorkflowTools:
                 item.update(kind="user", operation_id=data.operation_id)
             else:
                 continue
+            if len(evidence) >= limit:
+                result["before_seq"] = evidence[-1]["seq"]
+                break
             candidate: JsonObject = {**result, "evidence": [*evidence, item]}
             if (
                 len(json.dumps(candidate, ensure_ascii=False).encode("utf-8"))
@@ -286,7 +292,7 @@ class WorkflowTools:
             checkpoint(self.context.stop)
             if call.name == "read_work_status":
                 args = WorkStatusArgs.model_validate(call.arguments)
-                data = await self.worker.call(self._status, args.before_seq)
+                data = await self.worker.call(self._status, args.before_seq, args.limit)
             else:
                 if self.answer_only:
                     raise AgentError(

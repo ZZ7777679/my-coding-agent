@@ -14,7 +14,11 @@ const fields: {
   { key: 'max_seconds', label: '总运行时间（秒）', min: 1 },
   { key: 'request_timeout_seconds', label: '单请求总时限（秒）', min: 1 },
   { key: 'max_output_tokens', label: '输出 token 上限', min: 1 },
-  { key: 'max_context_bytes', label: '估算上下文容量（字节）', min: 4096 },
+  {
+    key: 'max_context_bytes',
+    label: '材料预览与辅助请求字节预算（主对话按 token 管理）',
+    min: 4096
+  },
   { key: 'max_response_bytes', label: '单回合内容容量（字节）', min: 1024, max: 262144 },
   { key: 'max_file_bytes', label: '单文件读取容量（字节）', min: 1024 },
   { key: 'max_tool_bytes', label: '工具结果容量（字节）', min: 1024, max: 131072 },

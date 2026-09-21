@@ -1,4 +1,7 @@
-"""短控制请求与长运行分离的 RPC 装配。 RPC composition separating control from long runs."""
+"""短控制请求与长运行分离的 RPC 装配。
+
+RPC composition separating control from long runs.
+"""
 
 import asyncio
 from contextlib import ExitStack
@@ -16,9 +19,16 @@ from my_agent.collaboration.types import (
     CollaborationRequestParams,
     ConnectSessionsParams,
     ControlCollaborationParams,
+    SendMessageParams,
 )
 from my_agent.config import DEFAULTS, MODEL_DEFAULTS, DataLocation, ModelConfig, load_config
+from my_agent.context.types import ConfigureContextParams, ContextParams, HistoryParams
 from my_agent.credentials import ResolvedCredential, resolve_credential
+from my_agent.delegation.types import (
+    ConfigureWorkersParams,
+    WorkerControlParams,
+    WorkerSessionParams,
+)
 from my_agent.diagnostics import diagnose
 from my_agent.errors import AgentError
 from my_agent.execution.environments import EnvironmentStore
@@ -38,6 +48,15 @@ from my_agent.execution.types import (
 )
 from my_agent.goals.dto import ControlGoalParams, CreateGoalParams, ListGoalsParams
 from my_agent.goals.types import GoalControl, GoalCreated
+from my_agent.memory.types import (
+    ConfigureMemoryParams,
+    ForgetMemoryParams,
+    ListMemoryParams,
+    MaintainMemoryParams,
+    MemoryParams,
+    MemoryQuery,
+    SaveMemoryParams,
+)
 from my_agent.models.connection_probe import probe_connection
 from my_agent.models.connections import (
     ConnectionProbeParams,
@@ -62,6 +81,7 @@ from my_agent.rpc.dto import (
     ListSessionsParams,
     OpenProjectById,
     OpenProjectParams,
+    RelocateProjectParams,
     SessionParams,
     StartRunParams,
     UpdateConfigParams,
@@ -74,7 +94,10 @@ from my_agent.worker import BusinessWorker
 
 
 class RpcApplication:
-    """拥有业务写锁与服务，控制请求按需进入业务线程。 Own the writer lock and composed services."""
+    """拥有业务写锁与服务，控制请求按需进入业务线程。
+
+    Own the writer lock and composed services.
+    """
 
     def __init__(
         self, location: DataLocation, credential: ResolvedCredential, model: str | None
@@ -108,7 +131,10 @@ class RpcApplication:
         self.connection_control_lock = asyncio.Lock()
 
     async def test_connection(self, timeout_seconds: float) -> ConnectionStatus:
-        """互斥手动探测，不阻塞模型取消或状态读取。 Serialize probes, not run cancellation."""
+        """互斥手动探测，不阻塞模型取消或状态读取。
+
+        Serialize probes, not run cancellation.
+        """
         if self.connection_probe_lock.locked():
             raise AgentError("NETWORK_PROBE_BUSY", "已有连接测试正在运行，请等待结果。")
         async with self.connection_probe_lock:
@@ -151,13 +177,30 @@ class RpcApplication:
                     app=AppInfo(
                         name=DEFAULTS["app_name"],
                         app_version=__version__,
-                        protocol_version=3,
-                        stage="M2",
+                        protocol_version=4,
+                        stage="M3",
                     ),
                     storage=self.storage.info(),
                     config=config.public(self.credential.info),
                     projects=self.projects.view(),
                     capabilities=[
+                        "workers.list",
+                        "workers.configure",
+                        "workers.control",
+                        "collaboration.message",
+                        "collaboration.messages",
+                        "projects.relocate",
+                        "context.get",
+                        "context.configure",
+                        "context.compact",
+                        "context.cancel",
+                        "context.history",
+                        "memory.list",
+                        "memory.save",
+                        "memory.forget",
+                        "memory.configure",
+                        "memory.maintain",
+                        "memory.cancel",
                         "initialize",
                         "projects.open",
                         "projects.list",
@@ -332,6 +375,11 @@ class RpcApplication:
                     else {"path": selection.path}
                 ),
             )
+        if method == "projects.relocate":
+            relocation = RelocateProjectParams.model_validate(params)
+            return await self.worker.call(
+                self.projects.relocate, relocation.project_id, relocation.path
+            )
         if method == "projects.list":
             EmptyParams.model_validate(params)
             return await self.worker.call(self.projects.view)
@@ -412,6 +460,94 @@ class RpcApplication:
         if method == "sessions.list":
             listing = ListSessionsParams.model_validate(params)
             return await self.sessions.list(listing.project_id, listing.cursor, listing.limit)
+        if method in {
+            "context.get",
+            "context.configure",
+            "context.compact",
+            "context.cancel",
+            "context.history",
+        }:
+            contexts = self.sessions.contexts
+            if contexts is None:
+                raise AgentError("CONTEXT_UNAVAILABLE", "上下文服务不可用。")
+            if method == "context.configure":
+                context_options = ConfigureContextParams.model_validate(params)
+                return await contexts.configure(
+                    context_options.session_id, context_options.settings
+                )
+            if method == "context.history":
+                history_options = HistoryParams.model_validate(params)
+                log = await self.sessions._load(history_options.session_id)
+                return await self.worker.call(contexts.store.history, log, history_options)
+            context_id = ContextParams.model_validate(params).session_id
+            if method == "context.compact":
+                return await contexts.start(context_id)
+            if method == "context.cancel":
+                return await contexts.cancel(context_id)
+            return await contexts.view(context_id)
+        if method.startswith("memory."):
+            memory = self.sessions.memory
+            if memory is None:
+                raise AgentError("MEMORY_UNAVAILABLE", "记忆服务不可用。")
+            if method == "memory.list":
+                memory_query = ListMemoryParams.model_validate(params)
+                return await memory.page(
+                    memory_query.session_id,
+                    MemoryQuery.model_validate(memory_query.model_dump(exclude={"session_id"})),
+                )
+            if method == "memory.save":
+                save_memory = SaveMemoryParams.model_validate(params)
+                return await memory.save(
+                    save_memory.session_id, save_memory.fields, save_memory.memory_id
+                )
+            if method == "memory.forget":
+                forget_memory = ForgetMemoryParams.model_validate(params)
+                return await memory.forget(forget_memory.session_id, forget_memory.memory_id)
+            if method == "memory.configure":
+                configure_memory = ConfigureMemoryParams.model_validate(params)
+                return await memory.configure(
+                    configure_memory.session_id, configure_memory.settings
+                )
+            if method == "memory.maintain":
+                maintain_memory = MaintainMemoryParams.model_validate(params)
+                return await memory.start(
+                    maintain_memory.session_id,
+                    maintain_memory.after_seq,
+                    maintain_memory.source_ids,
+                    maintain_memory.title,
+                )
+            if method == "memory.cancel":
+                return await memory.cancel(MemoryParams.model_validate(params).session_id)
+        if method in {"collaboration.message", "collaboration.messages"}:
+            service = self.sessions.collaboration
+            if service is None:
+                raise AgentError("COLLABORATION_UNAVAILABLE", "协作服务未接入。")
+            if method == "collaboration.message":
+                return await service.send_message(SendMessageParams.model_validate(params))
+            return await service.messages(CollaborationPageParams.model_validate(params))
+        if method in {"workers.list", "workers.configure", "workers.control"}:
+            delegation = self.sessions.delegations
+            if delegation is None:
+                raise AgentError("WORKERS_UNAVAILABLE", "内部子任务服务不可用。")
+            if method == "workers.configure":
+                options_workers = ConfigureWorkersParams.model_validate(params)
+                return await delegation.configure(
+                    options_workers.session_id, options_workers.settings
+                )
+            if method == "workers.control":
+                control_worker = WorkerControlParams.model_validate(params)
+                if control_worker.action == "stop":
+                    return await delegation.stop(
+                        control_worker.session_id, control_worker.worker_id
+                    )
+                active = self.sessions.active_for(control_worker.session_id)
+                if active is None:
+                    raise AgentError("RUN_NOT_ACTIVE", "请在当前会话明确发起接续，再安排子任务。")
+                await delegation.continue_work(
+                    active, control_worker.worker_id, control_worker.prompt
+                )
+                return await delegation.page(control_worker.session_id)
+            return await delegation.page(WorkerSessionParams.model_validate(params).session_id)
         if method in {"sessions.get", "sessions.attach"}:
             get = GetSessionParams.model_validate(params)
             if method == "sessions.attach":
@@ -513,7 +649,10 @@ class RpcApplication:
         raise AgentError("METHOD_NOT_FOUND", "不支持该方法。")
 
     async def close(self) -> None:
-        """清理活动运行后在原业务线程释放写锁。 Clean up runs before releasing the writer lock."""
+        """清理活动运行后在原业务线程释放写锁。
+
+        Clean up runs before releasing the writer lock.
+        """
         try:
             await self.sessions.close()
         finally:

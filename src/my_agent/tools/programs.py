@@ -219,6 +219,9 @@ class ProjectTools:
                 # 保留状态和关联 ID，只缩减日志；完整有界日志仍在运行卡片。
                 # Keep status and identity while shortening logs; the card retains the bounded tail.
                 data = json.loads(content)
+                if self.context.archive_output:
+                    data["archive_id"] = await self.context.archive_output(content)
+                    data["archive_read"] = "read_history(artifact_id=archive_id, offset=0)"
                 if "output" in data:
                     while (
                         data["output"]

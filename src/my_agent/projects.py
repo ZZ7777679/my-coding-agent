@@ -153,6 +153,45 @@ class ProjectService:
             recent_projects=[self.summary(item) for item in ordered[:20]],
         )
 
+    def relocate(self, project_id: str, path: str) -> ProjectsView:
+        """用户明确重新定位旧身份，不按名称猜测或合并项目。
+
+        Explicitly relocate an identity, never guess or merge projects by name.
+        """
+        self.storage.require_writer()
+        index = self.read()
+        current = next((item for item in index.projects if item.project_id == project_id), None)
+        if current is None:
+            raise AgentError("PROJECT_NOT_FOUND", "找不到原项目记录。")
+        display = Path(path).absolute()
+        canonical, identity = inspect_project(display, self.storage.root)
+        if any(
+            item.project_id != project_id and item.identity == identity for item in index.projects
+        ):
+            raise AgentError(
+                "PROJECT_ALREADY_REGISTERED", "此目录已经登记为另一项目，请选择对应项目。"
+            )
+        replacement = current.model_copy(
+            update={
+                "path": str(display),
+                "canonical_path": str(canonical),
+                "identity": identity,
+                "name": display.name or str(display),
+                "last_opened_at": utc_now(),
+            }
+        )
+        updated = index.model_copy(
+            update={
+                "last_active_project_id": project_id,
+                "projects": [
+                    replacement if item.project_id == project_id else item
+                    for item in index.projects
+                ],
+            }
+        )
+        write_document(self.path, updated)
+        return self.view()
+
     def open(self, *, path: str | None = None, project_id: str | None = None) -> ProjectsView:
         """验证选择、复用目录身份并原子保存索引；不初始化项目 Git 或修改代码。
 

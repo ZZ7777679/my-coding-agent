@@ -1,4 +1,7 @@
-"""CLI 与桌面共用的会话、运行与订阅服务。 Shared session, run and subscription service."""
+"""CLI 与桌面共用的会话、运行与订阅服务。
+
+Shared session, run and subscription service.
+"""
 
 import asyncio
 import logging
@@ -11,6 +14,7 @@ from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 from my_agent.config import load_config
+from my_agent.delegation.types import DelegatedUsage
 from my_agent.errors import AgentError
 from my_agent.goals.ledger import check_budget, usage
 from my_agent.goals.state import states
@@ -33,6 +37,7 @@ from my_agent.sessions.types import (
     RequestStarted,
     RunAccepted,
     RunFinished,
+    RunWaitChanged,
     SessionAssigned,
     SessionCreated,
     SessionModelChanged,
@@ -49,13 +54,19 @@ from my_agent.workflow.types import WorkMethod
 
 if TYPE_CHECKING:
     from my_agent.collaboration.service import CollaborationService
+    from my_agent.context.service import ContextService
+    from my_agent.delegation.service import DelegationService
     from my_agent.goals.service import GoalService
+    from my_agent.memory.service import MemoryService
     from my_agent.sessions.recovery import RecoveryService
 
 
 @dataclass
 class ActiveRun:
-    """单个运行的内存状态；文本预览不等于已提交事实。 Live state; preview text is not durable."""
+    """单个运行的内存状态；文本预览不等于已提交事实。
+
+    Live state; preview text is not durable.
+    """
 
     log: SessionLog
     run_id: str
@@ -81,6 +92,18 @@ class ActiveRun:
     yield_requested: bool = False
     budget_changed: asyncio.Event = field(default_factory=asyncio.Event)
     collaboration_id: str | None = None
+    wait_started_at: float | None = None
+    waited_seconds: float = 0.0
+    waiting_for: str | None = None
+    dependency_error: AgentError | None = None
+
+    def active_seconds(self) -> float:
+        """扣除真实被动等待，多个并行工作各算自身活跃时间。
+
+        Exclude passive waits; concurrent work measures its own active time.
+        """
+        end = self.wait_started_at if self.wait_started_at is not None else time.monotonic()
+        return max(0.0, end - self.started_at - self.waited_seconds)
 
     def progress_snapshot(self) -> ModelProgress | None:
         """只推进本地等待时钟，不伪造新的收包或模型活动。
@@ -144,6 +167,9 @@ class SessionService:
         self.goals: GoalService | None = None
         self.recovery: RecoveryService | None = None
         self.collaboration: CollaborationService | None = None
+        self.contexts: ContextService | None = None
+        self.memory: MemoryService | None = None
+        self.delegations: DelegationService | None = None
         self.closing = False
 
     def active_for(self, session_id: str) -> ActiveRun | None:
@@ -162,6 +188,8 @@ class SessionService:
             return [
                 summarize(active.log, active=True, stopping=active.cancel.is_set())
                 for active in self.active_runs.values()
+                if not isinstance(active.log.facts[0].data, SessionCreated)
+                or active.log.facts[0].data.worker_owner_session_id is None
             ]
 
     def signal_log(self, log: SessionLog) -> None:
@@ -191,7 +219,10 @@ class SessionService:
         return lambda: self.listeners.remove(listener) if listener in self.listeners else None
 
     def _signal(self, active: ActiveRun, kind: str = "changed", text: str = "") -> None:
-        """发布轻量事件；接收端负责有界队列与缺口重同步。 Publish signals for bounded consumers."""
+        """发布轻量事件；接收端负责有界队列与缺口重同步。
+
+        Publish signals for bounded consumers.
+        """
         signal = SessionSignal.model_validate(
             {
                 "session_id": active.log.session_id,
@@ -224,7 +255,10 @@ class SessionService:
         return await self.worker.call(self.store.load, session_id)
 
     async def validate_project(self, project_id: str) -> Path:
-        """重新核实登记身份，不把当前 cwd 当项目。 Revalidate registered identity, never use cwd."""
+        """重新核实登记身份，不把当前 cwd 当项目。
+
+        Revalidate registered identity, never use cwd.
+        """
         index = await self.worker.call(self.projects.read)
         record = next((p for p in index.projects if p.project_id == project_id), None)
         if record is None:
@@ -246,8 +280,13 @@ class SessionService:
         task_id: str | None = None,
         role: str = "",
         scope: str = "",
+        worker_owner_session_id: str | None = None,
+        inherited_context: str = "",
     ) -> SessionSummary:
-        """验证项目后保存会话头，不调用模型。 Validate the project and persist a session header."""
+        """验证项目后保存会话头，不调用模型。
+
+        Validate the project and persist a session header.
+        """
         async with self.lock:
             await self.validate_project(project_id)
             identity = session_id or str(uuid4())
@@ -259,6 +298,8 @@ class SessionService:
                 role=role,
                 scope=scope,
                 initial_mode="normal",
+                worker_owner_session_id=worker_owner_session_id,
+                inherited_context=inherited_context,
             )
             if self.store.path(identity).exists():
                 existing = await self._load(identity)
@@ -410,7 +451,11 @@ class SessionService:
                     header = log.facts[0].data if log.facts else None
                     if not isinstance(header, SessionCreated):
                         unavailable += 1
-                    if isinstance(header, SessionCreated) and header.project_id == project_id:
+                    if (
+                        isinstance(header, SessionCreated)
+                        and header.project_id == project_id
+                        and header.worker_owner_session_id is None
+                    ):
                         size = len(summarize(log).model_dump_json().encode("utf-8"))
                         # 分页受传输帧容量约束，不限制可创建的会话数量。
                         # Bound page bytes for transport, never the number of available sessions.
@@ -593,6 +638,12 @@ class SessionService:
                     summary.run.run_id,
                 )
             run_id = str(uuid4())
+            if self.memory:
+                await self.memory.observe(log)
+            if self.delegations:
+                await self.delegations.prepare(log.session_id, required=False)
+                if goal and goal.goal_id in self.delegations.failures:
+                    raise self.delegations.failures.pop(goal.goal_id)
             await self.worker.call(
                 self.store.append,
                 log,
@@ -640,8 +691,20 @@ class SessionService:
 
         Bound runs and goals by monotonic elapsed time, excluding retained service lifetime.
         """
-        elapsed = max(0.0, time.monotonic() - active.started_at)
+        elapsed = active.active_seconds()
         remaining = (active.time_limit_seconds or active.limits.max_seconds) - elapsed
+        if self.delegations:
+            delegated = sum(
+                fact.data.active_seconds
+                for fact in active.log.facts
+                if fact.run_id == active.run_id and isinstance(fact.data, DelegatedUsage)
+            )
+            remaining -= delegated + self.delegations.live_seconds(
+                active.log.session_id, run_id=active.run_id
+            )
+            child_remaining = self.delegations.child_remaining(active)
+            if child_remaining is not None:
+                remaining = min(remaining, child_remaining)
         if active.goal is not None:
             state = states(active.log.facts)[active.goal.goal_id]
             consumed = usage(
@@ -653,7 +716,19 @@ class SessionService:
                     state.budget.max_active_seconds
                     - consumed.active_seconds
                     - consumed.reserved_seconds,
+                    # 子任务运行中的时间尚未写入账本，立即纳入共同预算。
+                    # Include live child time before its final ledger entry.
                 )
+                if self.delegations:
+                    remaining = min(
+                        remaining,
+                        state.budget.max_active_seconds
+                        - consumed.active_seconds
+                        - consumed.reserved_seconds
+                        - self.delegations.live_seconds(
+                            active.log.session_id, goal_id=active.goal.goal_id
+                        ),
+                    )
         return max(0.0, remaining)
 
     async def _wait_work(
@@ -669,9 +744,14 @@ class SessionService:
             while True:
                 active.budget_changed.clear()
                 changed = asyncio.create_task(active.budget_changed.wait())
+                rate = (
+                    self.delegations.rate(active)
+                    if self.delegations
+                    else int(active.wait_started_at is None)
+                )
                 done, _ = await asyncio.wait(
                     {work, cancel, changed},
-                    timeout=self.remaining_seconds(active),
+                    timeout=self.remaining_seconds(active) / rate if rate else None,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 if cancel in done:
@@ -679,6 +759,10 @@ class SessionService:
                 if work in done:
                     return await work
                 if changed not in done:
+                    if self.remaining_seconds(active) > 0:
+                        changed.cancel()
+                        await asyncio.gather(changed, return_exceptions=True)
+                        continue
                     raise AgentError(
                         "BUDGET_GOAL_TIME" if active.goal else "BUDGET_TIME",
                         "已达到本次运行或 Goal 剩余活跃时间预算，请调整后明确继续。",
@@ -690,11 +774,33 @@ class SessionService:
                     task.cancel()
             await asyncio.gather(cancel, *([changed] if changed else []), return_exceptions=True)
 
+    async def set_wait(self, active: ActiveRun, request_id: str | None) -> None:
+        """持久记录等待并唤醒预算计时器，不新建 Run 或重置次数。
+
+        Persist waits and wake the deadline timer without creating a run or resetting counts.
+        """
+        if active.waiting_for == request_id:
+            return
+        now = time.monotonic()
+        elapsed = (
+            max(0.0, now - active.wait_started_at) if active.wait_started_at is not None else 0.0
+        )
+        active.waited_seconds += elapsed
+        active.wait_started_at = now if request_id else None
+        active.waiting_for = request_id
+        active.budget_changed.set()
+        await ServiceSink(self, active).commit(
+            RunWaitChanged(request_id=request_id, waited_seconds=elapsed)
+        )
+
     async def _sync_pending_reports(self, log: SessionLog) -> None:
         """调用方持会话锁；只补保存过的工作结果，不重放工具或模型。
 
         The caller holds the session lock; sync saved results without replaying tools or models.
         """
+        header = log.facts[0].data if log.facts else None
+        if isinstance(header, SessionCreated) and header.worker_owner_session_id:
+            return
         synced = {
             fact.data.result_seq for fact in log.facts if isinstance(fact.data, ProgressSynced)
         }
@@ -702,7 +808,7 @@ class SessionService:
             fact
             for fact in log.facts
             if isinstance(fact.data, RunFinished)
-            and fact.data.report is not None
+            and (fact.data.report is not None or self.sync_report is not None)
             and fact.seq not in synced
         ]
         for fact in pending:
@@ -737,6 +843,7 @@ class SessionService:
                 raise AgentError("SESSION_READ_ONLY", "历史不完整，不能发送给模型。")
             if active.cancel.is_set():
                 raise asyncio.CancelledError
+            contexts = self.contexts
             tool_context = ToolContext(
                 root=root,
                 limits=active.limits,
@@ -748,13 +855,25 @@ class SessionService:
                 plan_document=active.plan_document,
                 request_sink=sink,
                 collaboration_id=active.collaboration_id,
+                archive_output=(
+                    lambda text: self.worker.call(
+                        contexts.store.archive, active.log.session_id, text
+                    )
+                )
+                if contexts
+                else None,
             )
             tools = WorkflowTools(
                 tool_context, self.tool_factory(tool_context), active.log, self.worker
             )
             model = self.model_factory()
-            work = asyncio.create_task(
-                run_loop(
+
+            async def run_with_context() -> Literal["finished", "yielded"]:
+                """整理与主请求共用本次预算、停止和失败归属。
+
+                Share budgets, cancellation and failure ownership.
+                """
+                result = await run_loop(
                     model=model,
                     tools=tools,
                     sink=sink,
@@ -766,6 +885,7 @@ class SessionService:
                     stop=active.stop,
                     context_provider=lambda: self.shared_context(active.log),
                     system_prompt=system_prompt(active.mode, active.plan_document)
+                    + (contexts.usage_guide(tools.definitions()) if contexts else "")
                     + tools.request_reference()
                     + ("\n\nBundled work method:\n" + active.method.text if active.method else "")
                     + (
@@ -775,18 +895,39 @@ class SessionService:
                     ),
                     terminal=tools.finished,
                     yield_requested=lambda: active.yield_requested,
+                    window_provider=(
+                        lambda current, definitions: contexts.prepare(
+                            active, sink, current, definitions
+                        )
+                    )
+                    if contexts
+                    else None,
                 )
-            )
+                if self.contexts:
+                    await self.contexts.wait(active.log.session_id, run_id=active.run_id)
+                if self.delegations:
+                    await self.delegations.finish_owner(active, result == "yielded")
+                return result
+
+            work = asyncio.create_task(run_with_context())
             result = await self._wait_work(active, work)
             if result == "yielded":
                 finished = finished.model_copy(
                     update={"checkpoint": True, "message": "已在完整边界让出执行。"}
                 )
         except asyncio.CancelledError:
-            finished = RunFinished(
-                status="interrupted" if self.closing else "cancelled",
-                code="APP_CLOSED" if self.closing else "CANCELLED",
-                message="应用退出，未自动恢复。" if self.closing else "运行已停止。",
+            finished = (
+                RunFinished(
+                    status="failed",
+                    code=active.dependency_error.code,
+                    message=active.dependency_error.message,
+                )
+                if active.dependency_error
+                else RunFinished(
+                    status="interrupted" if self.closing else "cancelled",
+                    code="APP_CLOSED" if self.closing else "CANCELLED",
+                    message="应用退出，未自动恢复。" if self.closing else "运行已停止。",
+                )
             )
         except AgentError as exc:
             finished = RunFinished(
@@ -811,6 +952,12 @@ class SessionService:
                 work.cancel()
             if work is not None:
                 await asyncio.gather(work, return_exceptions=True)
+            if self.contexts is not None:
+                await self.contexts.stop_job(active.log.session_id, run_id=active.run_id)
+            if self.collaboration is not None:
+                self.collaboration.delivering.pop(active.run_id, None)
+            if self.delegations is not None and not finished.checkpoint:
+                await self.delegations.finish_owner(active, False)
             if self.finish_run is not None:
                 try:
                     await self.finish_run(active.run_id)
@@ -836,6 +983,13 @@ class SessionService:
                 self.last_log = active.log
                 self.active_runs.pop(active.log.session_id)
                 self._signal(active)
+            if self.memory and finished.status == "completed":
+                try:
+                    await self.memory.schedule(active.log)
+                except AgentError as exc:
+                    logging.getLogger(__name__).warning(
+                        "MEMORY_SCHEDULE_FAILED code=%s session=%s", exc.code, active.log.session_id
+                    )
 
     async def close(self) -> None:
         """停止并等待活动任务，调用方随后释放写锁。
@@ -844,6 +998,12 @@ class SessionService:
         """
         try:
             self.closing = True
+            if self.delegations is not None:
+                await self.delegations.close()
+            if self.memory is not None:
+                await self.memory.close()
+            if self.contexts is not None:
+                await self.contexts.close()
             if self.collaboration is not None:
                 await self.collaboration.close()
             running = tuple(self.active_runs.values())
@@ -863,10 +1023,16 @@ class SessionService:
 
 
 class ServiceSink:
-    """把运行时输出连接到服务持久化与通知。 Connect runtime outputs to persistence and signals."""
+    """把运行时输出连接到服务持久化与通知。
+
+    Connect runtime outputs to persistence and signals.
+    """
 
     def __init__(self, service: SessionService, active: ActiveRun) -> None:
-        """绑定本次运行，不使用全局当前视图。 Bind this run independently of the selected view."""
+        """绑定本次运行，不使用全局当前视图。
+
+        Bind this run independently of the selected view.
+        """
         self.service = service
         self.active = active
 
@@ -876,6 +1042,12 @@ class ServiceSink:
         Publish and return the exact persisted fact, awaiting writes even during cancellation.
         """
         async with self.service.lock:
+            if self.service.delegations:
+                await self.service.delegations.charge_locked(self.active, data)
+            if isinstance(data, ToolStarted):
+                current = summarize(self.active.log, active=True).run
+                if current and current.tools >= self.active.limits.max_tools:
+                    raise AgentError("BUDGET_TOOLS", "本次运行与子任务的共同工具预算已用完。")
             if (
                 isinstance(data, (RequestStarted, AuxiliaryStarted, ToolStarted))
                 and self.active.goal is not None
@@ -885,9 +1057,7 @@ class ServiceSink:
             if isinstance(data, (AssistantCommitted, RunFinished)):
                 data = data.model_copy(update={"model_progress": self.active.model_progress})
             if isinstance(data, RunFinished):
-                data = data.model_copy(
-                    update={"elapsed_seconds": max(0.0, time.monotonic() - self.active.started_at)}
-                )
+                data = data.model_copy(update={"elapsed_seconds": self.active.active_seconds()})
             fact = await self.service.worker.call(
                 self.service.store.append, self.active.log, data, self.active.run_id
             )
@@ -900,6 +1070,8 @@ class ServiceSink:
                 self.active.model_progress = None
                 self.active.progress_at = None
             elif isinstance(data, AssistantCommitted):
+                if self.service.collaboration:
+                    await self.service.collaboration.acknowledge_messages(self.active.run_id)
                 self.active.message_id = None
                 self.active.text = ""
                 self.active.reasoning = ""
@@ -908,7 +1080,10 @@ class ServiceSink:
             return fact
 
     async def text(self, message_id: str, delta: str) -> None:
-        """只缓存有界文本；不把实时字符 fsync。 Cache bounded text without per-token fsync."""
+        """只缓存有界文本；不把实时字符 fsync。
+
+        Cache bounded text without per-token fsync.
+        """
         self._display_delta(message_id, delta, "text.delta")
 
     async def reasoning(self, message_id: str, delta: str) -> None:
@@ -921,7 +1096,10 @@ class ServiceSink:
     def _display_delta(
         self, message_id: str, delta: str, kind: Literal["text.delta", "reasoning.delta"]
     ) -> None:
-        """两个展示通道共用顺序水位与输出预算。 Share ordering and output budget across channels."""
+        """两个展示通道共用顺序水位与输出预算。
+
+        Share ordering and output budget across channels.
+        """
         if self.active.stop.is_set():
             raise asyncio.CancelledError
         if (

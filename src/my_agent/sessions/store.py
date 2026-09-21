@@ -10,6 +10,7 @@ from pathlib import Path
 
 from pydantic import TypeAdapter, ValidationError
 
+from my_agent.delegation.types import DelegatedUsage
 from my_agent.errors import AgentError
 from my_agent.goals.ledger import check_budget, usage
 from my_agent.goals.state import (
@@ -34,6 +35,7 @@ from my_agent.sessions.types import (
     RequestStarted,
     RunAccepted,
     RunFinished,
+    RunWaitChanged,
     SessionAssigned,
     SessionCreated,
     SessionId,
@@ -50,13 +52,16 @@ MAX_FACT_BYTES = 1048576
 
 @dataclass
 class SessionLog:
-    """已确认事实前缀及不可写原因。 Confirmed fact prefix and any read-only reason."""
+    """已确认事实前缀及不可写原因。
+
+    Confirmed fact prefix and any read-only reason.
+    """
 
     session_id: str
     facts: list[Fact]
     issue: str | None = None
 
-    def context(self) -> tuple[list[JsonObject], bool]:
+    def context(self, positions: list[int] | None = None) -> tuple[list[JsonObject], bool]:
         """组装完整历史并标明已结束目标，未配对工具使续接失效。
 
         Build history with ended goals marked as history; unpaired tools prevent reuse.
@@ -69,7 +74,17 @@ class SessionLog:
             if state.status in TERMINAL_GOALS
         }
         for fact in self.facts:
+            before_count = len(messages)
             data = fact.data
+            if isinstance(data, SessionCreated) and data.inherited_context:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": "Inherited source material only. "
+                        "Do not continue the source's goal or replay its tools; the new assignment "
+                        "below is your current objective.\n" + data.inherited_context,
+                    }
+                )
             if isinstance(data, GoalCreated):
                 if pending:
                     return messages, False
@@ -152,6 +167,8 @@ class SessionLog:
                     return messages, False
                 pending.remove(data.result.tool_call_id)
                 messages.append(tool_result_message(fact))
+            if positions is not None:
+                positions.extend([fact.seq] * (len(messages) - before_count))
         return messages, not pending and self.issue is None
 
 
@@ -162,7 +179,10 @@ class SessionStore:
     """
 
     def __init__(self, storage: Storage) -> None:
-        """绑定位置，不提前创建目录。 Bind locations without creating directories."""
+        """绑定位置，不提前创建目录。
+
+        Bind locations without creating directories.
+        """
         self.storage = storage
         self.root = storage.root / "sessions"
 
@@ -275,7 +295,6 @@ class SessionStore:
                 fact.run_id is not None
                 or source is None
                 or not isinstance(source.data, RunFinished)
-                or source.data.report is None
                 or (data.task_id is None) != (data.task_revision is None)
                 or membership is None
                 or data.task_id != membership.task_id
@@ -289,6 +308,13 @@ class SessionStore:
             return
         if isinstance(fact.data, SessionCreated) or fact.run_id is None:
             raise invalid
+        if isinstance(fact.data, DelegatedUsage):
+            if not any(
+                item.run_id == fact.run_id and isinstance(item.data, RunAccepted)
+                for item in log.facts
+            ):
+                raise invalid
+            return
         accepted = next((f for f in reversed(log.facts) if isinstance(f.data, RunAccepted)), None)
         if isinstance(fact.data, RunAccepted):
             validate_goal_run(log.facts, fact.data)
@@ -312,6 +338,12 @@ class SessionStore:
         tail = [item for item in log.facts[accepted.seq :] if item.run_id == fact.run_id]
         if any(isinstance(f.data, RunFinished) for f in tail):
             raise invalid
+        if isinstance(fact.data, RunWaitChanged):
+            return
+        delegated = [item.data for item in tail if isinstance(item.data, DelegatedUsage)]
+        tail = [
+            item for item in tail if not isinstance(item.data, (RunWaitChanged, DelegatedUsage))
+        ]
         # 辅助请求入同一账本，但不打断主模型调用与工具结果的配对顺序。
         # Auxiliary calls share the ledger without disrupting main/tool execution pairing.
         auxiliary = [
@@ -323,8 +355,10 @@ class SessionStore:
             if not isinstance(item.data, (AuxiliaryStarted, AuxiliaryCompleted))
         ]
         if isinstance(fact.data, (RequestStarted, AuxiliaryStarted)):
-            count = sum(isinstance(item.data, RequestStarted) for item in tail) + sum(
-                isinstance(item.data, AuxiliaryStarted) for item in auxiliary
+            count = (
+                sum(isinstance(item.data, RequestStarted) for item in tail)
+                + sum(isinstance(item.data, AuxiliaryStarted) for item in auxiliary)
+                + sum(item.requests for item in delegated)
             )
             if (
                 isinstance(accepted.data, RunAccepted)
@@ -368,10 +402,13 @@ class SessionStore:
             )
         if isinstance(fact.data, AuxiliaryStarted):
             if (
-                not tail
-                or not isinstance(tail[-1].data, ToolStarted)
-                or tail[-1].data.call.tool_call_id != fact.data.tool_call_id
-                or tail[-1].data.call.name != fact.data.purpose
+                fact.data.purpose == "web_search"
+                and (
+                    not tail
+                    or not isinstance(tail[-1].data, ToolStarted)
+                    or tail[-1].data.call.tool_call_id != fact.data.tool_call_id
+                    or tail[-1].data.call.name != fact.data.purpose
+                )
                 or any(
                     isinstance(item.data, AuxiliaryStarted)
                     and item.data.request_id == fact.data.request_id
@@ -391,9 +428,14 @@ class SessionStore:
             )
             if (
                 start is None
-                or not tail
-                or not isinstance(tail[-1].data, ToolStarted)
-                or tail[-1].data.call.tool_call_id != start.tool_call_id
+                or (
+                    start.purpose == "web_search"
+                    and (
+                        not tail
+                        or not isinstance(tail[-1].data, ToolStarted)
+                        or tail[-1].data.call.tool_call_id != start.tool_call_id
+                    )
+                )
                 or any(
                     isinstance(item.data, AuxiliaryCompleted)
                     and item.data.request_id == fact.data.request_id

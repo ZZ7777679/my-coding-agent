@@ -8,7 +8,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from pydantic import TypeAdapter
 
-from my_agent.collaboration.types import CollaborationLink, CollaborationRequest
+from my_agent.collaboration.types import CollaborationLink, CollaborationRequest, PeerMessage
 from my_agent.errors import AgentError
 from my_agent.identifiers import EntityId
 from my_agent.storage import Storage, read_document, write_document
@@ -21,22 +21,34 @@ class CollaborationStore:
     """
 
     def __init__(self, storage: Storage) -> None:
-        """绑定应用数据根。 Bind the application data root."""
+        """绑定应用数据根。
+
+        Bind the application data root.
+        """
         self.storage = storage
         self.root = storage.root / "collaboration"
 
     def _path(self, group: str, identity: str) -> Path:
-        """校验记录身份后定位文件。 Resolve a file after validating its identity."""
+        """校验记录身份后定位文件。
+
+        Resolve a file after validating its identity.
+        """
         TypeAdapter(EntityId).validate_python(identity)
         return self.root / group / f"{identity}.json"
 
     def link(self, source: str, target: str) -> CollaborationLink | None:
-        """读取定向约定，缺失与损坏分别处理。 Distinguish absent and corrupt agreements."""
+        """读取定向约定，缺失与损坏分别处理。
+
+        Distinguish absent and corrupt agreements.
+        """
         path = self._path("links", str(uuid5(NAMESPACE_URL, source + ":" + target)))
         return read_document(path, CollaborationLink) if path.exists() else None
 
     def links(self, session_id: str) -> list[CollaborationLink]:
-        """返回与本会话有关的双方约定。 Return agreements involving this session."""
+        """返回与本会话有关的双方约定。
+
+        Return agreements involving this session.
+        """
         result = []
         for path in sorted((self.root / "links").glob("*.json")):
             item = read_document(path, CollaborationLink)
@@ -45,7 +57,10 @@ class CollaborationStore:
         return result
 
     def save_link(self, value: CollaborationLink) -> None:
-        """保存用户约定，不唤醒模型。 Save a user agreement without waking models."""
+        """保存用户约定，不唤醒模型。
+
+        Save a user agreement without waking models.
+        """
         self.storage.require_writer()
         identity = str(
             uuid5(NAMESPACE_URL, value.source_session_id + ":" + value.target_session_id)
@@ -55,7 +70,10 @@ class CollaborationStore:
         write_document(path, value)
 
     def request(self, request_id: str) -> CollaborationRequest:
-        """读取明确请求，缺失时报业务错误。 Read an exact request or report its absence."""
+        """读取明确请求，缺失时报业务错误。
+
+        Read an exact request or report its absence.
+        """
         path = self._path("requests", request_id)
         if not path.exists():
             raise AgentError("COLLABORATION_NOT_FOUND", "协作请求不存在。")
@@ -72,8 +90,33 @@ class CollaborationStore:
         ]
 
     def save(self, value: CollaborationRequest) -> None:
-        """原子保存请求当前事实。 Atomically save the current request facts."""
+        """原子保存请求当前事实。
+
+        Atomically save the current request facts.
+        """
         self.storage.require_writer()
         path = self._path("requests", value.request_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_document(path, value)
+
+    def messages(self, session_id: str) -> list[PeerMessage]:
+        """按参与身份读取持久邮箱。
+
+        Read durable mailbox entries by participant identity.
+        """
+        result = []
+        for path in (self.root / "messages").glob("*.json"):
+            message = read_document(path, PeerMessage)
+            if session_id in {message.params.source_session_id, message.params.target_session_id}:
+                result.append(message)
+        return sorted(result, key=lambda item: (item.created_at, item.message_id))
+
+    def save_message(self, value: PeerMessage) -> None:
+        """先保存再通知，不宣称接收方已经理解消息。
+
+        Save before notification without claiming the peer understood the message.
+        """
+        self.storage.require_writer()
+        path = self._path("messages", value.message_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         write_document(path, value)

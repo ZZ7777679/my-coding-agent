@@ -1,4 +1,7 @@
-"""显式装配共享会话核心。 Explicit composition of the shared session core."""
+"""显式装配共享会话核心。
+
+Explicit composition of the shared session core.
+"""
 
 import json
 
@@ -8,13 +11,20 @@ from my_agent.collaboration.service import CollaborationService
 from my_agent.collaboration.store import CollaborationStore
 from my_agent.collaboration.tools import CollaborationTools
 from my_agent.config import DEFAULTS, MODEL_DEFAULTS, load_config
+from my_agent.context.service import ContextService
+from my_agent.context.tools import ContextTools
+from my_agent.context.window import task_context
 from my_agent.credentials import ResolvedCredential, resolve_credential
+from my_agent.delegation.service import DelegationService
+from my_agent.delegation.tools import WorkerTools
 from my_agent.errors import AgentError
 from my_agent.execution.environments import EnvironmentStore
 from my_agent.execution.service import ProgramService
 from my_agent.execution.store import ProgramStore
 from my_agent.execution.types import ListProgramsParams
 from my_agent.goals.service import GoalService
+from my_agent.memory.service import MemoryService
+from my_agent.memory.tools import MemoryTools
 from my_agent.models.go import GoClient
 from my_agent.models.http import ModelHttpPool
 from my_agent.models.native_search import NativeSearchClient
@@ -105,7 +115,7 @@ def build_sessions(
         return SharedContext(
             task.task_id,
             task.revision,
-            task.model_dump_json()
+            task_context(task, load_config(storage.location).run.max_context_bytes // 8)
             + "\nSession role: "
             + summary.role
             + "\nSession scope: "
@@ -171,5 +181,19 @@ def build_sessions(
     project_tools = sessions.tool_factory
     sessions.tool_factory = lambda context: CollaborationTools(
         context, project_tools(context), collaboration, changes
+    )
+    contexts = ContextService(sessions)
+    sessions.contexts = contexts
+    collaborating_tools = sessions.tool_factory
+    memory = MemoryService(sessions)
+    sessions.memory = memory
+    delegation = DelegationService(sessions)
+    sessions.delegations = delegation
+    sessions.tool_factory = lambda context: MemoryTools(
+        context, ContextTools(context, collaborating_tools(context), contexts), memory, tasks
+    )
+    knowledge_tools = sessions.tool_factory
+    sessions.tool_factory = lambda context: WorkerTools(
+        context, knowledge_tools(context), delegation
     )
     return sessions

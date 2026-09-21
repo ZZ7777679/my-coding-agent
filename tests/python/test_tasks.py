@@ -1,4 +1,7 @@
-"""M2 任务保存、旧会话兼容与上下文的最小检查。 Focused M2 persistence and context checks."""
+"""M2 任务保存、旧会话兼容与上下文的最小检查。
+
+Focused M2 persistence and context checks.
+"""
 
 import asyncio
 import json
@@ -29,7 +32,10 @@ class ContextModel:
         self.update = update
 
     def check_available(self):
-        """不使用凭据。 No credentials are used."""
+        """不使用凭据。
+
+        No credentials are used.
+        """
         return None
 
     async def complete(self, **kwargs):
@@ -66,7 +72,10 @@ class ContextModel:
 
 
 def application(tmp_path):
-    """每个场景独立数据根与无凭据装配。 Isolate data and compose without credentials."""
+    """每个场景独立数据根与无凭据装配。
+
+    Isolate data and compose without credentials.
+    """
     credential = ResolvedCredential(
         None, CredentialInfo(env_var="OPENCODE_API_KEY", source="none", present=False)
     )
@@ -291,7 +300,7 @@ def test_task_restart_old_history_and_context_revisions(tmp_path):
             await initialize(reloaded, project)
             assert (
                 await reloaded.dispatch("tasks.get", {"task_id": created.task.task_id})
-            ).revision == 2
+            ).revision == 4
             restored = await reloaded.sessions.view(old.session_id)
             assert restored.summary.task_id == created.task.task_id
             assert restored.summary.role == "接手"
@@ -320,7 +329,10 @@ def test_partial_creation_conflict_failed_save_and_damage(tmp_path, monkeypatch)
             original = app.sessions.create
 
             async def fail(*args, **kwargs):
-                """模拟首会话写入失败。 Simulate first-session failure."""
+                """模拟首会话写入失败。
+
+                Simulate first-session failure.
+                """
                 raise AgentError("SESSION_SAVE_FAILED", "模拟失败")
 
             monkeypatch.setattr(app.sessions, "create", fail)

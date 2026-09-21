@@ -10,8 +10,10 @@ from pydantic import SecretStr
 from my_agent.config import DEFAULTS
 from my_agent.credentials import ResolvedCredential
 from my_agent.errors import AgentError
+from my_agent.models.failures import ModelResponseError
 from my_agent.models.go import GoClient
 from my_agent.models.http import ModelHttpPool
+from my_agent.models.types import TokenUsage
 from my_agent.rpc.dto import CredentialInfo
 from my_agent.runtime.settings import RunLimits
 
@@ -40,6 +42,84 @@ def sse(delta, finish=None, usage=None):
     if usage:
         packet["usage"] = usage
     return ("data: " + json.dumps(packet, ensure_ascii=False) + "\n\n").encode("utf-8")
+
+
+@pytest.mark.parametrize(
+    ("reason", "code"),
+    [
+        ("length", "MODEL_OUTPUT_TRUNCATED"),
+        ("content_filter", "MODEL_CONTENT_FILTERED"),
+        ("stop", None),
+    ],
+)
+def test_terminal_reason_preserves_trailing_usage_and_accepts_repeated_marker(reason, code):
+    """区分截断与过滤，读取末尾用量，相同结束标记不误报失败。
+
+    Distinguish truncation/filtering, retain trailing usage and accept repeated terminal markers.
+    """
+
+    async def scenario():
+        """只用模拟 HTTP 验证完整生产解析链，不消耗模型额度。
+
+        Exercise the production parser with mock HTTP and no model spending.
+        """
+        stream = ChunkStream(
+            sse({"reasoning_content": "summary reasoning"})
+            + sse({"content": "summary fragment"})
+            + sse({}, reason)
+            + sse({}, reason)
+            + b'data: {"choices": [], "usage": {"prompt_tokens": 32000, '
+            b'"completion_tokens": 2048}}\n\n' + b"data: [DONE]\n\n"
+        )
+        requests = []
+
+        async def handler(request):
+            requests.append(request)
+            return httpx.Response(200, stream=stream)
+
+        client = GoClient(
+            ResolvedCredential(
+                SecretStr("sentinel-only"),
+                CredentialInfo(env_var="OPENCODE_API_KEY", source="process", present=True),
+            ),
+            "https://opencode.ai/zen/go/v1",
+            ModelHttpPool(
+                reuse_enabled=True,
+                keepalive_expiry=None,
+                drain_timeout_seconds=0.1,
+                transport=httpx.MockTransport(handler),
+            ),
+        )
+
+        async def on_text(_):
+            """正文回调无需额外动作。 No extra action for text deltas."""
+
+        try:
+            response = client.complete(
+                model_id="deepseek-v4.1-flash",
+                session_id="summary-stream",
+                messages=[],
+                tools=[],
+                limits=RunLimits.model_validate(DEFAULTS["run"]),
+                on_text=on_text,
+            )
+            expected_usage = TokenUsage(input_tokens=32000, output_tokens=2048)
+            if code:
+                with pytest.raises(ModelResponseError) as error:
+                    await response
+                assert error.value.code == code
+                assert error.value.finish_reason == reason
+                assert error.value.usage == expected_usage
+                assert "summary reasoning" not in error.value.message
+            else:
+                result = await response
+                assert result.text == "summary fragment"
+                assert result.usage == expected_usage
+            assert len(requests) == 1 and stream.closed
+        finally:
+            await client.http.close()
+
+    asyncio.run(scenario())
 
 
 @pytest.mark.parametrize("oversized", [False, True])

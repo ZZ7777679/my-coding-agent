@@ -11,7 +11,13 @@ from pydantic import ValidationError
 
 from my_agent.errors import AgentError
 from my_agent.sessions.store import MAX_FACT_BYTES, SESSION_ID, SessionStore
-from my_agent.sessions.types import RunFinished, SessionAssigned, SessionCreated
+from my_agent.sessions.types import (
+    RunFinished,
+    SessionAssigned,
+    SessionCreated,
+    ToolCompleted,
+    ToolStarted,
+)
 from my_agent.storage import Storage, atomic_write, utc_now
 from my_agent.tasks.types import (
     CreateTaskParams,
@@ -21,7 +27,15 @@ from my_agent.tasks.types import (
     TaskView,
     UpdateTaskParams,
 )
-from my_agent.workflow.types import EventRef, SourcedWorkItem, TaskWork
+from my_agent.workflow.types import (
+    EventRef,
+    MemberProgress,
+    SharedDecision,
+    SourcedDecision,
+    SourcedWorkItem,
+    TaskWork,
+    WorkReport,
+)
 
 
 class TaskStore:
@@ -31,7 +45,10 @@ class TaskStore:
     """
 
     def __init__(self, storage: Storage) -> None:
-        """绑定数据根，不创建目录。 Bind the data root without creating directories."""
+        """绑定数据根，不创建目录。
+
+        Bind the data root without creating directories.
+        """
         self.storage = storage
         self.root = storage.root / "tasks"
 
@@ -96,7 +113,10 @@ class TaskStore:
             raise AgentError("TASK_UNAVAILABLE", "无法读取任务记录，原文件已保留。") from exc
 
     def get(self, task_id: str) -> TaskView:
-        """读取最新已保存版本。 Read the latest saved version."""
+        """读取最新已保存版本。
+
+        Read the latest saved version.
+        """
         return self.history(task_id)[-1].view
 
     def _save(self, facts: list[TaskFact]) -> TaskView:
@@ -195,8 +215,29 @@ class TaskStore:
         if result is None or not isinstance(result.data, RunFinished) or result.run_id is None:
             raise AgentError("WORK_SOURCE_INVALID", "任务进度来源必须是已保存的运行结果。")
         report = result.data.report
+        reported = report is not None
         if report is None:
-            return None
+            completed = {
+                fact.data.result.tool_call_id
+                for fact in log.facts
+                if fact.run_id == result.run_id
+                and isinstance(fact.data, ToolCompleted)
+                and not fact.data.result.is_error
+            }
+            names = [
+                fact.data.call.name
+                for fact in log.facts
+                if fact.run_id == result.run_id
+                and isinstance(fact.data, ToolStarted)
+                and fact.data.call.tool_call_id in completed
+            ]
+            report = WorkReport(
+                summary=(
+                    f"宿主观测：运行 {result.data.status}；"
+                    f"成功工具 {', '.join(names) or '无'}。未声明目标验收完成。"
+                ),
+                outcome="return",
+            )
         before = log.facts[: result.seq - 1]
         membership = next(
             (
@@ -213,11 +254,16 @@ class TaskStore:
         header = log.facts[0].data
         if not isinstance(header, SessionCreated) or header.project_id != current.project_id:
             raise AgentError("TASK_PROJECT_MISMATCH", "报告与任务不属于同一项目。")
+        if header.worker_owner_session_id:
+            return None
         source = EventRef(session_id=session_id, run_id=result.run_id, seq=result.seq)
         operation_id = str(uuid5(UUID(session_id), f"work-report:{result.run_id}:{result.seq}"))
         for saved in facts:
             if saved.operation_id == operation_id:
-                if saved.view.work.source != source or saved.view.work.last_report != report:
+                saved_member = next(
+                    (item for item in saved.view.work.members if item.source == source), None
+                )
+                if (saved_member.report if saved_member else saved.view.work.last_report) != report:
                     raise AgentError("WORK_SOURCE_CHANGED", "同一结果身份对应了不同内容。")
                 return current
         merged = {item.item.work_id: item for item in current.work.items}
@@ -230,7 +276,58 @@ class TaskStore:
                 "revision": current.revision + 1,
                 "updated_at": utc_now(),
                 "source": "run_report",
-                "work": TaskWork(items=list(merged.values()), last_report=report, source=source),
+                "work": TaskWork(
+                    items=list(merged.values()),
+                    last_report=report if reported else current.work.last_report,
+                    source=source if reported else current.work.source,
+                    members=[
+                        item
+                        for item in current.work.members
+                        if item.source.session_id != session_id
+                    ]
+                    + [MemberProgress(report=report, source=source, updated_at=utc_now())],
+                    decisions=[
+                        *current.work.decisions,
+                        *[
+                            SourcedDecision(decision=item, source=source)
+                            for item in report.decisions
+                        ],
+                    ],
+                ),
+            }
+        )
+        return self._save(
+            [
+                *facts,
+                TaskFact(operation_id=operation_id, expected_revision=current.revision, view=view),
+            ]
+        )
+
+    def record_decision(
+        self, task_id: str, decision: SharedDecision, source: EventRef, operation_id: str
+    ) -> TaskView:
+        """立即发布带来源的任务决定，保留用户原字段和全部历史。
+
+        Publish sourced task decisions immediately, preserving user fields and history.
+        """
+        facts = self.history(task_id)
+        current = facts[-1].view
+        if any(fact.operation_id == operation_id for fact in facts):
+            return current
+        work = current.work.model_copy(
+            update={
+                "decisions": [
+                    *current.work.decisions,
+                    SourcedDecision(decision=decision, source=source),
+                ]
+            }
+        )
+        view = current.model_copy(
+            update={
+                "revision": current.revision + 1,
+                "updated_at": utc_now(),
+                "source": "run_report",
+                "work": work,
             }
         )
         return self._save(

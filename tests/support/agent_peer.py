@@ -26,7 +26,10 @@ class DesktopModel:
     """
 
     def check_available(self):
-        """不读取或使用真实凭据。 Do not read or use real credentials."""
+        """不读取或使用真实凭据。
+
+        Do not read or use real credentials.
+        """
         return None
 
     async def complete(self, **kwargs):
@@ -35,6 +38,20 @@ class DesktopModel:
         Read fixtures, then stream or wait for cancel.
         """
         messages = kwargs["messages"]
+        if messages[0]["content"].startswith("Write one concise continuation brief"):
+            return response(
+                text="Earlier task: use Python standard library; keep the page offline."
+            )
+        if messages[0]["content"].startswith("Extract only reusable"):
+            return response(
+                text=json.dumps(
+                    {
+                        "entries": [
+                            {"fields": {"title": "Offline", "content": "Use bundled assets."}}
+                        ]
+                    }
+                )
+            )
         prompt = next(
             message["content"] for message in reversed(messages) if message["role"] == "user"
         )
@@ -43,6 +60,12 @@ class DesktopModel:
             or "ordinary question interrupting" in messages[0]["content"]
         ):
             return await goal_turn(messages)
+        if prompt.startswith("m3:"):
+            if prompt == "m3: lookup" and messages[-1]["role"] != "tool":
+                return response("read_history", {"query": "desktop history", "max_chars": 100})
+            return response(text="M3 local desktop sample completed. " * 20).model_copy(
+                update={"usage": TokenUsage(input_tokens=123456, output_tokens=77)}
+            )
         if prompt.startswith("goal-chat:"):
             return response(text="普通问题已回答，等待中的 Goal 没有恢复。")
         if prompt.startswith("recovery:create"):
@@ -111,7 +134,10 @@ class DesktopModel:
 
 
 async def file_turn(prompt, **kwargs):
-    """驱动实际文件工具，不替换存储或权限。 Drive real file tools without mocking their policy."""
+    """驱动实际文件工具，不替换存储或权限。
+
+    Drive real file tools without mocking their policy.
+    """
     messages = kwargs["messages"]
     previous = json.loads(messages[-1]["content"]) if messages[-1]["role"] == "tool" else None
     name, arguments = None, {}
@@ -255,7 +281,10 @@ class InterruptedResponseTools:
     """
 
     def __init__(self, delegate):
-        """保留实际工具实现。 Retain the actual tool implementation."""
+        """保留实际工具实现。
+
+        Retain the actual tool implementation.
+        """
         self.delegate = delegate
 
     def definitions(self):

@@ -1,13 +1,27 @@
 {
   "app_name": "My Coding Agent",
-  "stage": "M2",
-  "protocol_version": 3,
+  "stage": "M3",
+  "protocol_version": 4,
   "data_schema_version": 1,
   "data_dir": "E:\\MyCodingAgentData",
   "data_dir_env": "MY_AGENT_DATA_DIR",
   "development_project_dir": "E:\\claude_code\\my-coding-agent-test",
   "project_dir_env": "MY_AGENT_PROJECT_DIR",
   "max_frame_bytes": 1048576,
+  "compaction": {
+    "auto_trigger_tokens": 800000,
+    "keep_recent_tokens": 15000,
+    "tool_result_preview_tokens": 1000,
+    "summary_target_tokens": 2000
+  },
+  "context_windows": {
+    "source": "models.dev / opencode-go",
+    "checked_at": "2026-09-20",
+    "models": {
+      "glm-5.3-flash": 1000000,
+      "deepseek-v4.1-flash": 1000000
+    }
+  },
   "http": {
     "reuse_enabled": true,
     "probe_timeout_seconds": 20.0,

@@ -35,12 +35,12 @@
           "type": "string"
         },
         "protocol_version": {
-          "const": 3,
+          "const": 4,
           "title": "Protocol Version",
           "type": "integer"
         },
         "stage": {
-          "const": "M2",
+          "const": "M3",
           "title": "Stage",
           "type": "string"
         }
@@ -58,6 +58,15 @@
       "additionalProperties": false,
       "description": "用户主动交接 / 审查，停止身份只用于明确移交的工作。\n\nUser-initiated handoff or review, with stop identities limited to transferred work.",
       "properties": {
+        "context_mode": {
+          "default": "isolated",
+          "enum": [
+            "isolated",
+            "inherit"
+          ],
+          "title": "Context Mode",
+          "type": "string"
+        },
         "kind": {
           "enum": [
             "handoff",
@@ -223,7 +232,7 @@
     },
     "CancelRunParams": {
       "additionalProperties": false,
-      "description": "只停止指定运行，不隐式停止其他任务。 Cancel the specified run only.",
+      "description": "只停止指定运行，不隐式停止其他任务。\n\nCancel the specified run only.",
       "properties": {
         "run_id": {
           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
@@ -402,7 +411,7 @@
     },
     "ChatEntry": {
       "additionalProperties": false,
-      "description": "显式投影的可公开历史记录。 Explicitly projected public history record.",
+      "description": "显式投影的可公开历史记录。\n\nExplicitly projected public history record.",
       "properties": {
         "call": {
           "anyOf": [
@@ -542,6 +551,63 @@
       "title": "ChatEntry",
       "type": "object"
     },
+    "Checkpoint": {
+      "additionalProperties": false,
+      "description": "完整保存的派生摘要，原始事件保持原样。\n\nDurable derived summary; raw events stay intact.",
+      "properties": {
+        "checkpoint_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "model_id": {
+          "enum": [
+            "glm-5.3-flash",
+            "deepseek-v4.1-flash"
+          ],
+          "title": "Model Id",
+          "type": "string"
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Id"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "through_seq": {
+          "title": "Through Seq",
+          "type": "integer"
+        },
+        "usage": {
+          "$ref": "#/$defs/TokenUsage"
+        }
+      },
+      "required": [
+        "checkpoint_id",
+        "parent_id",
+        "through_seq",
+        "text",
+        "model_id",
+        "created_at",
+        "usage"
+      ],
+      "title": "Checkpoint",
+      "type": "object"
+    },
     "ChooseDirectoryParams": {
       "additionalProperties": false,
       "description": "限定受信目录选择器的用途，不接受任意系统操作。\n\nLimit the trusted directory picker to its declared purpose.",
@@ -563,7 +629,7 @@
     },
     "ChooseEnvironmentPathParams": {
       "additionalProperties": false,
-      "description": "选择已有环境入口。 Select existing environment paths through a trusted picker.",
+      "description": "选择已有环境入口。\n\nSelect existing environment paths through a trusted picker.",
       "properties": {
         "kind": {
           "enum": [
@@ -730,7 +796,7 @@
     },
     "CollaborationPageParams": {
       "additionalProperties": false,
-      "description": "本会话的约定和请求分页。 Page this session's agreements and requests.",
+      "description": "本会话的约定和请求分页。\n\nPage this session's agreements and requests.",
       "properties": {
         "cursor": {
           "anyOf": [
@@ -1013,6 +1079,66 @@
       "title": "CondaEnvironment",
       "type": "object"
     },
+    "ConfigureContextParams": {
+      "additionalProperties": false,
+      "description": "保存后续请求采用的整理设置。\n\nSave compaction settings for subsequent requests.",
+      "properties": {
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "settings": {
+          "$ref": "#/$defs/ContextSettings"
+        }
+      },
+      "required": [
+        "session_id",
+        "settings"
+      ],
+      "title": "ConfigureContextParams",
+      "type": "object"
+    },
+    "ConfigureMemoryParams": {
+      "additionalProperties": false,
+      "description": "保存会话的使用、贡献和实验选项。\n\nSave session use, contribution and experiment settings.",
+      "properties": {
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "settings": {
+          "$ref": "#/$defs/MemorySettings"
+        }
+      },
+      "required": [
+        "session_id",
+        "settings"
+      ],
+      "title": "ConfigureMemoryParams",
+      "type": "object"
+    },
+    "ConfigureWorkersParams": {
+      "additionalProperties": false,
+      "description": "保存下一次委派的能力开关。\n\nSave delegation settings for subsequent assignments.",
+      "properties": {
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "settings": {
+          "$ref": "#/$defs/WorkerSettings"
+        }
+      },
+      "required": [
+        "session_id",
+        "settings"
+      ],
+      "title": "ConfigureWorkersParams",
+      "type": "object"
+    },
     "ConnectSessionsParams": {
       "additionalProperties": false,
       "description": "用户指定定向协作范围；禁用只影响后续访问。\n\nA user-defined directional agreement; disabling affects subsequent access.",
@@ -1223,6 +1349,650 @@
       "title": "ConnectionStatus",
       "type": "object"
     },
+    "ContextJob": {
+      "additionalProperties": false,
+      "description": "辅助整理的真实状态和累计用量。\n\nActual maintenance state and cumulative usage.",
+      "properties": {
+        "compression_applied": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Compression Applied"
+        },
+        "finish_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finish Reason"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finished At"
+        },
+        "history_after_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "History After Bytes"
+        },
+        "history_after_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "History After Tokens"
+        },
+        "history_before_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "History Before Bytes"
+        },
+        "history_before_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "History Before Tokens"
+        },
+        "job_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Job Id",
+          "type": "string"
+        },
+        "message": {
+          "default": "",
+          "title": "Message",
+          "type": "string"
+        },
+        "mode": {
+          "default": "manual",
+          "enum": [
+            "manual",
+            "automatic"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "model_id": {
+          "enum": [
+            "glm-5.3-flash",
+            "deepseek-v4.1-flash"
+          ],
+          "title": "Model Id",
+          "type": "string"
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "enum": [
+                "summary",
+                "trimmed",
+                "nothing",
+                "not_smaller"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Outcome"
+        },
+        "output_token_limit": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Token Limit"
+        },
+        "policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ContextSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "requests": {
+          "default": 0,
+          "title": "Requests",
+          "type": "integer"
+        },
+        "retained_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retained Tokens"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        },
+        "started_at": {
+          "title": "Started At",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "preparing",
+            "receiving",
+            "ready",
+            "adopted",
+            "failed",
+            "cancelled",
+            "interrupted"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "through_seq": {
+          "default": 0,
+          "title": "Through Seq",
+          "type": "integer"
+        },
+        "usage": {
+          "$ref": "#/$defs/TokenUsage"
+        }
+      },
+      "required": [
+        "job_id",
+        "run_id",
+        "status",
+        "model_id",
+        "started_at"
+      ],
+      "title": "ContextJob",
+      "type": "object"
+    },
+    "ContextManifest": {
+      "additionalProperties": false,
+      "description": "请求边界保存实际材料与单独标注的 token 估计。\n\nPersist actual materials and separately labelled token estimates at the request boundary.",
+      "properties": {
+        "estimated_fixed_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimated Fixed Tokens"
+        },
+        "estimated_input_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimated Input Tokens"
+        },
+        "materials": {
+          "items": {
+            "$ref": "#/$defs/ContextMaterial"
+          },
+          "title": "Materials",
+          "type": "array"
+        },
+        "message_count": {
+          "title": "Message Count",
+          "type": "integer"
+        },
+        "request_bytes": {
+          "title": "Request Bytes",
+          "type": "integer"
+        },
+        "tool_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tool Names",
+          "type": "array"
+        }
+      },
+      "required": [
+        "message_count",
+        "request_bytes",
+        "tool_names"
+      ],
+      "title": "ContextManifest",
+      "type": "object"
+    },
+    "ContextMaterial": {
+      "additionalProperties": false,
+      "description": "实际采用的材料来源与有界预览，不复制原生对话。\n\nAdopted source references and bounded previews, never native conversation state.",
+      "properties": {
+        "form": {
+          "title": "Form",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "preview": {
+          "default": "",
+          "title": "Preview",
+          "type": "string"
+        },
+        "preview_complete": {
+          "default": true,
+          "title": "Preview Complete",
+          "type": "boolean"
+        },
+        "read_arguments": {
+          "$ref": "#/$defs/JsonObject"
+        },
+        "read_tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Read Tool"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revision"
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Id"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "title",
+        "form",
+        "reason"
+      ],
+      "title": "ContextMaterial",
+      "type": "object"
+    },
+    "ContextParams": {
+      "additionalProperties": false,
+      "description": "定位本会话的窗口。\n\nIdentify a session window.",
+      "properties": {
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "title": "ContextParams",
+      "type": "object"
+    },
+    "ContextRequest": {
+      "additionalProperties": false,
+      "description": "最近请求的固定材料事实，后续设置不会改写。\n\nFixed facts for the latest request, unaffected by later settings.",
+      "properties": {
+        "at": {
+          "title": "At",
+          "type": "string"
+        },
+        "manifest": {
+          "$ref": "#/$defs/ContextManifest"
+        },
+        "message_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Message Id",
+          "type": "string"
+        },
+        "model_id": {
+          "anyOf": [
+            {
+              "enum": [
+                "glm-5.3-flash",
+                "deepseek-v4.1-flash"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Id"
+        }
+      },
+      "required": [
+        "message_id",
+        "model_id",
+        "at",
+        "manifest"
+      ],
+      "title": "ContextRequest",
+      "type": "object"
+    },
+    "ContextSettings": {
+      "additionalProperties": false,
+      "description": "绝对 token 整理预算；与模型容量及生成额度分别管理。\n\nAbsolute token policy, separate from model capacity and generation allowance.",
+      "properties": {
+        "auto_trigger_tokens": {
+          "default": 800000,
+          "minimum": 1,
+          "title": "Auto Trigger Tokens",
+          "type": "integer"
+        },
+        "automatic": {
+          "default": true,
+          "title": "Automatic",
+          "type": "boolean"
+        },
+        "keep_recent_tokens": {
+          "default": 15000,
+          "minimum": 0,
+          "title": "Keep Recent Tokens",
+          "type": "integer"
+        },
+        "summary_output_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary Output Tokens"
+        },
+        "summary_target_tokens": {
+          "default": 2000,
+          "minimum": 1,
+          "title": "Summary Target Tokens",
+          "type": "integer"
+        },
+        "tool_result_preview_tokens": {
+          "default": 1000,
+          "minimum": 0,
+          "title": "Tool Result Preview Tokens",
+          "type": "integer"
+        }
+      },
+      "title": "ContextSettings",
+      "type": "object"
+    },
+    "ContextTokens": {
+      "additionalProperties": false,
+      "description": "单次主请求的实际输入用量与独立的模型目录窗口。\n\nReported input for one main request, alongside the separate catalog window.",
+      "properties": {
+        "input_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Tokens"
+        },
+        "model_id": {
+          "enum": [
+            "glm-5.3-flash",
+            "deepseek-v4.1-flash"
+          ],
+          "title": "Model Id",
+          "type": "string"
+        },
+        "status": {
+          "default": "not_measured",
+          "enum": [
+            "reported",
+            "not_measured",
+            "not_reported",
+            "model_changed",
+            "compacted"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "window_source": {
+          "title": "Window Source",
+          "type": "string"
+        },
+        "window_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Window Tokens"
+        }
+      },
+      "required": [
+        "model_id",
+        "window_tokens",
+        "window_source"
+      ],
+      "title": "ContextTokens",
+      "type": "object"
+    },
+    "ContextView": {
+      "additionalProperties": false,
+      "description": "输入区的 token 观察、字节处理量与整理事实。\n\nToken observations, byte processing sizes and compaction facts for the composer.",
+      "properties": {
+        "checkpoint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Checkpoint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "estimate_basis": {
+          "default": "历史本地估计；尚无系统与工具计量",
+          "title": "Estimate Basis",
+          "type": "string"
+        },
+        "estimated_history_tokens": {
+          "default": 0,
+          "title": "Estimated History Tokens",
+          "type": "integer"
+        },
+        "estimated_input_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimated Input Tokens"
+        },
+        "history_through_seq": {
+          "title": "History Through Seq",
+          "type": "integer"
+        },
+        "job": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ContextJob"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_request": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ContextRequest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit_bytes": {
+          "title": "Limit Bytes",
+          "type": "integer"
+        },
+        "measurement": {
+          "const": "history_bytes",
+          "default": "history_bytes",
+          "title": "Measurement",
+          "type": "string"
+        },
+        "migrated_from_bytes": {
+          "default": false,
+          "title": "Migrated From Bytes",
+          "type": "boolean"
+        },
+        "raw_bytes": {
+          "title": "Raw Bytes",
+          "type": "integer"
+        },
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "settings": {
+          "$ref": "#/$defs/ContextSettings"
+        },
+        "tokens": {
+          "$ref": "#/$defs/ContextTokens"
+        },
+        "totals": {
+          "$ref": "#/$defs/UsageSummary"
+        },
+        "trigger_tokens": {
+          "default": 0,
+          "title": "Trigger Tokens",
+          "type": "integer"
+        },
+        "window_bytes": {
+          "title": "Window Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "session_id",
+        "settings",
+        "tokens",
+        "checkpoint",
+        "job",
+        "raw_bytes",
+        "window_bytes",
+        "limit_bytes",
+        "history_through_seq"
+      ],
+      "title": "ContextView",
+      "type": "object"
+    },
     "ControlCollaborationParams": {
       "additionalProperties": false,
       "description": "用户取消请求或明确恢复尚未启动的队列项。\n\nCancel a request or explicitly release an unstarted held item.",
@@ -1332,7 +2102,7 @@
     },
     "CreateSessionParams": {
       "additionalProperties": false,
-      "description": "选择项目与模型，不发起运行。 Select project and model without starting a run.",
+      "description": "选择项目与模型，不发起运行。\n\nSelect project and model without starting a run.",
       "properties": {
         "model_id": {
           "enum": [
@@ -2205,7 +2975,7 @@
     },
     "ExecutionStatus": {
       "additionalProperties": false,
-      "description": "退出前展示实际持有的工作。 Show owned work before application shutdown.",
+      "description": "退出前展示实际持有的工作。\n\nShow owned work before application shutdown.",
       "properties": {
         "probe_count": {
           "title": "Probe Count",
@@ -2270,6 +3040,28 @@
       "title": "ExportResult",
       "type": "object"
     },
+    "ForgetMemoryParams": {
+      "additionalProperties": false,
+      "description": "删除条目正文而不删除聊天。\n\nDelete entry content, not conversation history.",
+      "properties": {
+        "memory_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Memory Id",
+          "type": "string"
+        },
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "memory_id"
+      ],
+      "title": "ForgetMemoryParams",
+      "type": "object"
+    },
     "GetChangeParams": {
       "additionalProperties": false,
       "description": "按成果身份与字符游标读取差异。 Read a change by identity and character cursor.",
@@ -2322,7 +3114,7 @@
     },
     "GetSessionParams": {
       "additionalProperties": false,
-      "description": "显式历史页游标，null 取最近一页。 Explicit history cursor; null loads the latest page.",
+      "description": "显式历史页游标，null 取最近一页。\n\nExplicit history cursor; null loads the latest page.",
       "properties": {
         "before_seq": {
           "anyOf": [
@@ -2797,6 +3589,246 @@
       "title": "GoalView",
       "type": "object"
     },
+    "HistoryItem": {
+      "additionalProperties": false,
+      "description": "公开材料片段，保留原序号和续读位置。\n\nPublic fragment with original sequence and continuation.",
+      "properties": {
+        "call_seq": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Call Seq"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "next_offset": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Offset"
+        },
+        "offset": {
+          "title": "Offset",
+          "type": "integer"
+        },
+        "result_seq": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Seq"
+        },
+        "seq": {
+          "title": "Seq",
+          "type": "integer"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "tool_call_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Call Id"
+        },
+        "tool_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Name"
+        },
+        "total_chars": {
+          "title": "Total Chars",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "seq",
+        "kind",
+        "text",
+        "offset",
+        "next_offset",
+        "total_chars"
+      ],
+      "title": "HistoryItem",
+      "type": "object"
+    },
+    "HistoryPage": {
+      "additionalProperties": false,
+      "description": "可直接展开的材料索引及匹配数。\n\nExpandable material index and match count.",
+      "properties": {
+        "complete": {
+          "title": "Complete",
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/HistoryItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "match_unit": {
+          "default": "records",
+          "enum": [
+            "records",
+            "occurrences"
+          ],
+          "title": "Match Unit",
+          "type": "string"
+        },
+        "matches": {
+          "title": "Matches",
+          "type": "integer"
+        },
+        "next_after_seq": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next After Seq"
+        },
+        "through_seq": {
+          "title": "Through Seq",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "items",
+        "next_after_seq",
+        "matches",
+        "through_seq",
+        "complete"
+      ],
+      "title": "HistoryPage",
+      "type": "object"
+    },
+    "HistoryParams": {
+      "additionalProperties": false,
+      "description": "桌面读取指定会话的历史。\n\nRead a selected session's history from the desktop.",
+      "properties": {
+        "after_seq": {
+          "default": 0,
+          "minimum": 0,
+          "title": "After Seq",
+          "type": "integer"
+        },
+        "artifact_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Artifact Id"
+        },
+        "entry_seq": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entry Seq"
+        },
+        "include_lookup_results": {
+          "default": false,
+          "title": "Include Lookup Results",
+          "type": "boolean"
+        },
+        "limit": {
+          "default": 20,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "max_chars": {
+          "default": 8000,
+          "maximum": 32000,
+          "minimum": 1,
+          "title": "Max Chars",
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        },
+        "query": {
+          "default": "",
+          "title": "Query",
+          "type": "string"
+        },
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "through_seq": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Through Seq"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "title": "HistoryParams",
+      "type": "object"
+    },
     "HumanQuestion": {
       "additionalProperties": false,
       "description": "需用户答复的具体问题及影响，不把闲聊或超时当作回答。\n\nA specific question and its impact, never answered by chatter or elapsed time.",
@@ -2855,7 +3887,7 @@
           "type": "integer"
         },
         "protocol_version": {
-          "const": 3,
+          "const": 4,
           "title": "Protocol Version",
           "type": "integer"
         }
@@ -2878,8 +3910,25 @@
         "capabilities": {
           "items": {
             "enum": [
+              "context.get",
+              "context.configure",
+              "context.compact",
+              "context.cancel",
+              "context.history",
+              "memory.list",
+              "memory.save",
+              "memory.forget",
+              "memory.configure",
+              "memory.maintain",
+              "memory.cancel",
               "initialize",
+              "workers.list",
+              "workers.configure",
+              "workers.control",
+              "collaboration.message",
+              "collaboration.messages",
               "projects.open",
+              "projects.relocate",
               "projects.list",
               "config.get",
               "config.update",
@@ -3031,6 +4080,76 @@
       "title": "ListGoalsParams",
       "type": "object"
     },
+    "ListMemoryParams": {
+      "additionalProperties": false,
+      "description": "桌面记忆检索。\n\nDesktop memory lookup.",
+      "properties": {
+        "category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Category"
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cursor"
+        },
+        "include_disabled": {
+          "default": false,
+          "title": "Include Disabled",
+          "type": "boolean"
+        },
+        "limit": {
+          "default": 20,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "query": {
+          "default": "",
+          "title": "Query",
+          "type": "string"
+        },
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "subject": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subject"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "title": "ListMemoryParams",
+      "type": "object"
+    },
     "ListProgramsParams": {
       "additionalProperties": false,
       "description": "用户查询卡片范围；工具另校验会话权限。\n\nUser query scope; tools also check session ownership.",
@@ -3081,7 +4200,7 @@
     },
     "ListSessionsParams": {
       "additionalProperties": false,
-      "description": "按项目分页会话列表。 Page sessions by project.",
+      "description": "按项目分页会话列表。\n\nPage sessions by project.",
       "properties": {
         "cursor": {
           "anyOf": [
@@ -3114,6 +4233,611 @@
         "limit"
       ],
       "title": "ListSessionsParams",
+      "type": "object"
+    },
+    "MaintainMemoryParams": {
+      "additionalProperties": false,
+      "description": "手动整理可显式选择旧范围，默认仅处理增量。\n\nManual maintenance can explicitly select old history.",
+      "properties": {
+        "after_seq": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "After Seq"
+        },
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "source_ids": {
+          "items": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "title": {
+          "default": "",
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "title": "MaintainMemoryParams",
+      "type": "object"
+    },
+    "MemberProgress": {
+      "additionalProperties": false,
+      "description": "各成员最新报告与宿主来源。\n\nEach member's latest report and host provenance.",
+      "properties": {
+        "report": {
+          "$ref": "#/$defs/WorkReport"
+        },
+        "source": {
+          "$ref": "#/$defs/EventRef"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "report",
+        "source",
+        "updated_at"
+      ],
+      "title": "MemberProgress",
+      "type": "object"
+    },
+    "MemoryEntry": {
+      "additionalProperties": false,
+      "description": "带作用域和修订来源的独立记忆。\n\nIndependent memory with scope and revision provenance.",
+      "properties": {
+        "category": {
+          "default": "fact",
+          "title": "Category",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 64000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "memory_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Memory Id",
+          "type": "string"
+        },
+        "pinned": {
+          "default": false,
+          "title": "Pinned",
+          "type": "boolean"
+        },
+        "project_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Project Id"
+        },
+        "related_ids": {
+          "items": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Related Ids",
+          "type": "array"
+        },
+        "revision": {
+          "title": "Revision",
+          "type": "integer"
+        },
+        "scope": {
+          "default": "project",
+          "enum": [
+            "project",
+            "user"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        },
+        "source": {
+          "enum": [
+            "user",
+            "agent",
+            "maintenance"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "source_ids": {
+          "items": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "source_seq": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Seq"
+        },
+        "stale": {
+          "default": false,
+          "title": "Stale",
+          "type": "boolean"
+        },
+        "subjects": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Subjects",
+          "type": "array"
+        },
+        "supersedes": {
+          "items": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Supersedes",
+          "type": "array"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        },
+        "valid_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valid From"
+        },
+        "valid_until": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valid Until"
+        }
+      },
+      "required": [
+        "title",
+        "content",
+        "memory_id",
+        "project_id",
+        "revision",
+        "source",
+        "session_id",
+        "source_seq",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "MemoryEntry",
+      "type": "object"
+    },
+    "MemoryFields": {
+      "additionalProperties": false,
+      "description": "用户可维护的知识正文；其余来源由宿主填写。\n\nEditable knowledge; the host supplies provenance.",
+      "properties": {
+        "category": {
+          "default": "fact",
+          "title": "Category",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 64000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "pinned": {
+          "default": false,
+          "title": "Pinned",
+          "type": "boolean"
+        },
+        "related_ids": {
+          "items": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Related Ids",
+          "type": "array"
+        },
+        "scope": {
+          "default": "project",
+          "enum": [
+            "project",
+            "user"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "source_ids": {
+          "items": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "stale": {
+          "default": false,
+          "title": "Stale",
+          "type": "boolean"
+        },
+        "subjects": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Subjects",
+          "type": "array"
+        },
+        "supersedes": {
+          "items": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Supersedes",
+          "type": "array"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "valid_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valid From"
+        },
+        "valid_until": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valid Until"
+        }
+      },
+      "required": [
+        "title",
+        "content"
+      ],
+      "title": "MemoryFields",
+      "type": "object"
+    },
+    "MemoryJob": {
+      "additionalProperties": false,
+      "description": "独立维护费用与状态，不改已结束 Run 的账本。\n\nMaintenance cost/state separate from finished runs.",
+      "properties": {
+        "finished_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finished At"
+        },
+        "job_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Job Id",
+          "type": "string"
+        },
+        "message": {
+          "default": "",
+          "title": "Message",
+          "type": "string"
+        },
+        "model_id": {
+          "enum": [
+            "glm-5.3-flash",
+            "deepseek-v4.1-flash"
+          ],
+          "title": "Model Id",
+          "type": "string"
+        },
+        "requests": {
+          "default": 0,
+          "title": "Requests",
+          "type": "integer"
+        },
+        "started_at": {
+          "title": "Started At",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "running",
+            "completed",
+            "failed",
+            "cancelled",
+            "interrupted"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "through_seq": {
+          "title": "Through Seq",
+          "type": "integer"
+        },
+        "usage": {
+          "$ref": "#/$defs/TokenUsage"
+        }
+      },
+      "required": [
+        "job_id",
+        "model_id",
+        "status",
+        "through_seq",
+        "started_at"
+      ],
+      "title": "MemoryJob",
+      "type": "object"
+    },
+    "MemoryPage": {
+      "additionalProperties": false,
+      "description": "管理页与检索结果，不隐藏局部读取失败。\n\nManagement/retrieval results with local read failures.",
+      "properties": {
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/MemoryEntry"
+          },
+          "title": "Entries",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        },
+        "state": {
+          "$ref": "#/$defs/MemoryState"
+        },
+        "totals": {
+          "$ref": "#/$defs/UsageSummary"
+        },
+        "unavailable_count": {
+          "default": 0,
+          "title": "Unavailable Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "entries",
+        "next_cursor",
+        "state"
+      ],
+      "title": "MemoryPage",
+      "type": "object"
+    },
+    "MemoryParams": {
+      "additionalProperties": false,
+      "description": "当前项目内管理记忆。\n\nManage memory within the current project.",
+      "properties": {
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "title": "MemoryParams",
+      "type": "object"
+    },
+    "MemorySettings": {
+      "additionalProperties": false,
+      "description": "使用和贡献分别控制，实验默认关闭。\n\nIndependent use/contribution controls; experiments start disabled.",
+      "properties": {
+        "associations": {
+          "default": false,
+          "title": "Associations",
+          "type": "boolean"
+        },
+        "auto_pages": {
+          "default": false,
+          "title": "Auto Pages",
+          "type": "boolean"
+        },
+        "automatic": {
+          "default": true,
+          "title": "Automatic",
+          "type": "boolean"
+        },
+        "contribute": {
+          "default": true,
+          "title": "Contribute",
+          "type": "boolean"
+        },
+        "maintenance_input_bytes": {
+          "default": 60000,
+          "minimum": 4096,
+          "title": "Maintenance Input Bytes",
+          "type": "integer"
+        },
+        "maintenance_requests": {
+          "default": 2,
+          "minimum": 1,
+          "title": "Maintenance Requests",
+          "type": "integer"
+        },
+        "recall_chars": {
+          "default": 6000,
+          "minimum": 0,
+          "title": "Recall Chars",
+          "type": "integer"
+        },
+        "recall_limit": {
+          "default": 8,
+          "minimum": 1,
+          "title": "Recall Limit",
+          "type": "integer"
+        },
+        "use": {
+          "default": true,
+          "title": "Use",
+          "type": "boolean"
+        }
+      },
+      "title": "MemorySettings",
+      "type": "object"
+    },
+    "MemoryState": {
+      "additionalProperties": false,
+      "description": "会话贡献起点与最近维护事实。\n\nSession contribution boundary and latest maintenance facts.",
+      "properties": {
+        "job": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryJob"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "pending_offset": {
+          "default": 0,
+          "title": "Pending Offset",
+          "type": "integer"
+        },
+        "pending_seq": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pending Seq"
+        },
+        "processed_seq": {
+          "title": "Processed Seq",
+          "type": "integer"
+        },
+        "settings": {
+          "$ref": "#/$defs/MemorySettings"
+        },
+        "used_ids": {
+          "items": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Used Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "processed_seq"
+      ],
+      "title": "MemoryState",
       "type": "object"
     },
     "ModelConnectionProbeParams": {
@@ -3492,6 +5216,81 @@
       "title": "OutputChunk",
       "type": "object"
     },
+    "PeerMessage": {
+      "additionalProperties": false,
+      "description": "宿主填写来源和请求边界送达状态。\n\nThe host records provenance and request-boundary delivery state.",
+      "properties": {
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "delivered_run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Delivered Run Id"
+        },
+        "message_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Message Id",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/SendMessageParams"
+        },
+        "task_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Task Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message_id",
+        "task_id",
+        "params",
+        "created_at"
+      ],
+      "title": "PeerMessage",
+      "type": "object"
+    },
+    "PeerMessagePage": {
+      "additionalProperties": false,
+      "description": "普通消息的可追溯收发记录。\n\nTraceable incoming and outgoing ordinary messages.",
+      "properties": {
+        "messages": {
+          "items": {
+            "$ref": "#/$defs/PeerMessage"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Cursor"
+        }
+      },
+      "required": [
+        "messages"
+      ],
+      "title": "PeerMessagePage",
+      "type": "object"
+    },
     "ProgramCommand": {
       "additionalProperties": false,
       "description": "程序和参数数组直接执行，不猜测 shell 转义。\n\nExecute an explicit program and argument array.",
@@ -3800,6 +5599,30 @@
       "additionalProperties": false,
       "description": "有界输出页与实际状态。\n\nBounded output page and actual process state.",
       "properties": {
+        "archive_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Archive Id"
+        },
+        "archive_read": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Archive Read"
+        },
         "next_seq": {
           "title": "Next Seq",
           "type": "integer"
@@ -4073,6 +5896,30 @@
         "interpreter"
       ],
       "title": "PythonEnvironment",
+      "type": "object"
+    },
+    "RelocateProjectParams": {
+      "additionalProperties": false,
+      "description": "明确把已有项目身份绑定到新目录，保留会话与记忆。\n\nExplicitly rebind an existing project identity, retaining sessions and memory.",
+      "properties": {
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "project_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Project Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "path"
+      ],
+      "title": "RelocateProjectParams",
       "type": "object"
     },
     "RemoveEnvironmentParams": {
@@ -4375,7 +6222,7 @@
     },
     "RunView": {
       "additionalProperties": false,
-      "description": "公开运行计数；未知用量与未结束清理明确呈现。 Public counts and explicit unknown usage.",
+      "description": "公开运行计数；未知用量与未结束清理明确呈现。\n\nPublic counts and explicit unknown usage.",
       "properties": {
         "code": {
           "anyOf": [
@@ -4542,6 +6389,24 @@
           "title": "Tools",
           "type": "integer"
         },
+        "waited_seconds": {
+          "default": 0.0,
+          "title": "Waited Seconds",
+          "type": "number"
+        },
+        "waiting_for": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Waiting For"
+        },
         "work_id": {
           "anyOf": [
             {
@@ -4669,6 +6534,39 @@
       "title": "SaveExecutionSettings",
       "type": "object"
     },
+    "SaveMemoryParams": {
+      "additionalProperties": false,
+      "description": "显式保存知识，可更新已知条目。\n\nExplicit knowledge save or update.",
+      "properties": {
+        "fields": {
+          "$ref": "#/$defs/MemoryFields"
+        },
+        "memory_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Id"
+        },
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "fields"
+      ],
+      "title": "SaveMemoryParams",
+      "type": "object"
+    },
     "SelectSessionModelParams": {
       "additionalProperties": false,
       "description": "选择既有会话的后续模型，不创建会话或发请求。\n\nSelect a session's next model without creating sessions or sending requests.",
@@ -4700,9 +6598,45 @@
       "title": "SelectSessionModelParams",
       "type": "object"
     },
+    "SendMessageParams": {
+      "additionalProperties": false,
+      "description": "普通交流不等同工作请求，不唤醒空闲会话。\n\nOrdinary messages are not work requests and never wake idle sessions.",
+      "properties": {
+        "content": {
+          "maxLength": 8000,
+          "minLength": 1,
+          "pattern": "\\S",
+          "title": "Content",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "source_session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Source Session Id",
+          "type": "string"
+        },
+        "target_session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Target Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "source_session_id",
+        "target_session_id",
+        "content"
+      ],
+      "title": "SendMessageParams",
+      "type": "object"
+    },
     "SessionEventNotification": {
       "additionalProperties": false,
-      "description": "唯一支持的后端事件通知形状。 The sole supported backend notification envelope.",
+      "description": "唯一支持的后端事件通知形状。\n\nThe sole supported backend notification envelope.",
       "properties": {
         "jsonrpc": {
           "const": "2.0",
@@ -4728,7 +6662,7 @@
     },
     "SessionPage": {
       "additionalProperties": false,
-      "description": "项目会话的游标页。 Cursor page of project sessions.",
+      "description": "项目会话的游标页。\n\nCursor page of project sessions.",
       "properties": {
         "active_session_ids": {
           "items": {
@@ -4773,7 +6707,7 @@
     },
     "SessionParams": {
       "additionalProperties": false,
-      "description": "限定会话身份。 Constrain session identity.",
+      "description": "限定会话身份。\n\nConstrain session identity.",
       "properties": {
         "session_id": {
           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
@@ -4875,7 +6809,7 @@
     },
     "SessionSummary": {
       "additionalProperties": false,
-      "description": "会话列表条目，不泄露原生模型状态。 Session list entry without native provider state.",
+      "description": "会话列表条目，不泄露原生模型状态。\n\nSession list entry without native provider state.",
       "properties": {
         "can_continue": {
           "title": "Can Continue",
@@ -4980,7 +6914,7 @@
     },
     "SessionView": {
       "additionalProperties": false,
-      "description": "有界快照含历史水位与实时预览。 Bounded snapshot with history watermark and live preview.",
+      "description": "有界快照含历史水位与实时预览。\n\nBounded snapshot with history watermark and live preview.",
       "properties": {
         "before_seq": {
           "anyOf": [
@@ -5089,6 +7023,11 @@
         "changes": {
           "$ref": "#/$defs/ChangePage"
         },
+        "inherited_context": {
+          "default": "",
+          "title": "Inherited Context",
+          "type": "string"
+        },
         "source_goal": {
           "anyOf": [
             {
@@ -5134,6 +7073,33 @@
       "title": "SessionWorkBrief",
       "type": "object"
     },
+    "SharedDecision": {
+      "additionalProperties": false,
+      "description": "本任务内需共享的决定，明确区分用户要求和建议。\n\nTask-local decisions distinguish user direction from proposals.",
+      "properties": {
+        "status": {
+          "default": "user_confirmed",
+          "enum": [
+            "user_confirmed",
+            "proposal"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 16000,
+          "minLength": 1,
+          "pattern": "\\S",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "SharedDecision",
+      "type": "object"
+    },
     "ShellCommand": {
       "additionalProperties": false,
       "description": "用户任务中的显式 PowerShell 脚本，与普通 argv 区分。\n\nExplicit PowerShell, distinct from argv.",
@@ -5158,6 +7124,24 @@
       "title": "ShellCommand",
       "type": "object"
     },
+    "SourcedDecision": {
+      "additionalProperties": false,
+      "description": "共同决定保留聊天来源，不覆盖用户手写字段。\n\nShared decisions retain sources without replacing user fields.",
+      "properties": {
+        "decision": {
+          "$ref": "#/$defs/SharedDecision"
+        },
+        "source": {
+          "$ref": "#/$defs/EventRef"
+        }
+      },
+      "required": [
+        "decision",
+        "source"
+      ],
+      "title": "SourcedDecision",
+      "type": "object"
+    },
     "SourcedWorkItem": {
       "additionalProperties": false,
       "description": "宿主附加来源，保留模型判断与事实出处的区别。\n\nHost-attached provenance distinguishes a model judgment from its source facts.",
@@ -5176,9 +7160,58 @@
       "title": "SourcedWorkItem",
       "type": "object"
     },
+    "SpawnWorkerArgs": {
+      "additionalProperties": false,
+      "description": "一个独立、有边界的子任务；不要求收益评分。\n\nOne bounded independent assignment, without benefit scores.",
+      "properties": {
+        "context_mode": {
+          "default": "isolated",
+          "enum": [
+            "isolated",
+            "inherit"
+          ],
+          "title": "Context Mode",
+          "type": "string"
+        },
+        "mode": {
+          "default": "plan",
+          "enum": [
+            "normal",
+            "plan"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "objective": {
+          "maxLength": 16000,
+          "minLength": 1,
+          "title": "Objective",
+          "type": "string"
+        },
+        "role": {
+          "default": "research",
+          "enum": [
+            "implement",
+            "research"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "scope": {
+          "default": "",
+          "title": "Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "objective"
+      ],
+      "title": "SpawnWorkerArgs",
+      "type": "object"
+    },
     "StartRunParams": {
       "additionalProperties": false,
-      "description": "幂等操作 ID 独立于 RPC ID。 Idempotent operation identity is separate from RPC identity.",
+      "description": "幂等操作 ID 独立于 RPC ID。\n\nIdempotent operation identity is separate from RPC identity.",
       "properties": {
         "limits": {
           "anyOf": [
@@ -5592,6 +7625,13 @@
       "additionalProperties": false,
       "description": "任务当前工作图与最近一次报告，历史在任务版本日志保留。\n\nCurrent task work graph and latest report; task revisions preserve history.",
       "properties": {
+        "decisions": {
+          "items": {
+            "$ref": "#/$defs/SourcedDecision"
+          },
+          "title": "Decisions",
+          "type": "array"
+        },
         "items": {
           "items": {
             "$ref": "#/$defs/SourcedWorkItem"
@@ -5609,6 +7649,13 @@
             }
           ],
           "default": null
+        },
+        "members": {
+          "items": {
+            "$ref": "#/$defs/MemberProgress"
+          },
+          "title": "Members",
+          "type": "array"
         },
         "source": {
           "anyOf": [
@@ -5776,6 +7823,39 @@
       "title": "UpdateTaskParams",
       "type": "object"
     },
+    "UsageSummary": {
+      "additionalProperties": false,
+      "description": "已报告 token 与未知用量分别计数。\n\nSeparate reported tokens from unknown usage.",
+      "properties": {
+        "reported_input_tokens": {
+          "default": 0,
+          "title": "Reported Input Tokens",
+          "type": "integer"
+        },
+        "reported_output_tokens": {
+          "default": 0,
+          "title": "Reported Output Tokens",
+          "type": "integer"
+        },
+        "requests": {
+          "default": 0,
+          "title": "Requests",
+          "type": "integer"
+        },
+        "unavailable_jobs": {
+          "default": 0,
+          "title": "Unavailable Jobs",
+          "type": "integer"
+        },
+        "unknown_jobs": {
+          "default": 0,
+          "title": "Unknown Jobs",
+          "type": "integer"
+        }
+      },
+      "title": "UsageSummary",
+      "type": "object"
+    },
     "UvEnvironment": {
       "additionalProperties": false,
       "description": "登记 uv 与已有解释器，普通运行不自动同步依赖。\n\nRegister uv and an existing interpreter.",
@@ -5821,6 +7901,18 @@
       "additionalProperties": false,
       "description": "公开正文片段及读取状态，不宣称执行了网页脚本。\n\nA public text excerpt and retrieval status, without claiming script execution.",
       "properties": {
+        "archive_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Archive Id"
+        },
         "content": {
           "title": "Content",
           "type": "string"
@@ -5920,6 +8012,18 @@
           },
           "title": "Actual Queries",
           "type": "array"
+        },
+        "archive_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Archive Id"
         },
         "kind": {
           "const": "web.search",
@@ -6106,6 +8210,13 @@
           "title": "Criteria",
           "type": "array"
         },
+        "decisions": {
+          "items": {
+            "$ref": "#/$defs/SharedDecision"
+          },
+          "title": "Decisions",
+          "type": "array"
+        },
         "next_action": {
           "default": "",
           "maxLength": 16000,
@@ -6167,9 +8278,237 @@
       ],
       "title": "WorkReport",
       "type": "object"
+    },
+    "WorkerControlParams": {
+      "additionalProperties": false,
+      "description": "按已知身份停止或继续内部工作。\n\nStop or continue identified internal work.",
+      "properties": {
+        "action": {
+          "enum": [
+            "stop",
+            "continue"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "prompt": {
+          "default": "",
+          "title": "Prompt",
+          "type": "string"
+        },
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "worker_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Worker Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "worker_id",
+        "action"
+      ],
+      "title": "WorkerControlParams",
+      "type": "object"
+    },
+    "WorkerPage": {
+      "additionalProperties": false,
+      "description": "子卡片列表，不进入左侧正式会话树。\n\nWorker cards, excluded from the formal session tree.",
+      "properties": {
+        "settings": {
+          "$ref": "#/$defs/WorkerSettings"
+        },
+        "workers": {
+          "items": {
+            "$ref": "#/$defs/WorkerRecord"
+          },
+          "title": "Workers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "settings",
+        "workers"
+      ],
+      "title": "WorkerPage",
+      "type": "object"
+    },
+    "WorkerRecord": {
+      "additionalProperties": false,
+      "description": "完整内部身份、原安排与结果入口。\n\nInternal identity, original assignment and result references.",
+      "properties": {
+        "active_seconds": {
+          "default": 0.0,
+          "title": "Active Seconds",
+          "type": "number"
+        },
+        "assignment": {
+          "$ref": "#/$defs/SpawnWorkerArgs"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Code"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "goal_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Goal Id"
+        },
+        "model_id": {
+          "enum": [
+            "glm-5.3-flash",
+            "deepseek-v4.1-flash"
+          ],
+          "title": "Model Id",
+          "type": "string"
+        },
+        "owner_run_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Owner Run Id",
+          "type": "string"
+        },
+        "owner_session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Owner Session Id",
+          "type": "string"
+        },
+        "pending_messages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Pending Messages",
+          "type": "array"
+        },
+        "requests": {
+          "default": 0,
+          "title": "Requests",
+          "type": "integer"
+        },
+        "result": {
+          "default": "",
+          "title": "Result",
+          "type": "string"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Run Id"
+        },
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "completed",
+            "failed",
+            "cancelled",
+            "interrupted"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "tools": {
+          "default": 0,
+          "title": "Tools",
+          "type": "integer"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        },
+        "worker_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Worker Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "worker_id",
+        "session_id",
+        "owner_session_id",
+        "owner_run_id",
+        "goal_id",
+        "model_id",
+        "assignment",
+        "status",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "WorkerRecord",
+      "type": "object"
+    },
+    "WorkerSessionParams": {
+      "additionalProperties": false,
+      "description": "用户会话中的子工作入口。\n\nWorker access within an owning user session.",
+      "properties": {
+        "session_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Session Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "title": "WorkerSessionParams",
+      "type": "object"
+    },
+    "WorkerSettings": {
+      "additionalProperties": false,
+      "description": "默认关闭；并发是可调资源配置。\n\nDisabled by default; concurrency is an adjustable resource setting.",
+      "properties": {
+        "concurrency": {
+          "default": 2,
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "WorkerSettings",
+      "type": "object"
     }
   },
-  "$id": "https://my-coding-agent.local/protocol-v3.schema.json",
+  "$id": "https://my-coding-agent.local/protocol-v4.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
@@ -6221,6 +8560,15 @@
     "CollaborationRequestParams": {
       "$ref": "#/$defs/CollaborationRequestParams"
     },
+    "ConfigureContextParams": {
+      "$ref": "#/$defs/ConfigureContextParams"
+    },
+    "ConfigureMemoryParams": {
+      "$ref": "#/$defs/ConfigureMemoryParams"
+    },
+    "ConfigureWorkersParams": {
+      "$ref": "#/$defs/ConfigureWorkersParams"
+    },
     "ConnectSessionsParams": {
       "$ref": "#/$defs/ConnectSessionsParams"
     },
@@ -6232,6 +8580,12 @@
     },
     "ConnectionStatus": {
       "$ref": "#/$defs/ConnectionStatus"
+    },
+    "ContextParams": {
+      "$ref": "#/$defs/ContextParams"
+    },
+    "ContextView": {
+      "$ref": "#/$defs/ContextView"
     },
     "ControlCollaborationParams": {
       "$ref": "#/$defs/ControlCollaborationParams"
@@ -6293,6 +8647,9 @@
     "ExportResult": {
       "$ref": "#/$defs/ExportResult"
     },
+    "ForgetMemoryParams": {
+      "$ref": "#/$defs/ForgetMemoryParams"
+    },
     "GetChangeParams": {
       "$ref": "#/$defs/GetChangeParams"
     },
@@ -6308,6 +8665,12 @@
     "GoalView": {
       "$ref": "#/$defs/GoalView"
     },
+    "HistoryPage": {
+      "$ref": "#/$defs/HistoryPage"
+    },
+    "HistoryParams": {
+      "$ref": "#/$defs/HistoryParams"
+    },
     "InitializeParams": {
       "$ref": "#/$defs/InitializeParams"
     },
@@ -6320,11 +8683,23 @@
     "ListGoalsParams": {
       "$ref": "#/$defs/ListGoalsParams"
     },
+    "ListMemoryParams": {
+      "$ref": "#/$defs/ListMemoryParams"
+    },
     "ListProgramsParams": {
       "$ref": "#/$defs/ListProgramsParams"
     },
     "ListSessionsParams": {
       "$ref": "#/$defs/ListSessionsParams"
+    },
+    "MaintainMemoryParams": {
+      "$ref": "#/$defs/MaintainMemoryParams"
+    },
+    "MemoryPage": {
+      "$ref": "#/$defs/MemoryPage"
+    },
+    "MemoryParams": {
+      "$ref": "#/$defs/MemoryParams"
     },
     "ModelConnectionProbeParams": {
       "$ref": "#/$defs/ModelConnectionProbeParams"
@@ -6337,6 +8712,12 @@
     },
     "OperationError": {
       "$ref": "#/$defs/OperationError"
+    },
+    "PeerMessage": {
+      "$ref": "#/$defs/PeerMessage"
+    },
+    "PeerMessagePage": {
+      "$ref": "#/$defs/PeerMessagePage"
     },
     "ProgramPage": {
       "$ref": "#/$defs/ProgramPage"
@@ -6355,6 +8736,9 @@
     },
     "PublicConfig": {
       "$ref": "#/$defs/PublicConfig"
+    },
+    "RelocateProjectParams": {
+      "$ref": "#/$defs/RelocateProjectParams"
     },
     "RemoveEnvironmentParams": {
       "$ref": "#/$defs/RemoveEnvironmentParams"
@@ -6377,8 +8761,14 @@
     "SaveExecutionSettings": {
       "$ref": "#/$defs/SaveExecutionSettings"
     },
+    "SaveMemoryParams": {
+      "$ref": "#/$defs/SaveMemoryParams"
+    },
     "SelectSessionModelParams": {
       "$ref": "#/$defs/SelectSessionModelParams"
+    },
+    "SendMessageParams": {
+      "$ref": "#/$defs/SendMessageParams"
     },
     "SessionEventNotification": {
       "$ref": "#/$defs/SessionEventNotification"
@@ -6433,9 +8823,37 @@
     },
     "WebSearchResult": {
       "$ref": "#/$defs/WebSearchResult"
+    },
+    "WorkerControlParams": {
+      "$ref": "#/$defs/WorkerControlParams"
+    },
+    "WorkerPage": {
+      "$ref": "#/$defs/WorkerPage"
+    },
+    "WorkerSessionParams": {
+      "$ref": "#/$defs/WorkerSessionParams"
     }
   },
   "required": [
+    "WorkerSessionParams",
+    "ConfigureWorkersParams",
+    "WorkerControlParams",
+    "WorkerPage",
+    "SendMessageParams",
+    "PeerMessage",
+    "PeerMessagePage",
+    "MemoryParams",
+    "ListMemoryParams",
+    "SaveMemoryParams",
+    "ForgetMemoryParams",
+    "ConfigureMemoryParams",
+    "MaintainMemoryParams",
+    "MemoryPage",
+    "ContextParams",
+    "ConfigureContextParams",
+    "ContextView",
+    "HistoryParams",
+    "HistoryPage",
     "AppInfo",
     "CredentialInfo",
     "PublicConfig",
@@ -6458,6 +8876,7 @@
     "InitializeParams",
     "InitializeResult",
     "OpenProjectParams",
+    "RelocateProjectParams",
     "EmptyParams",
     "DiagnosticsParams",
     "RpcRequest",
@@ -6524,6 +8943,6 @@
     "ControlCollaborationParams",
     "ArrangeSessionWorkParams"
   ],
-  "title": "ProtocolV3",
+  "title": "ProtocolV4",
   "type": "object"
 }

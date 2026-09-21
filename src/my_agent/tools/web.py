@@ -53,7 +53,10 @@ class WebTools:
         fetcher: PageFetcher,
         settings: WebSettings,
     ) -> None:
-        """注入归属、网络与默认值。 Inject ownership, networking and defaults."""
+        """注入归属、网络与默认值。
+
+        Inject ownership, networking and defaults.
+        """
         self.context, self.delegate = context, delegate
         self.search, self.fetcher, self.settings = search, fetcher, settings
 
@@ -95,7 +98,10 @@ class WebTools:
         return definitions
 
     def is_mutating(self, name: str) -> bool:
-        """查询不修改项目文件；其他工具沿用原判定。 Web tools do not modify project files."""
+        """查询不修改项目文件；其他工具沿用原判定。
+
+        Web tools do not modify project files.
+        """
         return self.delegate.is_mutating(name)
 
     async def execute(self, call: ToolCall) -> ToolResult:
@@ -140,6 +146,12 @@ class WebTools:
                     if options.max_redirects is not None
                     else self.settings.max_redirects,
                 )
+            if (
+                self.context.archive_output
+                and len(result.model_dump_json().encode("utf-8"))
+                > self.context.limits.max_tool_bytes
+            ):
+                result.archive_id = await self.context.archive_output(result.model_dump_json())
             return ToolResult(
                 tool_call_id=call.tool_call_id,
                 is_error=False,

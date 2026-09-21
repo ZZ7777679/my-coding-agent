@@ -65,6 +65,7 @@ class ArrangeSessionWorkParams(ModelData):
     source_session_id: SessionId
     target_session_id: SessionId
     kind: Literal["handoff", "review"]
+    context_mode: Literal["isolated", "inherit"] = "isolated"
     objective: ScopeText
     notes: Annotated[str, Field(max_length=16000)] = ""
     transfer_goal_id: SessionId | None = None
@@ -96,6 +97,7 @@ class SessionWorkBrief(ModelData):
     source_run: RunView | None
     changes: ChangePage
     captured_at: str
+    inherited_context: str = ""
 
 
 class CollaborationRequest(ModelData):
@@ -123,7 +125,10 @@ class CollaborationRequest(ModelData):
 
 
 class CollaborationPageParams(ModelData):
-    """本会话的约定和请求分页。 Page this session's agreements and requests."""
+    """本会话的约定和请求分页。
+
+    Page this session's agreements and requests.
+    """
 
     session_id: SessionId
     cursor: SessionId | None = None
@@ -162,3 +167,38 @@ class ControlCollaborationParams(ModelData):
 
     request_id: SessionId
     action: Literal["cancel", "resume"]
+
+
+class SendMessageParams(ModelData):
+    """普通交流不等同工作请求，不唤醒空闲会话。
+
+    Ordinary messages are not work requests and never wake idle sessions.
+    """
+
+    operation_id: SessionId
+    source_session_id: SessionId
+    target_session_id: SessionId
+    content: ScopeText
+
+
+class PeerMessage(ModelData):
+    """宿主填写来源和请求边界送达状态。
+
+    The host records provenance and request-boundary delivery state.
+    """
+
+    message_id: SessionId
+    task_id: SessionId
+    params: SendMessageParams
+    created_at: str
+    delivered_run_id: SessionId | None = None
+
+
+class PeerMessagePage(ModelData):
+    """普通消息的可追溯收发记录。
+
+    Traceable incoming and outgoing ordinary messages.
+    """
+
+    messages: list[PeerMessage]
+    next_cursor: SessionId | None = None

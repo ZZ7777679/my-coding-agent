@@ -1,4 +1,7 @@
-"""搜索、来源与网页读取的严格数据契约。 Strict search, source and page contracts."""
+"""搜索、来源与网页读取的严格数据契约。
+
+Strict search, source and page contracts.
+"""
 
 from typing import Annotated, Literal
 
@@ -19,7 +22,10 @@ class WebSettings(ModelData):
 
 
 class SearchArgs(ModelData):
-    """只发送查询，不自动附带项目或聊天历史。 Send a query without project or chat history."""
+    """只发送查询，不自动附带项目或聊天历史。
+
+    Send a query without project or chat history.
+    """
 
     query: Annotated[str, Field(min_length=1, max_length=8000, pattern=r"\S")]
     max_uses: Annotated[int, Field(ge=1)] | None = None
@@ -65,6 +71,7 @@ class WebSearchResult(ModelData):
     search_uses: int
     retrieved_at: str
     truncated: bool = False
+    archive_id: str | None = None
 
 
 class WebPageResult(ModelData):
@@ -86,6 +93,7 @@ class WebPageResult(ModelData):
     next_offset: int | None
     truncated: bool
     download_truncated: bool
+    archive_id: str | None = None
 
 
 class OpenWebUrlParams(ModelData):

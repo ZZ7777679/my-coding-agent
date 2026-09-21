@@ -26,6 +26,22 @@ from my_agent.collaboration.types import (
     CollaborationRequestParams,
     ConnectSessionsParams,
     ControlCollaborationParams,
+    PeerMessage,
+    PeerMessagePage,
+    SendMessageParams,
+)
+from my_agent.context.types import (
+    ConfigureContextParams,
+    ContextParams,
+    ContextView,
+    HistoryPage,
+    HistoryParams,
+)
+from my_agent.delegation.types import (
+    ConfigureWorkersParams,
+    WorkerControlParams,
+    WorkerPage,
+    WorkerSessionParams,
 )
 from my_agent.errors import DataSource
 from my_agent.execution.types import (
@@ -47,6 +63,15 @@ from my_agent.execution.types import (
 )
 from my_agent.goals.dto import ControlGoalParams, CreateGoalParams, ListGoalsParams
 from my_agent.goals.types import GoalPage, GoalView
+from my_agent.memory.types import (
+    ConfigureMemoryParams,
+    ForgetMemoryParams,
+    ListMemoryParams,
+    MaintainMemoryParams,
+    MemoryPage,
+    MemoryParams,
+    SaveMemoryParams,
+)
 from my_agent.models.connections import (
     ConnectionProbeParams,
     ConnectionSettings,
@@ -168,6 +193,16 @@ class StartupPaths(StartupPathsParams):
     current_data_dir: Text
 
 
+class RelocateProjectParams(DTO):
+    """明确把已有项目身份绑定到新目录，保留会话与记忆。
+
+    Explicitly rebind an existing project identity, retaining sessions and memory.
+    """
+
+    project_id: Identifier
+    path: Text
+
+
 class ChooseDirectoryParams(DTO):
     """限定受信目录选择器的用途，不接受任意系统操作。
 
@@ -212,8 +247,8 @@ class AppInfo(DTO):
 
     name: Text
     app_version: Text
-    protocol_version: Literal[3]
-    stage: Literal["M2"]
+    protocol_version: Literal[4]
+    stage: Literal["M3"]
 
 
 class StorageInfo(DTO):
@@ -293,7 +328,7 @@ class InitializeParams(DTO):
     """
 
     app_version: Text
-    protocol_version: Literal[3]
+    protocol_version: Literal[4]
     data_schema_version: Literal[1]
 
 
@@ -309,8 +344,25 @@ class InitializeResult(DTO):
     projects: ProjectsView
     capabilities: list[
         Literal[
+            "context.get",
+            "context.configure",
+            "context.compact",
+            "context.cancel",
+            "context.history",
+            "memory.list",
+            "memory.save",
+            "memory.forget",
+            "memory.configure",
+            "memory.maintain",
+            "memory.cancel",
             "initialize",
+            "workers.list",
+            "workers.configure",
+            "workers.control",
+            "collaboration.message",
+            "collaboration.messages",
             "projects.open",
+            "projects.relocate",
             "projects.list",
             "config.get",
             "config.update",
@@ -507,7 +559,10 @@ class SelectSessionModelParams(DTO):
 
 
 class CreateSessionParams(DTO):
-    """选择项目与模型，不发起运行。 Select project and model without starting a run."""
+    """选择项目与模型，不发起运行。
+
+    Select project and model without starting a run.
+    """
 
     project_id: Identifier
     model_id: ModelId
@@ -518,7 +573,10 @@ class CreateSessionParams(DTO):
 
 
 class ListSessionsParams(DTO):
-    """按项目分页会话列表。 Page sessions by project."""
+    """按项目分页会话列表。
+
+    Page sessions by project.
+    """
 
     project_id: Identifier
     cursor: SessionId | None
@@ -526,19 +584,28 @@ class ListSessionsParams(DTO):
 
 
 class SessionParams(DTO):
-    """限定会话身份。 Constrain session identity."""
+    """限定会话身份。
+
+    Constrain session identity.
+    """
 
     session_id: SessionId
 
 
 class GetSessionParams(SessionParams):
-    """显式历史页游标，null 取最近一页。 Explicit history cursor; null loads the latest page."""
+    """显式历史页游标，null 取最近一页。
+
+    Explicit history cursor; null loads the latest page.
+    """
 
     before_seq: Annotated[int, Field(ge=2)] | None
 
 
 class StartRunParams(SessionParams):
-    """幂等操作 ID 独立于 RPC ID。 Idempotent operation identity is separate from RPC identity."""
+    """幂等操作 ID 独立于 RPC ID。
+
+    Idempotent operation identity is separate from RPC identity.
+    """
 
     operation_id: SessionId
     prompt: Annotated[str, Field(min_length=1, max_length=64000)]
@@ -548,7 +615,10 @@ class StartRunParams(SessionParams):
 
 
 class CancelRunParams(DTO):
-    """只停止指定运行，不隐式停止其他任务。 Cancel the specified run only."""
+    """只停止指定运行，不隐式停止其他任务。
+
+    Cancel the specified run only.
+    """
 
     run_id: SessionId
 
@@ -563,7 +633,10 @@ class ActiveRunResult(DTO):
 
 
 class SessionEventNotification(DTO):
-    """唯一支持的后端事件通知形状。 The sole supported backend notification envelope."""
+    """唯一支持的后端事件通知形状。
+
+    The sole supported backend notification envelope.
+    """
 
     jsonrpc: Literal["2.0"]
     method: Literal["session.event"]
@@ -573,6 +646,25 @@ class SessionEventNotification(DTO):
 PUBLIC_TYPES: dict[str, type[BaseModel]] = {
     model.__name__: model
     for model in (
+        WorkerSessionParams,
+        ConfigureWorkersParams,
+        WorkerControlParams,
+        WorkerPage,
+        SendMessageParams,
+        PeerMessage,
+        PeerMessagePage,
+        MemoryParams,
+        ListMemoryParams,
+        SaveMemoryParams,
+        ForgetMemoryParams,
+        ConfigureMemoryParams,
+        MaintainMemoryParams,
+        MemoryPage,
+        ContextParams,
+        ConfigureContextParams,
+        ContextView,
+        HistoryParams,
+        HistoryPage,
         AppInfo,
         CredentialInfo,
         PublicConfig,
@@ -595,6 +687,7 @@ PUBLIC_TYPES: dict[str, type[BaseModel]] = {
         InitializeParams,
         InitializeResult,
         OpenProjectParams,
+        RelocateProjectParams,
         EmptyParams,
         DiagnosticsParams,
         RpcRequest,
