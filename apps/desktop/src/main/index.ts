@@ -19,6 +19,7 @@ import type { Result } from '../shared/api'
 import { validate } from '../shared/validation'
 import { startupPaths, saveStartupPaths, canonicalDirectory, workspaceRoot } from './startup-paths'
 import { exportJson } from './json-export'
+import { SkillSites } from './skill-sites'
 import type { DiagnosticReport } from '../generated/protocol'
 
 let backend: Backend | undefined
@@ -197,6 +198,14 @@ app
       }
     })
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    const skillSites = new SkillSites(window, dataDir)
+    handle('agent:skill-site-control', 1, async (value) =>
+      skillSites.control(validate('SkillSiteControl', value))
+    )
+    handle('agent:skill-site-layout', 1, async (value) =>
+      skillSites.layout(validate('SkillSiteLayout', value))
+    )
+    handle('agent:skill-site-sources', 0, async () => skillSites.sources())
     window.on('close', (event) => {
       if (!quitting) {
         event.preventDefault()
@@ -222,6 +231,20 @@ app
         'EnvironmentCatalog'
       )
     )
+    handle('agent:environment-inspect-python', 1, async (value) => {
+      const service = await readyBackend()
+      const params = validate('EnvironmentProjectParams', value)
+      const catalog = await service.call('environments.list', params, 'EnvironmentCatalog')
+      return service.call(
+        'environments.inspect_python',
+        params,
+        'EnvironmentProbe',
+        (catalog.settings.probe_timeout_seconds +
+          2 * catalog.settings.cleanup_timeout_seconds +
+          5) *
+          1000
+      )
+    })
     handle('agent:environment-save', 1, async (value) =>
       (await readyBackend()).call(
         'environments.save',
@@ -283,6 +306,132 @@ app
         path: selection.canceled ? null : (selection.filePaths[0] ?? null)
       })
     })
+    handle('agent:workflow-parse', 1, async (value) =>
+      (await readyBackend()).call(
+        'workflows.parse',
+        validate('ParseWorkflowParams', value),
+        'WorkflowTemplate'
+      )
+    )
+    handle('agent:workflows-list', 1, async (value) =>
+      (await readyBackend()).call(
+        'workflows.list',
+        validate('EmptyParams', value),
+        'WorkflowCatalog'
+      )
+    )
+    handle('agent:workflow-save', 1, async (value) =>
+      (await readyBackend()).call(
+        'workflows.save',
+        validate('SaveWorkflowParams', value),
+        'WorkflowCatalog'
+      )
+    )
+    handle('agent:workflow-remove', 1, async (value) =>
+      (await readyBackend()).call(
+        'workflows.remove',
+        validate('RemoveWorkflowParams', value),
+        'WorkflowCatalog'
+      )
+    )
+    handle('agent:task-workflow', 1, async (value) =>
+      (await readyBackend()).call(
+        'tasks.workflow',
+        validate('UpdateTaskWorkflowParams', value),
+        'TaskView'
+      )
+    )
+    handle('agent:mcp-list', 1, async (value) =>
+      (await readyBackend()).call('mcp.list', validate('McpParams', value), 'McpCatalog')
+    )
+    handle('agent:mcp-save', 1, async (value) =>
+      (await readyBackend()).call('mcp.save', validate('SaveMcpParams', value), 'McpCatalog')
+    )
+    handle('agent:mcp-control', 1, async (value) =>
+      (await readyBackend()).call('mcp.control', validate('McpControlParams', value), 'McpCatalog')
+    )
+    handle('agent:mcp-artifact', 1, async (value) =>
+      (await readyBackend()).call(
+        'mcp.artifact',
+        validate('McpArtifactParams', value),
+        'McpArtifact'
+      )
+    )
+    handle('agent:skills-list', 1, async (value) =>
+      (await readyBackend()).call('skills.list', validate('SkillParams', value), 'SkillCatalog')
+    )
+    handle('agent:skills-online-search', 1, async (value) =>
+      (await readyBackend()).call(
+        'skills.online.search',
+        validate('OnlineSkillSearch', value),
+        'OnlineSkillStatus'
+      )
+    )
+    handle('agent:skills-online-inspect', 1, async (value) =>
+      (await readyBackend()).call(
+        'skills.online.inspect',
+        validate('OnlineSkillInspect', value),
+        'OnlineSkillStatus'
+      )
+    )
+    handle('agent:skills-online-status', 0, async () =>
+      (await readyBackend()).call('skills.online.status', {}, 'OnlineSkillStatus')
+    )
+    handle('agent:skills-online-read', 1, async (value) =>
+      (await readyBackend()).call(
+        'skills.online.read',
+        validate('OnlineSkillRead', value),
+        'OnlineSkillDocument'
+      )
+    )
+    handle('agent:skills-online-install', 1, async (value) =>
+      (await readyBackend()).call(
+        'skills.online.install',
+        validate('OnlineSkillInstall', value),
+        'OnlineSkillStatus'
+      )
+    )
+    handle('agent:skills-online-cancel', 1, async (value) =>
+      (await readyBackend()).call(
+        'skills.online.cancel',
+        validate('OnlineSkillCancel', value),
+        'OnlineSkillStatus'
+      )
+    )
+    handle('agent:skill-read', 1, async (value) =>
+      (await readyBackend()).call(
+        'skills.read',
+        validate('SkillReadParams', value),
+        'SkillDocument'
+      )
+    )
+    handle('agent:skill-save', 1, async (value) =>
+      (await readyBackend()).call('skills.save', validate('SaveSkillParams', value), 'SkillCatalog')
+    )
+    handle('agent:skills-select', 1, async (value) =>
+      (await readyBackend()).call(
+        'skills.select',
+        validate('SelectSkillsParams', value),
+        'SkillCatalog'
+      )
+    )
+    handle('agent:skill-enable', 1, async (value) =>
+      (await readyBackend()).call(
+        'skills.enable',
+        validate('EnableSkillParams', value),
+        'SkillCatalog'
+      )
+    )
+    handle('agent:trace-list', 1, async (value) =>
+      (await readyBackend()).call('trace.list', validate('TraceParams', value), 'TracePage')
+    )
+    handle('agent:trace-detail', 1, async (value) =>
+      (await readyBackend()).call(
+        'trace.detail',
+        validate('TraceDetailParams', value),
+        'TraceDetail'
+      )
+    )
     handle('agent:context-get', 1, async (value) =>
       (await readyBackend()).call('context.get', validate('ContextParams', value), 'ContextView')
     )
@@ -407,7 +556,11 @@ app
         await readyBackend()
       ).call('programs.get', validate('ProgramParams', value), 'ProgramView')
       if (view.summary.status !== 'ready' || !view.summary.url)
-        throw new Error('Service unavailable')
+        throw new BackendError({
+          code: 'PROGRAM_NOT_READY',
+          message: '预览服务已停止或尚未就绪，请先重新启动服务。',
+          remediation: ''
+        })
       const url = new URL(view.summary.url)
       const local =
         url.hostname === 'localhost' ||

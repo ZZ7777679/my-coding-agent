@@ -11,7 +11,7 @@ import path from 'node:path'
 
 const Ajv2020 = requireDesktop('ajv/dist/2020.js').default
 
-const schema = JSON.parse(readFileSync(path.join(root, 'schemas/protocol-v4.schema.json'), 'utf8'))
+const schema = JSON.parse(readFileSync(path.join(root, 'schemas/protocol-v6.schema.json'), 'utf8'))
 const cases = JSON.parse(readFileSync(path.join(root, 'tests/fixtures/contracts.json'), 'utf8'))
 const ajv = new Ajv2020({
   strict: true,

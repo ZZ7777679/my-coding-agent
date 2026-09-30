@@ -15,6 +15,7 @@ import type { Result } from '../../shared/api'
 import { RunSettings } from './RunSettings'
 import { Connections } from './Connections'
 import { EnvironmentSettings } from './EnvironmentSettings'
+import { Workflows } from './Workflows'
 
 /**
  * 从工作台接收连接与互斥状态，并上报已保存配置。
@@ -512,6 +513,7 @@ export function Settings({ info, connected, busy, onBusy, onConfig }: Props) {
           />
         </section>
 
+        <Workflows />
         <EnvironmentSettings
           projectId={info?.projects.active_project?.project_id ?? null}
           projectName={info?.projects.active_project?.name ?? ''}

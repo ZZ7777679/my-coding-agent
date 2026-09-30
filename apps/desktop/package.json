@@ -22,6 +22,7 @@
     "test:gateway": "node --test ../../tests/gateway/*.test.mjs"
   },
   "dependencies": {
+    "@playwright/mcp": "0.0.82",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

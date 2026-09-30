@@ -1,7 +1,7 @@
 {
   "app_name": "My Coding Agent",
-  "stage": "M3",
-  "protocol_version": 4,
+  "stage": "M4",
+  "protocol_version": 6,
   "data_schema_version": 1,
   "data_dir": "E:\\MyCodingAgentData",
   "data_dir_env": "MY_AGENT_DATA_DIR",
@@ -34,6 +34,20 @@
     "search_model_id": "deepseek-v4.1-flash",
     "search_max_uses": 1,
     "max_redirects": 5
+  },
+  "skill_online": {
+    "sites": [
+      {"name": "腾讯 SkillHub · 国内", "url": "https://skillhub.cn/skills?sortBy=score"},
+      {"name": "skills.sh · 国外", "url": "https://skills.sh/"}
+    ],
+    "search_url": "https://skills.sh/api/search",
+    "archive_base_url": "https://codeload.github.com",
+    "skillhub_api_base_url": "https://api.skillhub.cn",
+    "timeout_seconds": 120,
+    "max_archive_mb": 128,
+    "search_limit": 20,
+    "preview_characters": 64000,
+    "preview_items": 100
   },
   "execution": {
     "command_timeout_seconds": 300,

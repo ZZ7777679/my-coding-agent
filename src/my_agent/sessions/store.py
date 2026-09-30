@@ -374,6 +374,16 @@ class SessionStore:
                 raise AgentError(
                     "RUN_RESULT_UNCONFIRMED", "在途模型 / 工具尚无完整结果，不能宣布完成。"
                 )
+        if isinstance(fact.data, RunFinished):
+            ended = fact.data
+            if ended.failed_request_id is not None or ended.failed_request_usage is not None:
+                if (
+                    ended.status == "completed"
+                    or not tail
+                    or not isinstance(tail[-1].data, RequestStarted)
+                    or tail[-1].data.message_id != ended.failed_request_id
+                ):
+                    raise invalid
         if isinstance(fact.data, RunFinished) and fact.data.checkpoint:
             if (
                 not isinstance(accepted.data, RunAccepted)

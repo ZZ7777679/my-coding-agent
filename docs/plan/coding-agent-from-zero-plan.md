@@ -1,5 +1,7 @@
 # 从零构建自己的 Coding Agent 桌面应用：调研与实施规划
 
+> 2026-09-21 当前路线：M3 首版及增量审查修复已上传 origin/dev；用户已确认并授权 [M4：Skill、任务工作流、MCP 浏览器与 Trace](m4-implementation-plan.md)。当前 M4 按 Trace → Skill → MCP / 临时浏览器 → 可编辑工作流 → 联合验收推进，先保存本地计划再开始代码实现。本文后面的原阶段编号保留作历史参照，实际状态见 [M4 进度](../progress/m4.md)。
+
 > 调研日期：2026-09-14  
 > 项目目录：`E:\claude_code\my-coding-agent`  
 > 核心语言：Python，按你的选择制定；桌面方案经比较后推荐 Electron + React / TypeScript。  

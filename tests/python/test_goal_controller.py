@@ -348,7 +348,9 @@ def test_goal_continuation_question_boundary_and_idempotency(tmp_path):
                 "implement",
                 "implement",
             ]
-            assert all(run.method_version == "1" for run in runs)
+            from my_agent.workflow.methods import load_method
+
+            assert all(run.method_version == load_method(run.method).version for run in runs)
             assert next(
                 fact.data for fact in log.facts if isinstance(fact.data, RunFinished)
             ).checkpoint

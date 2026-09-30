@@ -5,6 +5,8 @@ Model substitute for desktop/stdio acceptance; never loaded by the product entry
 
 import asyncio
 import json
+import os
+import re
 import sys
 from uuid import uuid4
 
@@ -116,7 +118,9 @@ class DesktopModel:
             await timing.text()
             await kwargs["on_text"](text)
             await asyncio.sleep(0.3)
-        if "wait" in prompt:
+        # 仅独立的 wait 标记触发等待，简报中的 waited_seconds 不改变替身行为。
+        # Only a standalone wait marker pauses; brief fields such as waited_seconds do not.
+        if re.search(r"\bwait\b", prompt):
             await asyncio.Event().wait()
         await timing.set_phase("completed")
         return ModelTurn(
@@ -318,6 +322,17 @@ def build_fake(storage, worker, credential, *, http=None, programs=None):
 
 
 if __name__ == "__main__":
+    if os.environ.get("MY_AGENT_TEST_SKILL_CATALOG") == "1":
+        import httpx
+        from online_skill_fixture import catalog_response
+
+        from my_agent.skills.online import OnlineSkills
+
+        def fixture_client(self, timeout):
+            """仅桌面测试替换外网。 Substitute external HTTP only in the desktop test."""
+            return httpx.AsyncClient(transport=httpx.MockTransport(catalog_response))
+
+        OnlineSkills.client = fixture_client
     application.build_sessions = build_fake
     credential = read_parent_credential(sys.stdin.buffer)
     serve(resolve_data_dir(sys.argv[1]), sys.stdin.buffer, sys.stdout.buffer, credential)

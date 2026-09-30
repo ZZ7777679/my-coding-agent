@@ -5,18 +5,18 @@
 
 import { contextBridge, ipcRenderer } from 'electron'
 import type { DesktopAPI, Result } from '../shared/api'
-import type { ProtocolV4 } from '../generated/protocol'
+import type { ProtocolV6 } from '../generated/protocol'
 import { validate } from '../shared/validation'
 
 /**
  * 校验 IPC 结果封装与方法契约，拒绝混合成功和失败字段。
  * Validate the IPC envelope and method contract, rejecting mixed success/error fields.
  */
-async function invoke<K extends keyof ProtocolV4>(
+async function invoke<K extends keyof ProtocolV6>(
   channel: string,
   contract: K,
   args: unknown[] = []
-): Promise<Result<ProtocolV4[K]>> {
+): Promise<Result<ProtocolV6[K]>> {
   const raw: unknown = await ipcRenderer.invoke(channel, ...args)
   if (typeof raw !== 'object' || raw === null || !('ok' in raw)) throw new Error('IPC_INVALID')
   if (raw.ok === false && 'error' in raw && !('data' in raw)) {
@@ -41,10 +41,42 @@ async function nullableProjects(): ReturnType<DesktopAPI['chooseProject']> {
 }
 
 const api: DesktopAPI = {
+  parseWorkflow: (params) => invoke('agent:workflow-parse', 'WorkflowTemplate', [params]),
+  listWorkflows: (params) => invoke('agent:workflows-list', 'WorkflowCatalog', [params]),
+  saveWorkflow: (params) => invoke('agent:workflow-save', 'WorkflowCatalog', [params]),
+  removeWorkflow: (params) => invoke('agent:workflow-remove', 'WorkflowCatalog', [params]),
+  updateTaskWorkflow: (params) => invoke('agent:task-workflow', 'TaskView', [params]),
+  listMcp: (params) => invoke('agent:mcp-list', 'McpCatalog', [params]),
+  saveMcp: (params) => invoke('agent:mcp-save', 'McpCatalog', [params]),
+  controlMcp: (params) => invoke('agent:mcp-control', 'McpCatalog', [params]),
+  readMcpArtifact: (params) => invoke('agent:mcp-artifact', 'McpArtifact', [params]),
+  listSkills: (params) => invoke('agent:skills-list', 'SkillCatalog', [params]),
+  searchOnlineSkills: (params) =>
+    invoke('agent:skills-online-search', 'OnlineSkillStatus', [params]),
+  inspectOnlineSkill: (params) =>
+    invoke('agent:skills-online-inspect', 'OnlineSkillStatus', [params]),
+  onlineSkillStatus: () => invoke('agent:skills-online-status', 'OnlineSkillStatus'),
+  skillSiteControl: (params) => invoke('agent:skill-site-control', 'SkillSiteState', [params]),
+  skillSiteLayout: (params) => invoke('agent:skill-site-layout', 'SkillSiteState', [params]),
+  skillSiteSources: () => invoke('agent:skill-site-sources', 'SkillSiteSources'),
+  readOnlineSkill: (params) => invoke('agent:skills-online-read', 'OnlineSkillDocument', [params]),
+  installOnlineSkill: (params) =>
+    invoke('agent:skills-online-install', 'OnlineSkillStatus', [params]),
+  cancelOnlineSkill: (params) =>
+    invoke('agent:skills-online-cancel', 'OnlineSkillStatus', [params]),
+  readSkill: (params) => invoke('agent:skill-read', 'SkillDocument', [params]),
+  saveSkill: (params) => invoke('agent:skill-save', 'SkillCatalog', [params]),
+  selectSkills: (params) => invoke('agent:skills-select', 'SkillCatalog', [params]),
+  enableSkill: (params) => invoke('agent:skill-enable', 'SkillCatalog', [params]),
+
+  listTrace: (params) => invoke('agent:trace-list', 'TracePage', [params]),
+  getTraceDetail: (params) => invoke('agent:trace-detail', 'TraceDetail', [params]),
   createGoal: (params) => invoke('agent:goal-create', 'GoalView', [params]),
   listGoals: (params) => invoke('agent:goals-list', 'GoalPage', [params]),
   controlGoal: (params) => invoke('agent:goal-control', 'GoalView', [params]),
   listEnvironments: (params) => invoke('agent:environments', 'EnvironmentCatalog', [params]),
+  inspectPython: (params) =>
+    invoke('agent:environment-inspect-python', 'EnvironmentProbe', [params]),
   saveEnvironment: (params) => invoke('agent:environment-save', 'EnvironmentCatalog', [params]),
   removeEnvironment: (params) => invoke('agent:environment-remove', 'EnvironmentCatalog', [params]),
   probeEnvironment: (params) => invoke('agent:environment-probe', 'EnvironmentCatalog', [params]),

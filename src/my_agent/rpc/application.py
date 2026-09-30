@@ -48,6 +48,12 @@ from my_agent.execution.types import (
 )
 from my_agent.goals.dto import ControlGoalParams, CreateGoalParams, ListGoalsParams
 from my_agent.goals.types import GoalControl, GoalCreated
+from my_agent.mcp_client.types import (
+    McpArtifactParams,
+    McpControlParams,
+    McpParams,
+    SaveMcpParams,
+)
 from my_agent.memory.types import (
     ConfigureMemoryParams,
     ForgetMemoryParams,
@@ -86,11 +92,35 @@ from my_agent.rpc.dto import (
     StartRunParams,
     UpdateConfigParams,
 )
+from my_agent.sessions.trace import TraceDetailParams, TraceParams, trace_detail, trace_page
+from my_agent.skills.online import OnlineSkills
+from my_agent.skills.online_types import (
+    OnlineSkillCancel,
+    OnlineSkillInspect,
+    OnlineSkillInstall,
+    OnlineSkillRead,
+    OnlineSkillSearch,
+)
+from my_agent.skills.types import (
+    EnableSkillParams,
+    SaveSkillParams,
+    SelectSkillsParams,
+    SkillParams,
+    SkillReadParams,
+)
 from my_agent.storage import Storage
 from my_agent.tasks.service import TaskService
 from my_agent.tasks.store import TaskStore
 from my_agent.tasks.types import AssignSessionParams, CreateTaskParams, TaskParams, UpdateTaskParams
 from my_agent.worker import BusinessWorker
+from my_agent.workflow.templates import (
+    ParseWorkflowParams,
+    RemoveWorkflowParams,
+    SaveWorkflowParams,
+    UpdateTaskWorkflowParams,
+    WorkflowTemplate,
+    WorkflowTemplates,
+)
 
 
 class RpcApplication:
@@ -122,6 +152,9 @@ class RpcApplication:
             self.storage, self.worker, credential, http=self.http, programs=self.programs
         )
         self.tasks = TaskService(TaskStore(self.storage), self.sessions, self.worker)
+        self.online_skills = (
+            OnlineSkills(self.sessions.skills, self.worker) if self.sessions.skills else None
+        )
         self.changes = ChangeStore(self.storage)
         self.initialized = False
         self.stopping = False
@@ -177,13 +210,35 @@ class RpcApplication:
                     app=AppInfo(
                         name=DEFAULTS["app_name"],
                         app_version=__version__,
-                        protocol_version=4,
-                        stage="M3",
+                        protocol_version=6,
+                        stage="M4",
                     ),
                     storage=self.storage.info(),
                     config=config.public(self.credential.info),
                     projects=self.projects.view(),
                     capabilities=[
+                        "workflows.parse",
+                        "workflows.list",
+                        "workflows.save",
+                        "workflows.remove",
+                        "tasks.workflow",
+                        "mcp.list",
+                        "mcp.save",
+                        "mcp.control",
+                        "mcp.artifact",
+                        "trace.list",
+                        "trace.detail",
+                        "skills.list",
+                        "skills.read",
+                        "skills.save",
+                        "skills.select",
+                        "skills.enable",
+                        "skills.online.search",
+                        "skills.online.inspect",
+                        "skills.online.status",
+                        "skills.online.read",
+                        "skills.online.install",
+                        "skills.online.cancel",
                         "workers.list",
                         "workers.configure",
                         "workers.control",
@@ -457,6 +512,80 @@ class RpcApplication:
             return await self.worker.call(
                 self.tasks.store.update, UpdateTaskParams.model_validate(params)
             )
+        if method == "workflows.parse":
+            imported = ParseWorkflowParams.model_validate(params)
+            return WorkflowTemplate.model_validate_json(imported.content)
+        if method == "workflows.list":
+            EmptyParams.model_validate(params)
+            return await self.worker.call(WorkflowTemplates(self.storage.root).list)
+        if method == "workflows.save":
+            return await self.worker.call(
+                WorkflowTemplates(self.storage.root).save, SaveWorkflowParams.model_validate(params)
+            )
+        if method == "workflows.remove":
+            return await self.worker.call(
+                WorkflowTemplates(self.storage.root).remove,
+                RemoveWorkflowParams.model_validate(params),
+            )
+        if method == "tasks.workflow":
+            return await self.worker.call(
+                self.tasks.store.update_workflow, UpdateTaskWorkflowParams.model_validate(params)
+            )
+        if method.startswith("mcp.") and self.sessions.mcp:
+            mcp = self.sessions.mcp
+            if method == "mcp.list":
+                return await self.worker.call(mcp.catalog, McpParams.model_validate(params))
+            if method == "mcp.save":
+                return await mcp.save(SaveMcpParams.model_validate(params))
+            if method == "mcp.control":
+                return await mcp.control(McpControlParams.model_validate(params))
+            if method == "mcp.artifact":
+                return await self.worker.call(
+                    mcp.artifact, McpArtifactParams.model_validate(params)
+                )
+        if method.startswith("skills.") and self.sessions.skills:
+            skills = self.sessions.skills
+            if self.online_skills:
+                online = self.online_skills
+                if method == "skills.online.search":
+                    return online.search(OnlineSkillSearch.model_validate(params))
+                if method == "skills.online.inspect":
+                    return online.inspect(OnlineSkillInspect.model_validate(params))
+                if method == "skills.online.status":
+                    EmptyParams.model_validate(params)
+                    return online.status()
+                if method == "skills.online.read":
+                    return await self.worker.call(
+                        online.read, OnlineSkillRead.model_validate(params)
+                    )
+                if method == "skills.online.install":
+                    return online.install(OnlineSkillInstall.model_validate(params))
+                if method == "skills.online.cancel":
+                    return await online.cancel(OnlineSkillCancel.model_validate(params))
+            if method == "skills.list":
+                return await self.worker.call(skills.refresh, SkillParams.model_validate(params))
+            if method == "skills.read":
+                return await self.worker.call(skills.read, SkillReadParams.model_validate(params))
+            if method == "skills.save":
+                return await self.worker.call(skills.save, SaveSkillParams.model_validate(params))
+            if method == "skills.select":
+                return await self.worker.call(
+                    skills.select, SelectSkillsParams.model_validate(params)
+                )
+            if method == "skills.enable":
+                return await self.worker.call(
+                    skills.enable, EnableSkillParams.model_validate(params)
+                )
+        if method == "trace.list":
+            trace_options = TraceParams.model_validate(params)
+            log = await self.sessions._load(trace_options.session_id)
+            return await self.worker.call(
+                trace_page, log, trace_options, self.sessions.store.path(log.session_id).parent
+            )
+        if method == "trace.detail":
+            detail_options = TraceDetailParams.model_validate(params)
+            log = await self.sessions._load(detail_options.session_id)
+            return await self.worker.call(trace_detail, log, detail_options)
         if method == "sessions.list":
             listing = ListSessionsParams.model_validate(params)
             return await self.sessions.list(listing.project_id, listing.cursor, listing.limit)
@@ -594,13 +723,18 @@ class RpcApplication:
         if method == "environments.list":
             env_project = EnvironmentProjectParams.model_validate(params)
             return await self.worker.call(self.environments.catalog, env_project.project_id)
+        if method == "environments.inspect_python":
+            env_project = EnvironmentProjectParams.model_validate(params)
+            if env_project.project_id is None:
+                raise AgentError("PROJECT_REQUIRED", "请先选择项目，再查看本机 Python。")
+            return await self.programs.inspect_python(env_project.project_id)
         if method == "execution.status":
             EmptyParams.model_validate(params)
             return ExecutionStatus(
                 programs=[
                     p.record.summary for p in self.programs.owned.values() if not p.done.is_set()
                 ],
-                probe_count=len(self.programs.probes),
+                probe_count=len(self.programs.probes) + len(self.programs.python_inspections),
             )
         if method == "environments.save":
             return await self.worker.call(
@@ -654,7 +788,11 @@ class RpcApplication:
         Clean up runs before releasing the writer lock.
         """
         try:
-            await self.sessions.close()
+            try:
+                if self.online_skills:
+                    await self.online_skills.close()
+            finally:
+                await self.sessions.close()
         finally:
             try:
                 await self.http.close()

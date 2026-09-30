@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ModelId, ProjectSummary, TaskFields, TaskView } from '../../generated/protocol'
 import type { WorkspaceSelection } from './TaskNavigation'
 import { WorkItems } from './WorkItems'
+import { Workflows, TaskWorkflowEditor } from './Workflows'
 
 type Props = {
   project: ProjectSummary | null
@@ -25,6 +26,7 @@ export function TaskPanel({
   const [task, setTask] = useState<TaskView | null>(null)
   const [fields, setFields] = useState<TaskFields>({ title: '', goal: '' })
   const [model, setModel] = useState<ModelId>(defaultModel)
+  const [templateId, setTemplateId] = useState<string | null>('builtin:personal')
   const [role, setRole] = useState('')
   const [scope, setScope] = useState('')
   const [error, setError] = useState('')
@@ -104,7 +106,12 @@ export function TaskPanel({
         setFields(result.data.fields)
         setNotice('共享信息已保存，下次模型请求会采用新版本。')
       } else {
-        const body = { project_id: project.project_id, model_id: model, fields: values }
+        const body = {
+          project_id: project.project_id,
+          model_id: model,
+          fields: values,
+          workflow_template_id: templateId
+        }
         const result = await window.agent.createTask({ ...body, operation_id: operation(body) })
         if (!mounted.current || current.current !== target) return
         if (!result.ok) {
@@ -197,6 +204,15 @@ export function TaskPanel({
         </div>
       )}
       {notice && <p role="status">{notice}</p>}
+      {task && (
+        <button
+          className="primary task-open-session"
+          disabled={busy || !connected || !project.available}
+          onClick={() => void createSession(true)}
+        >
+          打开 / 补齐首会话
+        </button>
+      )}
       {taskId && (
         <button
           className="text-button"
@@ -215,6 +231,19 @@ export function TaskPanel({
       )}
       {(!taskId || task) && (
         <>
+          {!task && <Workflows selected={templateId} onSelect={setTemplateId} />}
+          {task && (
+            <TaskWorkflowEditor
+              task={task}
+              onChanged={(next) => {
+                setTask(next)
+                onChanged()
+              }}
+              onSession={(id) =>
+                onSelect({ projectId: project.project_id, taskId: task.task_id, sessionId: id })
+              }
+            />
+          )}
           {task && <WorkItems task={task} onSelect={onSelect} />}
           <form
             className="task-form"
@@ -320,12 +349,6 @@ export function TaskPanel({
               </details>
               <h2>任务会话</h2>
               <p className="muted">新会话会获得上面的已保存信息；其他会话完整历史尚不自动共享。</p>
-              <button
-                disabled={busy || !connected || !project.available}
-                onClick={() => void createSession(true)}
-              >
-                打开 / 补齐首会话
-              </button>
               <details>
                 <summary>创建新的工作会话</summary>
                 <ModelPicker model={model} onChange={setModel} />

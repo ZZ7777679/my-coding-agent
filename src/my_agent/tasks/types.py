@@ -9,6 +9,7 @@ from pydantic import Field
 
 from my_agent.models.types import ModelData, ModelId
 from my_agent.sessions.types import SessionId, SessionSummary
+from my_agent.workflow.templates import TaskWorkflow
 from my_agent.workflow.types import TaskWork
 
 
@@ -38,6 +39,7 @@ class CreateTaskParams(ModelData):
     project_id: str
     model_id: ModelId
     fields: TaskFields
+    workflow_template_id: str | None = "builtin:personal"
 
 
 class TaskParams(ModelData):
@@ -67,6 +69,7 @@ class TaskView(ModelData):
     initial_session_id: SessionId
     initial_model_id: ModelId
     work: TaskWork = Field(default_factory=TaskWork)
+    workflow: TaskWorkflow | None = None
 
 
 class TaskFact(ModelData):

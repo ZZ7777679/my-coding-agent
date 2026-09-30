@@ -19,6 +19,7 @@ from my_agent.errors import AgentError
 from my_agent.goals.ledger import check_budget, usage
 from my_agent.goals.state import states
 from my_agent.goals.types import GoalInputQueued, GoalRunBinding
+from my_agent.models.failures import ModelResponseError
 from my_agent.models.types import ModelClient, ModelId, ModelProgress
 from my_agent.projects import ProjectService
 from my_agent.runtime.context import SharedContext
@@ -57,8 +58,10 @@ if TYPE_CHECKING:
     from my_agent.context.service import ContextService
     from my_agent.delegation.service import DelegationService
     from my_agent.goals.service import GoalService
+    from my_agent.mcp_client.service import McpService
     from my_agent.memory.service import MemoryService
     from my_agent.sessions.recovery import RecoveryService
+    from my_agent.skills.service import SkillService
 
 
 @dataclass
@@ -170,6 +173,8 @@ class SessionService:
         self.contexts: ContextService | None = None
         self.memory: MemoryService | None = None
         self.delegations: DelegationService | None = None
+        self.mcp: McpService | None = None
+        self.skills: SkillService | None = None
         self.closing = False
 
     def active_for(self, session_id: str) -> ActiveRun | None:
@@ -887,7 +892,11 @@ class SessionService:
                     system_prompt=system_prompt(active.mode, active.plan_document)
                     + (contexts.usage_guide(tools.definitions()) if contexts else "")
                     + tools.request_reference()
-                    + ("\n\nBundled work method:\n" + active.method.text if active.method else "")
+                    + (
+                        "\n\nBundled work method:\n" + active.method.text
+                        if active.method and not self.skills
+                        else ""
+                    )
                     + (
                         self.goals.prompt(active.log, active.goal)
                         if self.goals and active.goal
@@ -934,6 +943,12 @@ class SessionService:
                 status="budget_exceeded" if exc.code.startswith("BUDGET_") else "failed",
                 code=exc.code,
                 message=exc.message,
+                failed_request_id=active.message_id
+                if isinstance(exc, ModelResponseError)
+                else None,
+                failed_request_usage=exc.usage
+                if isinstance(exc, ModelResponseError) and active.message_id
+                else None,
             )
         except Exception as exc:
             # 保留异常类别与运行关联，不记录可能含秘密的原始异常消息。
@@ -1015,8 +1030,12 @@ class SessionService:
             await asyncio.gather(*(active.task for active in running if active.task is not None))
         finally:
             try:
-                if self.close_execution is not None:
-                    await self.close_execution()
+                try:
+                    if self.mcp is not None:
+                        await self.mcp.close()
+                finally:
+                    if self.close_execution is not None:
+                        await self.close_execution()
             finally:
                 if self.close_model is not None:
                     await self.close_model()

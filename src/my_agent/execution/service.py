@@ -27,6 +27,7 @@ from my_agent.execution.types import (
     GetProgramParams,
     ListProgramsParams,
     OutputChunk,
+    ProgramCommand,
     ProgramPage,
     ProgramSummary,
     ProgramView,
@@ -98,6 +99,7 @@ class ProgramService:
         self.recovered = False
         self.recovery_lock = asyncio.Lock()
         self.probes: set[asyncio.Task[EnvironmentCatalog]] = set()
+        self.python_inspections: set[asyncio.Task[EnvironmentProbe]] = set()
         self.closing = False
 
     async def recover(self) -> None:
@@ -213,6 +215,15 @@ class ProgramService:
                 await self._save(owned)
                 self.owned.pop(owned.record.summary.program_id, None)
             except AgentError as exc:
+                # 只保留稳定原因和系统错误编号，便于诊断偶发落盘失败。
+                # Retain stable causes and OS error numbers to diagnose intermittent save failures.
+                cause = exc.__cause__
+                logging.getLogger(__name__).warning(
+                    "PROGRAM_OUTCOME_UNSAVED cause=%s errno=%s winerror=%s",
+                    exc.code,
+                    getattr(cause, "errno", None),
+                    getattr(cause, "winerror", None),
+                )
                 # 保留内存结果供本次应用查看；磁盘历史仍为未知，不能谎称保存成功。
                 # Keep the live outcome; disk history remains unknown when persistence fails.
                 owned.failure = AgentError(
@@ -441,6 +452,9 @@ class ProgramService:
         for task in list(self.probes):
             task.cancel()
         await asyncio.gather(*self.probes, return_exceptions=True)
+        for inspection in list(self.python_inspections):
+            inspection.cancel()
+        await asyncio.gather(*self.python_inspections, return_exceptions=True)
         programs = list(self.owned.values())
         results = await asyncio.gather(*(self._stop(p) for p in programs), return_exceptions=True)
         for result in results:
@@ -463,6 +477,83 @@ class ProgramService:
             return await task
         finally:
             self.probes.discard(task)
+
+    async def inspect_python(self, project_id: str) -> EnvironmentProbe:
+        """按需检查当前项目实际使用的 Python，不修改环境登记。
+
+        Inspect the project's effective Python on demand without saving configuration.
+        """
+        if self.closing:
+            raise AgentError("EXECUTION_CLOSING", "应用正在退出。")
+        task = asyncio.create_task(self._inspect_python(project_id))
+        self.python_inspections.add(task)
+        try:
+            return await task
+        finally:
+            self.python_inspections.discard(task)
+
+    async def _inspect_python(self, project_id: str) -> EnvironmentProbe:
+        """复用正式命令解析并短暂运行解释器以读取路径和版本。
+
+        Use normal command resolution and a short interpreter run for path and version.
+        """
+        view, settings, _ = await self.worker.call(self.environments.selected, project_id)
+        cwd = await self.worker.call(self.environments.project_root, project_id)
+        probe = EnvironmentProbe(
+            checked_at=utc_now(),
+            project_id=project_id,
+            code="PYTHON_READY",
+            message="当前项目 Python 已检查。",
+            interpreter=None,
+            version=None,
+            launcher_version=None,
+        )
+        try:
+            command = ProgramCommand(
+                kind="program",
+                program="python",
+                arguments=[
+                    "-I",
+                    "-B",
+                    "-u",
+                    "-c",
+                    "import json,sys; print(json.dumps({'executable':sys.executable,"
+                    "'version':sys.version.split()[0]}))",
+                ],
+            )
+            argv, env = command_line(command, view, cwd)
+            process = await spawn(argv, cwd, env, settings)
+            try:
+                async with asyncio.timeout(settings.probe_timeout_seconds):
+                    while process.poll() is None:
+                        await asyncio.sleep(0.05)
+                code = process.poll()
+                await asyncio.to_thread(process.finish, settings.cleanup_timeout_seconds)
+                chunks, dropped = process.drain()
+                if code or process.output_failed or dropped:
+                    raise AgentError("PYTHON_INSPECTION_FAILED", "Python 版本检查未正常完成。")
+                output = b"".join(data for channel, data in chunks if channel == "stdout")
+                data = json.loads(output.decode("utf-8").strip())
+                if (
+                    not isinstance(data, dict)
+                    or not isinstance(data.get("executable"), str)
+                    or not isinstance(data.get("version"), str)
+                ):
+                    raise ValueError
+                probe.interpreter, probe.version = data["executable"], data["version"]
+            finally:
+                try:
+                    await asyncio.to_thread(process.finish, settings.cleanup_timeout_seconds)
+                finally:
+                    process.close()
+        except AgentError as exc:
+            probe.code, probe.message = exc.code, exc.message
+        except (TimeoutError, ValueError, UnicodeError):
+            probe.code, probe.message = (
+                "PYTHON_INSPECTION_FAILED",
+                "Python 检查超时或返回内容无法读取。",
+            )
+        return probe
 
     async def _probe(self, params: EnvironmentParams) -> EnvironmentCatalog:
         """只检查登记的解释器 / 入口，既不安装环境也不导入项目代码。

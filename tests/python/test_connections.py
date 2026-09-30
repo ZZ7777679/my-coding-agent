@@ -103,7 +103,7 @@ def test_model_tests_select_targets_and_keep_independent_results(tmp_path):
         task = None
         try:
             await app.dispatch(
-                "initialize", {"app_version": "0", "protocol_version": 4, "data_schema_version": 1}
+                "initialize", {"app_version": "0", "protocol_version": 6, "data_schema_version": 1}
             )
             initial = await app.dispatch("connections.get", {})
             assert len(initial.models) == 2 and not requests
@@ -186,7 +186,7 @@ def test_model_probe_failure_cleans_up_without_retries(tmp_path, case):
         app.http.transport = httpx.MockTransport(respond)
         try:
             await app.dispatch(
-                "initialize", {"app_version": "0", "protocol_version": 4, "data_schema_version": 1}
+                "initialize", {"app_version": "0", "protocol_version": 6, "data_schema_version": 1}
             )
             task = asyncio.create_task(
                 app.dispatch(
@@ -254,7 +254,7 @@ def test_rpc_settings_probe_and_restart_preserve_other_configuration(tmp_path, m
         location = resolve_data_dir(str(tmp_path / "data"))
         app = RpcApplication(location, credential(), None)
         app.http.transport = httpx.MockTransport(respond)
-        initialization = {"app_version": "0", "protocol_version": 4, "data_schema_version": 1}
+        initialization = {"app_version": "0", "protocol_version": 6, "data_schema_version": 1}
         try:
             await app.dispatch("initialize", initialization)
             before = await app.dispatch("connections.get", {})

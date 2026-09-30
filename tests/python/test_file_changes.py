@@ -64,6 +64,33 @@ async def call(tools, name, **arguments):
     return result, json.loads(result.content)
 
 
+@pytest.mark.parametrize("limit", ["50", "400", "300", "120"])
+def test_read_argument_feedback_names_correct_field(file_stack, limit):
+    """复现真实错误字段，具体反馈后同一工具可正确读取。
+
+    Reproduce the saved field mistakes, then read correctly using the same tool instance.
+    """
+    root, _, make, _ = file_stack
+    (root / "main.py").write_text("print(1)\n", encoding="utf-8")
+
+    async def scenario():
+        """反馈不泄露输入值，正确参数保持原行为。
+
+        Feedback omits input values while correct arguments retain normal behavior.
+        """
+        tools = make()
+        result, data = await call(tools, "read_file", path="main.py", limit=limit)
+        assert result.is_error and data["code"] == "INVALID_TOOL_ARGUMENTS"
+        assert "limit: Extra inputs" in data["message"] and '"lines":50' in data["message"]
+        result, data = await call(tools, "read_file", path="main.py", lines=1)
+        assert not result.is_error and data["content"] == "1: print(1)"
+        _, error = await call(tools, "edit_file", path="main.py", new_text="input-sentinel")
+        assert "old_text: Field required" in error["message"]
+        assert "input-sentinel" not in error["message"]
+
+    asyncio.run(scenario())
+
+
 def test_create_edit_preserve_and_reopen(file_stack):
     """从空目录创建，保留 BOM / CRLF 并恢复差异。 Create, preserve BOM/CRLF and reopen diffs."""
     root, store, make, session = file_stack
@@ -103,6 +130,25 @@ def test_create_edit_preserve_and_reopen(file_stack):
         assert reopened.view(session, edit["change_id"], 0).diff == diff.diff
         assert reopened.load(session, created).summary.operation == "create"
         assert len(reopened.list(session, None, 20).changes) == 2
+        # 与随机 UUID 文件名反向安排时间，验证跨页仍按实际记录时间排列。
+        # Reverse UUID order with timestamps so pagination proves chronological ordering.
+        edited = edit["change_id"]
+        chronology = [created, edited] if created > edited else [edited, created]
+        for index, change_id in enumerate(chronology):
+            saved = reopened.load(session, change_id)
+            reopened.save(
+                saved.model_copy(
+                    update={
+                        "summary": saved.summary.model_copy(
+                            update={"created_at": f"2026-09-23T00:00:0{index}+00:00"}
+                        )
+                    }
+                )
+            )
+        first = reopened.list(session, None, 1)
+        second = reopened.list(session, first.next_cursor, 1)
+        assert [first.changes[0].change_id, second.changes[0].change_id] == chronology
+        assert second.next_cursor is None
         with pytest.raises(AgentError):
             reopened.view(str(uuid4()), created, 0)
 

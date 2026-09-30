@@ -27,6 +27,7 @@ from my_agent.tasks.types import (
     TaskView,
     UpdateTaskParams,
 )
+from my_agent.workflow.templates import UpdateTaskWorkflowParams, WorkflowTemplates
 from my_agent.workflow.types import (
     EventRef,
     MemberProgress,
@@ -164,6 +165,7 @@ class TaskStore:
             source="user",
             initial_session_id=str(uuid5(UUID(task_id), "first-session")),
             initial_model_id=params.model_id,
+            workflow=WorkflowTemplates(self.storage.root).snapshot(params.workflow_template_id),
         )
         return self._save(
             [TaskFact(operation_id=params.operation_id, expected_revision=0, view=view)]
@@ -199,6 +201,39 @@ class TaskStore:
                 *facts,
                 TaskFact(
                     operation_id=params.operation_id, expected_revision=current.revision, view=view
+                ),
+            ]
+        )
+
+    def update_workflow(self, params: UpdateTaskWorkflowParams) -> TaskView:
+        """流程配置单独更新，保留目标和运行报告。
+
+        Update workflow without replacing goals or reports.
+        """
+        facts = self.history(params.task_id)
+        current = facts[-1].view
+        for fact in facts:
+            if fact.operation_id == params.operation_id:
+                if fact.view.workflow != params.workflow:
+                    raise AgentError("OPERATION_CONFLICT", "该操作标识已用于不同流程修改。")
+                return current
+        if current.revision != params.expected_revision:
+            raise AgentError("TASK_VERSION_CONFLICT", "任务已更新，请重新载入后保存流程。")
+        view = current.model_copy(
+            update={
+                "workflow": params.workflow,
+                "revision": current.revision + 1,
+                "updated_at": utc_now(),
+                "source": "user",
+            }
+        )
+        return self._save(
+            [
+                *facts,
+                TaskFact(
+                    operation_id=params.operation_id,
+                    expected_revision=current.revision,
+                    view=view,
                 ),
             ]
         )

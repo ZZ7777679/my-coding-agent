@@ -136,13 +136,14 @@ function ProjectBranch({
       key={session.session_id}
       className={'tree-session ' + (selected?.sessionId === session.session_id ? 'selected' : '')}
       data-session-id={session.session_id}
-      title={session.title}
+      title={session.role ? `${session.title} · ${session.role}` : session.title}
       onClick={() =>
         onSelect({ projectId, taskId: session.task_id ?? null, sessionId: session.session_id })
       }
     >
       <span aria-hidden="true">◦</span>
       <span>{session.title}</span>
+      {session.role && <span className="session-role">{session.role}</span>}
       {session.run && (
         <span
           className={'session-state ' + session.run.status}

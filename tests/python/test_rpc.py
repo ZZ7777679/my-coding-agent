@@ -43,7 +43,7 @@ def initialize():
         "initialize",
         {
             "app_version": "0.0.0",
-            "protocol_version": 4,
+            "protocol_version": 6,
             "data_schema_version": 1,
         },
     )

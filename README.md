@@ -1,6 +1,6 @@
 # My Coding Agent
 
-Windows 优先的个人 coding agent，使用独立 Python 核心与 Electron / React 桌面。已支持 OpenCode Go 对话、项目 → 任务 → 会话、文件与程序工具、Goal / HITL、联网、handoff / Review。M3 接入上下文压缩、本地记忆、协作邮箱与可选子 agent；当前实现与验证范围见 [M3 记录](docs/progress/m3.md)。
+Windows 优先的个人 coding agent，使用独立 Python 核心与 Electron / React 桌面。已支持 OpenCode Go 对话、项目 → 任务 → 会话、文件与程序工具、Goal / HITL、联网、handoff / Review。M3 接入上下文压缩、本地记忆、协作邮箱与可选子 agent；M4 增加 Skill 资源库、任务工作流、MCP 临时浏览器与 Trace。当前实现与验证范围见 [M4 记录](docs/progress/m4.md)。
 
 有意义的工作结果可以由 Agent 提交报告，任务概览展示工作项、依赖和来源会话；用户维护的目标与共同信息单独保留。报告先随运行事实保存，再幂等同步任务。同步失败时显示“共同进度待同步”，下次明确发送前只补同步已有结果，不重做文件或程序。Goal 连续运行、HITL 和插话已接通；报告仅需 summary / outcome，引用与工作图按需填写，不作为执行门槛。最新规则见 [DSH 运行校验对照](docs/plan/runtime-checks-dsh-review.md)。
 
@@ -44,6 +44,23 @@ $env:electron_config_cache = Join-Path (Get-Location).Path '.cache\electron'
 npm.cmd --prefix apps/desktop run install:electron
 ```
 
+## Skill、MCP、工作流与 Trace
+
+- **左侧 Skill 管理**：集中查看、编辑或导入 `SKILL.md`，支持附属资源。选好“目标项目”后点击“导入当前项目”，将内置 / 用户方法复制到 `.agents/skills/`；只查看目录不会写入项目。同名默认采用项目 → 用户 → 内置。选择已有会话后可勾选持续带入的方法，Agent 也可按需调用 `load_skill`；调用与实际材料可在 Trace / 上下文面板查看。
+- **预装精选**：六项通用方法参考 Superpowers / Matt Pocock 适配，保留既有身份；另附 Anthropic `frontend-design`、Vercel `vercel-react-best-practices` 和 `vercel-composition-patterns` 原版资源。选择正文查看来源，先“复制为可编辑版本”再修改；附属文件、来源及许可证一并保留。只按需加载正文，不自动运行上游框架；选择依据、安装量口径及具体修改见 [精选说明](docs/plan/bundled-skills-curation.md)。
+- **逛 Skill 网站**：左侧「Skill 管理」→「逛网站」，国内先接腾讯 SkillHub，国外先接 skills.sh。首次进入不自动加载，选择网站或提交地址后再打开。在应用内直接使用网站自己的搜索、分类和分页 / 继续加载，工具栏提供地址输入、前进 / 后退、刷新及系统浏览器入口；切走再回来保留当前网页。
+- **在线导入**：在详情页点击「导入本页 Skill」，选择发现的 SkillHub / GitHub / skills.sh 来源后查看快照，再「安装到资源库」或「导入当前项目」。也可在「链接导入 / 快捷搜索」粘贴链接或 `owner/repo`。自动下载支持公开 GitHub 来源和 SkillHub 官方原生 ZIP，包括无 GitHub 来源的用户上传条目；无 YAML 头的 SkillHub 正文会补齐名称 / 描述，正文与附件保留。其他站点需提供支持的公开来源，或自行下载后使用本地目录导入。正文、references / scripts / assets 和来源记录一起保存，不执行下载脚本、不覆盖同名资源；预览可关闭，搜索 / 下载可取消，下载参数可调整。
+- 网站 Cookie / 缓存在应用数据根的独立浏览会话中，网站普通下载默认指向数据根的 `site-downloads/`。它与模型使用的临时 MCP 浏览器分开；网站操作不会自动把整页加入模型上下文。MCP 在线目录后置，现有手工登记与 OAuth 接入继续可用。
+- **左侧 MCP 管理**：提供 Context7 文档、GitHub 官方服务预设，也可新增本地 stdio / 远程 HTTP 服务。点击预设后填写普通表单；预设默认勾选当前目标项目，可取消或改为多个 / 全部项目。自定义新服务默认只保留在资源库，之后可“在当前项目启用 / 停用”。配置保存在应用数据根，不写项目；打开管理页不会连接外网。
+- **连接与凭据**：Context7 可先选择匿名访问，受服务配额限制；GitHub 使用自己的 PAT。认证可引用指定环境变量（进程优先，Windows 当前用户变量后备），也可输入令牌并加密保存。环境变量通常为 `CONTEXT7_API_KEY` / `GITHUB_MCP_TOKEN`，值只填原始令牌，Bearer 前缀由表单配置；旧高级 HTTP 头引用仍原值发送。加密文件绑定当前 Windows 用户，迁移机器后可重新输入；不会读取 Git / 浏览器的已有登录，也不使用 OpenCode Go Key。
+- **测试和使用 MCP**：点“保存并测试连接”只握手和查询工具目录，实际工具由 Agent 按任务发现使用。会话选项用于查看该会话独立连接；“仅管理项目资源”下的测试连接独立于会话。已有连接保持启动配置，修改后显示重连提示；401 / 403 / 429、缺少凭据及网络 / 超时有对应说明。GitHub 工具组可以勾选仓库、Issue、PR / Review、Actions 等。详见 [MCP 首批方案](docs/plan/mcp-service-presets.md)。
+- **OAuth 登录**：HTTP 认证可选“OAuth · 浏览器登录”→“保存并登录”，在系统浏览器完成服务商授权；支持查看进度、重新打开授权页、取消及退出本机登录。Context7 使用 `/mcp/oauth`；GitHub 远程接入需自己的 Client ID / Secret 引用。令牌和到期时间在应用数据根加密保存，同服务跨会话共享并按到期时间刷新；失败的工具不自动重放。原理、配置与边界见 [OAuth 文档](docs/plan/mcp-oauth.md)。
+- **临时浏览器**：MCP 目录内置 Playwright 浏览器。展开配置后可“安装浏览器运行包”，或指定已有兼容浏览器程序。首次调用时启动可见窗口，同会话复用、不同会话隔离；退出应用关闭，重启不恢复站点状态。未安装只影响浏览器。截图供用户查看，不代表模型已经检查像素。
+- **任务工作流**：新建任务可选默认七阶段模板或不使用模板；“设置与诊断”可复制 / 编辑模板和导入导出 JSON。任务概览可以调整当前阶段、阶段内容及已有成员的分工。模板变更只影响之后创建的任务；阶段切换不会自行开始 Goal 或创建会话。
+- **Trace**：点击对话工具动作的“查看过程”或输入区的 Trace 按钮打开右侧面板。参数、结果 JSON、差异和截图在这里按需展开，支持工具 / 失败筛选；可随时关闭。折叠显示不改变模型上下文。
+
+Skill 和 MCP 的资源管理面板均不占用会话输入框上方的空间。正常任务继续直接推进，不增加项目信任开关、hash 门槛或逐工具审批。
+
 ## 项目目录与应用数据
 
 项目目录是用户选择的代码位置。打开项目仅登记身份与路径，不修改项目文件，不初始化 Git。重复选择同一真实目录会复用身份；取消、无效路径或保存失败不会切换当前项目。失效项目保留记录并显示“目录不可用”。
@@ -61,6 +78,14 @@ npm.cmd --prefix apps/desktop run install:electron
 ├── environments.json # 已有环境登记、项目默认绑定和执行偏好
 ├── programs/         # 命令 / 服务历史及有界输出，不作为重启程序的授权
 ├── changes/          # 按会话保存写入基线、预期内容、来源与实际结果
+├── skills/           # 用户 Skill 与附属资源；启停偏好在 skills.json
+├── skill-downloads/  # 当前在线预览快照；切换来源 / 退出时清理自有临时目录
+├── workflow-templates.json # 用户流程模板，任务内保存各自快照
+├── mcp.json          # 服务配置、环境变量引用、项目启用范围
+├── mcp-credentials/  # 按服务身份保存的 Windows DPAPI 加密令牌，不含明文
+├── mcp-oauth/        # 独立加密的 OAuth 登录与刷新记录；不进入项目或模型上下文
+├── browser-runtime/  # 明确安装的浏览器运行包
+├── browser-artifacts/ # 按项目 / 会话保存截图、快照等产物
 ├── electron/         # Electron 用户状态
 ├── cache/electron/   # Chromium 缓存
 └── logs/             # 只记录固定错误码的应用日志
@@ -252,7 +277,7 @@ uv run --locked python scripts/export_schemas.py
 npm.cmd --prefix apps/desktop run types:generate
 ```
 
-数据流为 `Pydantic → JSON Schema 2020-12 → TypeScript`，两侧运行时严格校验。当前协议 v3 在既有会话 / 运行接口上增加任务、环境、程序、成果和 Goal 接口，来源卡片随会话事件同步。普通控制响应不等待模型完成；stdout 专供协议，1 MiB 单帧上限，收到 stdin EOF 后停止任务、清理资源并释放锁。配置 / 项目数据继续使用版本 1，会话事实单独版本化。
+数据流为 `Pydantic → JSON Schema 2020-12 → TypeScript`，两侧运行时严格校验。当前协议 v6 保留 v5 的 Skill、MCP、工作流模板和 Trace 接口，新增请求计量与真实缓存命中字段；失败响应已返回的 usage 按请求保存，未知不会变成零，缓存命中属于输入而不另加总。来源卡片随会话事件同步。桌面与 Python 后端需使用同一源码版本；上方 M3 的 v4 说明为阶段历史，旧协议握手明确拒绝，旧日志可读。普通控制响应不等待模型完成；stdout 专供协议，1 MiB 单帧上限，收到 stdin EOF 后停止任务、清理资源并释放锁。配置 / 项目数据继续使用版本 1，会话事实单独版本化。
 
 [Windows CI](.github/workflows/check.yml) 使用相同锁定版本与聚合入口，不配置模型密钥、不发布安装包。源码窗口与资源构建已有验证；包含 Python 后端的安装包保留为后续独立验收，不计入当前 M2 已完成能力。
 

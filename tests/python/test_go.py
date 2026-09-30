@@ -44,6 +44,156 @@ def sse(delta, finish=None, usage=None):
     return ("data: " + json.dumps(packet, ensure_ascii=False) + "\n\n").encode("utf-8")
 
 
+def test_reasoning_stream_does_not_publish_duplicate_phase_per_delta():
+    """思考仍逐片段交付，重复阶段通知不随片段数量增长。
+
+    Deliver reasoning immediately without a duplicate phase notification for every delta.
+    """
+
+    async def scenario():
+        """模拟连续流并检查交付发生在下一片段到达前。
+
+        Check delivery before each subsequent synthetic network fragment.
+        """
+        thoughts, progress = [], []
+
+        class ReasoningStream(ChunkStream):
+            """连续思考后完成回答。 Complete an answer after consecutive reasoning deltas."""
+
+            async def __aiter__(self):
+                """检查实时输出，没有等待整段思考结束。
+
+                Verify live delivery without waiting for all reasoning to finish.
+                """
+                for index in range(40):
+                    assert len(thoughts) == index
+                    yield sse({"reasoning_content": "r"})
+                yield sse({"content": "done"}, "stop")
+                yield b"data: [DONE]\n\n"
+
+        stream = ReasoningStream(b"")
+        pool = ModelHttpPool(
+            reuse_enabled=True,
+            keepalive_expiry=None,
+            drain_timeout_seconds=0.1,
+            transport=httpx.MockTransport(lambda _: httpx.Response(200, stream=stream)),
+        )
+        client = GoClient(
+            ResolvedCredential(
+                SecretStr("sentinel"),
+                CredentialInfo(env_var="OPENCODE_API_KEY", source="process", present=True),
+            ),
+            "https://opencode.ai/zen/go/v1",
+            pool,
+        )
+
+        async def thought(delta):
+            """记录实时片段。 Collect live deltas."""
+            thoughts.append(delta)
+
+        async def observe(value):
+            """记录公开状态。 Collect public states."""
+            progress.append(value)
+
+        async def text(_):
+            """正文交付时首字计时已发布。 TTFT is published before delivering answer text."""
+            assert progress[-1].phase == "text" and progress[-1].first_text_ms is not None
+
+        try:
+            turn = await client.complete(
+                model_id="glm-5.3-flash",
+                session_id="phase-throttle",
+                messages=[],
+                tools=[],
+                limits=RunLimits.model_validate(DEFAULTS["run"]),
+                on_text=text,
+                on_progress=observe,
+                on_reasoning=thought,
+            )
+            assert turn.reasoning == "r" * 40 and turn.text == "done"
+            assert sum(p.phase == "reasoning" for p in progress) == 1
+            assert progress[-1].received_bytes > 0 and stream.closed
+        finally:
+            await pool.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("broken", ["disconnect", "malformed"])
+def test_reported_usage_survives_stream_failure(broken):
+    """异常流保留先前真实计量，不交付可执行回合。
+
+    Preserve reported usage on stream failure without returning an executable turn.
+    """
+
+    async def scenario():
+        """生产解析链只用合成 HTTP。 Exercise the production parser with synthetic HTTP."""
+
+        class BrokenStream(ChunkStream):
+            """已报告计量后失败。 Fail after delivering usage."""
+
+            async def __aiter__(self):
+                """两种失败均无结束标记。 Neither failure has a terminal marker."""
+                yield sse(
+                    {},
+                    usage={
+                        "prompt_tokens": 12,
+                        "completion_tokens": 4,
+                        "prompt_tokens_details": {"cached_tokens": 9},
+                    },
+                )
+                if broken == "disconnect":
+                    raise httpx.ReadError("synthetic detail must not escape")
+                yield b"data: {bad}\n\n"
+
+        stream = BrokenStream(b"")
+        requests = []
+
+        async def handler(request):
+            """记录唯一尝试。 Record the sole attempt."""
+            requests.append(request)
+            return httpx.Response(200, stream=stream)
+
+        async def text(_):
+            """不保存模型原文。 Do not retain model text."""
+
+        client = GoClient(
+            ResolvedCredential(
+                SecretStr("sentinel-only"),
+                CredentialInfo(env_var="OPENCODE_API_KEY", source="process", present=True),
+            ),
+            "https://opencode.ai/zen/go/v1",
+            ModelHttpPool(
+                reuse_enabled=True,
+                keepalive_expiry=None,
+                drain_timeout_seconds=0.1,
+                transport=httpx.MockTransport(handler),
+            ),
+        )
+        try:
+            with pytest.raises(ModelResponseError) as failure:
+                await client.complete(
+                    model_id="glm-5.3-flash",
+                    session_id="stream-failure",
+                    messages=[],
+                    tools=[],
+                    limits=RunLimits.model_validate(DEFAULTS["run"]),
+                    on_text=text,
+                )
+            assert failure.value.code == (
+                "MODEL_STREAM_ERROR" if broken == "disconnect" else "MODEL_PROTOCOL"
+            )
+            assert failure.value.usage == TokenUsage(
+                input_tokens=12, output_tokens=4, cached_input_tokens=9
+            )
+            assert len(requests) == 1 and stream.closed
+            assert "synthetic detail" not in failure.value.message
+        finally:
+            await client.http.close()
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize(
     ("reason", "code"),
     [
@@ -69,7 +219,8 @@ def test_terminal_reason_preserves_trailing_usage_and_accepts_repeated_marker(re
             + sse({}, reason)
             + sse({}, reason)
             + b'data: {"choices": [], "usage": {"prompt_tokens": 32000, '
-            b'"completion_tokens": 2048}}\n\n' + b"data: [DONE]\n\n"
+            b'"completion_tokens": 2048, "prompt_tokens_details": {"cached_tokens": 12000}}}\n\n'
+            + b"data: [DONE]\n\n"
         )
         requests = []
 
@@ -103,7 +254,9 @@ def test_terminal_reason_preserves_trailing_usage_and_accepts_repeated_marker(re
                 limits=RunLimits.model_validate(DEFAULTS["run"]),
                 on_text=on_text,
             )
-            expected_usage = TokenUsage(input_tokens=32000, output_tokens=2048)
+            expected_usage = TokenUsage(
+                input_tokens=32000, output_tokens=2048, cached_input_tokens=12000
+            )
             if code:
                 with pytest.raises(ModelResponseError) as error:
                     await response

@@ -23,6 +23,8 @@ from my_agent.execution.service import ProgramService
 from my_agent.execution.store import ProgramStore
 from my_agent.execution.types import ListProgramsParams
 from my_agent.goals.service import GoalService
+from my_agent.mcp_client.service import McpService
+from my_agent.mcp_client.tools import McpTools
 from my_agent.memory.service import MemoryService
 from my_agent.memory.tools import MemoryTools
 from my_agent.models.go import GoClient
@@ -35,6 +37,8 @@ from my_agent.sessions.projection import summarize
 from my_agent.sessions.recovery import RecoveryService
 from my_agent.sessions.service import SessionService
 from my_agent.sessions.store import SessionLog, SessionStore
+from my_agent.skills.service import SkillService
+from my_agent.skills.tools import SkillTools
 from my_agent.storage import Storage
 from my_agent.tasks.store import TaskStore
 from my_agent.tools.files import FileCoordinator, FileTools
@@ -196,4 +200,12 @@ def build_sessions(
     sessions.tool_factory = lambda context: WorkerTools(
         context, knowledge_tools(context), delegation
     )
+    skills = SkillService(sessions)
+    sessions.skills = skills
+    worker_tools = sessions.tool_factory
+    sessions.tool_factory = lambda context: SkillTools(context, worker_tools(context), skills)
+    mcp = McpService(sessions)
+    sessions.mcp = mcp
+    skill_tools = sessions.tool_factory
+    sessions.tool_factory = lambda context: McpTools(context, skill_tools(context), mcp)
     return sessions

@@ -42,6 +42,11 @@ def usage(
         fact.data.turn.usage for fact in relevant if isinstance(fact.data, AssistantCommitted)
     ]
     tokens.extend(fact.data.usage for fact in relevant if isinstance(fact.data, AuxiliaryCompleted))
+    tokens.extend(
+        fact.data.failed_request_usage
+        for fact in relevant
+        if isinstance(fact.data, RunFinished) and fact.data.failed_request_usage is not None
+    )
     tokens.extend(item.usage for item in delegated if item.usage is not None)
     complete_usage = requests == len(tokens)
     measured = 0.0

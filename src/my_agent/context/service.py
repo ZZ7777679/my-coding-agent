@@ -33,12 +33,13 @@ from my_agent.context.window import (
     trim_candidates,
 )
 from my_agent.errors import AgentError
+from my_agent.mcp_client.types import McpParams
 from my_agent.models.failures import ModelResponseError
 from my_agent.models.types import JsonObject, TokenUsage
 from my_agent.runtime.context import ContextMaterial, PreparedWindow, describe_material
 from my_agent.runtime.events import RunSink
 from my_agent.runtime.settings import RunLimits
-from my_agent.sessions.projection import selected_model
+from my_agent.sessions.projection import selected_model, summarize
 from my_agent.sessions.store import SessionLog
 from my_agent.sessions.types import (
     AssistantCommitted,
@@ -372,6 +373,47 @@ class ContextService:
                 history_materials,
             ),
         ]
+        if self.sessions.mcp:
+            catalog = await self.sessions.worker.call(
+                self.sessions.mcp.catalog,
+                McpParams(project_id=summarize(active.log).project_id, session_id=sid),
+            )
+            server_text = "\nMCP services (discover tools only when needed):\n" + json.dumps(
+                [
+                    {
+                        "server_id": item.server.server_id,
+                        "description": item.server.description,
+                        "status": item.status,
+                    }
+                    for item in catalog.servers
+                    if item.server.enabled
+                    and (
+                        (item.server.all_projects and not item.server.project_ids)
+                        or summarize(active.log).project_id in item.server.project_ids
+                    )
+                ],
+                ensure_ascii=False,
+            )
+            if catalog.issues:
+                server_text += "\n" + "\n".join(catalog.issues)
+            window[0] = {**window[0], "content": str(window[0].get("content", "")) + server_text}
+            materials.append(
+                describe_material(
+                    kind="mcp",
+                    title="MCP services",
+                    form="catalog",
+                    reason="Available external capabilities",
+                    text=server_text,
+                )
+            )
+        if self.sessions.skills:
+            resource_text, resource_materials = await self.sessions.worker.call(
+                self.sessions.skills.materials,
+                active.log,
+                active.method.name if active.method else None,
+            )
+            materials.extend(resource_materials)
+            window[0] = {**window[0], "content": str(window[0].get("content", "")) + resource_text}
         if self.sessions.memory:
             try:
                 recalled: list[ContextMaterial] = []

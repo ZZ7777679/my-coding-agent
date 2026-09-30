@@ -22,6 +22,7 @@ import { Goals, GoalBudgetFields, GoalHistory } from './Goals'
 import { WebReferences } from './WebReferences'
 import { ModelActivity } from './ModelActivity'
 import { Reasoning } from './Reasoning'
+import { Trace, toolCaption } from './Trace'
 import type { WorkspaceSelection } from './TaskNavigation'
 
 type Props = {
@@ -168,6 +169,9 @@ export function Chat({
   const [goalBudget, setGoalBudget] = useState<GoalBudget>({})
   const [planDocument, setPlanDocument] = useState('')
   const [showChanges, setShowChanges] = useState(false)
+  const [showTrace, setShowTrace] = useState(false)
+  const [foldedRuns, setFoldedRuns] = useState<Record<string, boolean>>({})
+  const [traceSeq, setTraceSeq] = useState<number | null>(null)
   const [foldedReasoning, setFoldedReasoning] = useState<Record<string, boolean>>({})
   const [changingModel, setChangingModel] = useState(false)
   const notifyRun = useRef(onRunChange)
@@ -184,6 +188,8 @@ export function Chat({
     ++generation.current
     setSnapshot(null)
     setOlder([])
+    setShowTrace(false)
+    setTraceSeq(null)
     setPrompt('')
     setError('')
     setPlanDocument('')
@@ -501,7 +507,13 @@ export function Chat({
   }
 
   return (
-    <div className={'chat-layout' + (showChanges && selected ? ' with-changes' : '')}>
+    <div
+      className={
+        'chat-layout' +
+        ((showChanges || showTrace) && selected ? ' with-changes' : '') +
+        (showTrace ? ' with-trace' : '')
+      }
+    >
       <section className="chat-panel" aria-label="代码对话">
         {error && (
           <div className="notice" role="alert">
@@ -546,33 +558,85 @@ export function Chat({
             </p>
           )}
           {history.map((entry) => {
-            if (project && selected && entry.call && programTools.has(entry.call.name)) {
+            if (entry.kind.startsWith('tool.')) {
+              const identity = entry.call?.tool_call_id ?? entry.result?.tool_call_id
               const paired = history.find(
                 (item) =>
                   item.kind === 'tool.started' &&
                   item.run_id === entry.run_id &&
-                  item.call?.tool_call_id === entry.call?.tool_call_id
+                  item.call?.tool_call_id === identity
               )
               if (entry.kind !== 'tool.started' && paired) return null
               const result = history.find(
                 (item) =>
-                  (item.kind === 'tool.completed' || item.kind === 'tool.skipped') &&
+                  item.kind !== 'tool.started' &&
                   item.run_id === entry.run_id &&
-                  item.result?.tool_call_id === entry.call?.tool_call_id
+                  item.result?.tool_call_id === identity
               )
+              const terminal = result ?? (entry.result ? entry : undefined)
+              const failed = terminal?.result?.is_error
+              const runKey = entry.run_id ?? String(entry.seq)
+              const finished = history.some(
+                (h) => h.kind === 'run.finished' && h.run_id === entry.run_id
+              )
+              const firstTool =
+                history.find((h) => h.run_id === entry.run_id && h.kind.startsWith('tool.'))
+                  ?.seq === entry.seq
+              const count = history.filter(
+                (h) => h.run_id === entry.run_id && h.kind === 'tool.started'
+              ).length
+              const program = entry.call && programTools.has(entry.call.name)
               return (
-                <ProgramCall
-                  key={`${entry.run_id}:${entry.call.tool_call_id}`}
-                  entry={entry}
-                  result={result}
-                  projectId={project.project_id}
-                  sessionId={selected}
-                  visible={visible}
-                  running={
-                    run?.run_id === entry.run_id &&
-                    (run.status === 'running' || run.status === 'stopping')
-                  }
-                />
+                <div key={`${entry.run_id}:${identity}`}>
+                  {finished && firstTool && (
+                    <button
+                      className="text-button"
+                      onClick={() =>
+                        setFoldedRuns((previous) => ({ ...previous, [runKey]: !previous[runKey] }))
+                      }
+                    >
+                      {foldedRuns[runKey] ? '展开' : '折叠'}本轮过程 · {count} 次工具调用
+                    </button>
+                  )}
+                  {(!foldedRuns[runKey] || failed || program) && (
+                    <div className={'tool-summary' + (failed ? ' tool-error' : '')}>
+                      <button
+                        className="text-button"
+                        onClick={() => {
+                          setTraceSeq(entry.seq)
+                          setShowTrace(true)
+                          setShowChanges(false)
+                        }}
+                      >
+                        {toolCaption(entry, terminal)} ·{' '}
+                        {terminal
+                          ? failed
+                            ? '未完成'
+                            : '已返回'
+                          : run?.run_id === entry.run_id &&
+                              (run.status === 'running' || run.status === 'stopping')
+                            ? '正在执行'
+                            : '结果未确认'}{' '}
+                        · Trace
+                      </button>
+                      {failed && <p role="alert">{terminal?.result?.content.slice(0, 240)}</p>}
+                      {project && selected && entry.call && programTools.has(entry.call.name) && (
+                        <ProgramCall
+                          entry={entry}
+                          result={result}
+                          projectId={project.project_id}
+                          sessionId={selected}
+                          visible={visible}
+                          running={
+                            run?.run_id === entry.run_id &&
+                            (run.status === 'running' || run.status === 'stopping')
+                          }
+                          compact
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
               )
             }
             return (
@@ -602,33 +666,48 @@ export function Chat({
           )}
         </div>
         <div className="composer-dock">
-          {selected && snapshot && (
-            <ContextMemory
-              key={selected}
-              sessionId={selected}
-              revision={snapshot.watermark}
-              connected={connected}
-              cache={knowledgeCache}
-              onAttach={(material) =>
-                changeMaterials((current) => ({
-                  ...current,
-                  [selected]: [
-                    ...(current[selected] ?? []).filter((item) => item.key !== material.key),
-                    material
-                  ]
-                }))
-              }
-            />
-          )}
-          {selected && snapshot && (
-            <Workers
-              key={selected}
-              sessionId={selected}
-              revision={snapshot.watermark}
-              connected={connected}
-              active={!!active}
-            />
-          )}
+          <div className="composer-tools">
+            {selected && (
+              <button
+                className="text-button trace-toggle"
+                aria-expanded={showTrace}
+                onClick={() => {
+                  setTraceSeq(null)
+                  setShowTrace(!showTrace)
+                  setShowChanges(false)
+                }}
+              >
+                Trace
+              </button>
+            )}
+            {selected && snapshot && (
+              <ContextMemory
+                key={selected}
+                sessionId={selected}
+                revision={snapshot.watermark}
+                connected={connected}
+                cache={knowledgeCache}
+                onAttach={(material) =>
+                  changeMaterials((current) => ({
+                    ...current,
+                    [selected]: [
+                      ...(current[selected] ?? []).filter((item) => item.key !== material.key),
+                      material
+                    ]
+                  }))
+                }
+              />
+            )}
+            {selected && snapshot && (
+              <Workers
+                key={selected}
+                sessionId={selected}
+                revision={snapshot.watermark}
+                connected={connected}
+                active={!!active}
+              />
+            )}
+          </div>
           {selected && snapshot && (
             <Goals
               key={selected}
@@ -901,7 +980,17 @@ export function Chat({
           </div>
         </div>
       </section>
-      {selected && showChanges && (
+      {selected && project && showTrace && (
+        <Trace
+          key={selected}
+          sessionId={selected}
+          projectId={project.project_id}
+          revision={snapshot?.watermark ?? 0}
+          focusSeq={traceSeq}
+          onClose={() => setShowTrace(false)}
+        />
+      )}
+      {selected && showChanges && !showTrace && (
         <Changes key={selected} sessionId={selected} revision={snapshot?.watermark ?? 0} />
       )}
     </div>

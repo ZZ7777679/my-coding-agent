@@ -49,6 +49,7 @@ from my_agent.execution.types import (
     ChooseEnvironmentPathParams,
     EnvironmentCatalog,
     EnvironmentParams,
+    EnvironmentProbe,
     EnvironmentProjectParams,
     ExecutionSettings,
     ExecutionStatus,
@@ -63,6 +64,14 @@ from my_agent.execution.types import (
 )
 from my_agent.goals.dto import ControlGoalParams, CreateGoalParams, ListGoalsParams
 from my_agent.goals.types import GoalPage, GoalView
+from my_agent.mcp_client.types import (
+    McpArtifact,
+    McpArtifactParams,
+    McpCatalog,
+    McpControlParams,
+    McpParams,
+    SaveMcpParams,
+)
 from my_agent.memory.types import (
     ConfigureMemoryParams,
     ForgetMemoryParams,
@@ -81,12 +90,37 @@ from my_agent.models.connections import (
 from my_agent.models.types import ModelId as ModelId
 from my_agent.runtime.modes import RunMode
 from my_agent.runtime.settings import RunLimits
+from my_agent.sessions.trace import TraceDetail, TraceDetailParams, TracePage, TraceParams
 from my_agent.sessions.types import (
     SessionId,
     SessionPage,
     SessionSignal,
     SessionSummary,
     SessionView,
+)
+from my_agent.skills.online_types import (
+    OnlineSkillCancel,
+    OnlineSkillDocument,
+    OnlineSkillInspect,
+    OnlineSkillInstall,
+    OnlineSkillRead,
+    OnlineSkillSearch,
+    OnlineSkillStatus,
+)
+from my_agent.skills.site_types import (
+    SkillSiteControl,
+    SkillSiteLayout,
+    SkillSiteSources,
+    SkillSiteState,
+)
+from my_agent.skills.types import (
+    EnableSkillParams,
+    SaveSkillParams,
+    SelectSkillsParams,
+    SkillCatalog,
+    SkillDocument,
+    SkillParams,
+    SkillReadParams,
 )
 from my_agent.tasks.types import (
     AssignSessionParams,
@@ -99,6 +133,14 @@ from my_agent.tasks.types import (
     UpdateTaskParams,
 )
 from my_agent.web.types import OpenWebUrlParams, WebPageResult, WebSearchResult
+from my_agent.workflow.templates import (
+    ParseWorkflowParams,
+    RemoveWorkflowParams,
+    SaveWorkflowParams,
+    UpdateTaskWorkflowParams,
+    WorkflowCatalog,
+    WorkflowTemplate,
+)
 
 Text = Annotated[str, StringConstraints(min_length=1, max_length=4096)]
 Identifier = Annotated[str, StringConstraints(min_length=1, max_length=128)]
@@ -247,8 +289,8 @@ class AppInfo(DTO):
 
     name: Text
     app_version: Text
-    protocol_version: Literal[4]
-    stage: Literal["M3"]
+    protocol_version: Literal[6]
+    stage: Literal["M4"]
 
 
 class StorageInfo(DTO):
@@ -328,7 +370,7 @@ class InitializeParams(DTO):
     """
 
     app_version: Text
-    protocol_version: Literal[4]
+    protocol_version: Literal[6]
     data_schema_version: Literal[1]
 
 
@@ -344,6 +386,28 @@ class InitializeResult(DTO):
     projects: ProjectsView
     capabilities: list[
         Literal[
+            "workflows.parse",
+            "workflows.list",
+            "workflows.save",
+            "workflows.remove",
+            "tasks.workflow",
+            "mcp.list",
+            "mcp.save",
+            "mcp.control",
+            "mcp.artifact",
+            "trace.list",
+            "trace.detail",
+            "skills.list",
+            "skills.read",
+            "skills.save",
+            "skills.select",
+            "skills.enable",
+            "skills.online.search",
+            "skills.online.inspect",
+            "skills.online.status",
+            "skills.online.read",
+            "skills.online.install",
+            "skills.online.cancel",
             "context.get",
             "context.configure",
             "context.compact",
@@ -646,6 +710,40 @@ class SessionEventNotification(DTO):
 PUBLIC_TYPES: dict[str, type[BaseModel]] = {
     model.__name__: model
     for model in (
+        McpParams,
+        SaveMcpParams,
+        McpControlParams,
+        McpCatalog,
+        McpArtifactParams,
+        McpArtifact,
+        WorkflowCatalog,
+        SaveWorkflowParams,
+        RemoveWorkflowParams,
+        UpdateTaskWorkflowParams,
+        ParseWorkflowParams,
+        WorkflowTemplate,
+        SkillParams,
+        SkillReadParams,
+        SaveSkillParams,
+        SelectSkillsParams,
+        EnableSkillParams,
+        SkillCatalog,
+        SkillDocument,
+        OnlineSkillCancel,
+        OnlineSkillDocument,
+        OnlineSkillInspect,
+        OnlineSkillInstall,
+        OnlineSkillRead,
+        OnlineSkillSearch,
+        OnlineSkillStatus,
+        SkillSiteControl,
+        SkillSiteLayout,
+        SkillSiteState,
+        SkillSiteSources,
+        TraceParams,
+        TraceDetailParams,
+        TracePage,
+        TraceDetail,
         WorkerSessionParams,
         ConfigureWorkersParams,
         WorkerControlParams,
@@ -727,6 +825,7 @@ PUBLIC_TYPES: dict[str, type[BaseModel]] = {
         GetChangeParams,
         ListChangesParams,
         EnvironmentCatalog,
+        EnvironmentProbe,
         EnvironmentProjectParams,
         SaveEnvironmentParams,
         RemoveEnvironmentParams,

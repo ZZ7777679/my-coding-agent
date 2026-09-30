@@ -85,6 +85,11 @@ def summarize(log: SessionLog, *, active: bool = False, stopping: bool = False) 
             fact.data.turn.usage for fact in tail if isinstance(fact.data, AssistantCommitted)
         ]
         tokens.extend(fact.data.usage for fact in tail if isinstance(fact.data, AuxiliaryCompleted))
+        tokens.extend(
+            fact.data.failed_request_usage
+            for fact in tail
+            if isinstance(fact.data, RunFinished) and fact.data.failed_request_usage is not None
+        )
         requests = sum(isinstance(fact.data, (RequestStarted, AuxiliaryStarted)) for fact in tail)
         delegated = [fact.data for fact in tail if isinstance(fact.data, DelegatedUsage)]
         requests += sum(item.requests for item in delegated)

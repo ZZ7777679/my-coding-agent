@@ -84,10 +84,15 @@ test('M1 chat persists evidence, survives long waits and stops without blocking 
     await expect(page.getByTestId('model-progress')).toContainText('本次请求首字')
     await expect(page.getByTestId('chat-history')).toContainText('main.py:2 返回 42')
     expect(await page.locator('.chat-history script').count()).toBe(0)
-    await page.getByText('工具结果', { exact: false }).first().click()
-    await expect(page.getByTestId('chat-history')).toContainText('read_at')
-    await expect(page.getByTestId('chat-history')).not.toContainText('sha256')
-    await page.getByText('工具结果', { exact: false }).first().click()
+    // 当前工具证据由 Trace 展示，保留旧场景的结果元信息检查。
+    // Tool evidence now lives in Trace; retain the original result metadata assertions.
+    await page.locator('.tool-summary').getByRole('button').first().click()
+    const trace = page.getByRole('complementary', { name: '执行轨迹', exact: true })
+    const toolResult = trace.locator('.trace-row[open]')
+    await toolResult.getByText('原始结果', { exact: true }).click()
+    await expect(toolResult.locator('pre')).toContainText('read_at')
+    await expect(toolResult.locator('pre')).not.toContainText('sha256')
+    await trace.getByRole('button', { name: '关闭 Trace', exact: true }).click()
     await page.getByLabel('运行详情', { exact: true }).click()
     const layout = await page.evaluate(() => {
       const history = document.querySelector('.chat-history')!.getBoundingClientRect()

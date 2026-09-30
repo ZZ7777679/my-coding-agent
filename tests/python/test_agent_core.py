@@ -157,6 +157,60 @@ def test_roundtrip_idempotency_and_restart(tmp_path):
     asyncio.run(scenario())
 
 
+def test_read_field_correction_continues_same_run(tmp_path):
+    """字段名和类型反馈交回模型，同一 Run 修正后完成。
+
+    Return field/type feedback to the model and complete the same run after correction.
+    """
+    from tests.python.test_goal_controller import call, turn
+
+    class CorrectingModel(FakeModel):
+        """按具体反馈改正读取参数，不伪造工具结果。
+
+        Correct read arguments from concrete feedback without inventing tool results.
+        """
+
+        async def complete(self, **kwargs):
+            """依次误用字段、误用类型、实际读取并回答。
+
+            Try a wrong field/type, then read the actual file and answer.
+            """
+            self.calls += 1
+            if self.calls == 1:
+                return turn(call("read_file", path="main.py", limit="50"))
+            message = kwargs["messages"][-1]["content"]
+            if self.calls == 2:
+                assert "limit: Extra inputs" in message
+                return turn(call("read_file", path="main.py", lines="50"))
+            if self.calls == 3:
+                assert "lines: Input should be a valid integer" in message
+                return turn(call("read_file", path="main.py", lines=50))
+            assert self.calls == 4 and "return 42" in message
+            return turn(text="The answer is 42.")
+
+    async def scenario():
+        """仅替换模型，保留生产工具与终态存储。
+
+        Substitute only the model while retaining production tools and terminal storage.
+        """
+        model = CorrectingModel()
+        project, storage, worker, projects, service = setup(tmp_path, model)
+        try:
+            with storage.writer():
+                view = projects.open(path=str(project))
+                session = await service.create(view.active_project.project_id, "glm-5.3-flash")
+                await service.start(session.session_id, str(uuid4()), "Read the answer", None)
+                await service.active_for(session.session_id).task
+                result = await service.view(session.session_id)
+                assert model.calls == 4 and result.summary.run.status == "completed"
+                assert result.summary.run.tools == 3
+        finally:
+            await service.close()
+            worker.close()
+
+    asyncio.run(scenario())
+
+
 def test_model_selection_mid_request_and_reasoning_snapshots(tmp_path):
     """切换保留在途请求，后续模型与思考快照可跨重启恢复。
 

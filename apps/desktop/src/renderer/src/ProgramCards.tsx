@@ -27,7 +27,8 @@ export function ProgramCall({
   projectId,
   sessionId,
   visible,
-  running
+  running,
+  compact = false
 }: {
   entry: ChatEntry
   result?: ChatEntry
@@ -35,6 +36,7 @@ export function ProgramCall({
   sessionId: string
   visible: boolean
   running: boolean
+  compact?: boolean
 }): React.JSX.Element {
   const call = entry.call
   const completed = result ?? (entry.result ? entry : undefined)
@@ -95,10 +97,12 @@ export function ProgramCall({
         summary={summary}
         initialView={observed}
         visible={visible}
+        compact={compact}
         toolName={call?.name}
         toolResult={completed?.result ?? null}
       />
     )
+  if (compact) return <>{lookupError && <p role="alert">{lookupError}</p>}</>
   return (
     <details className={'program-card' + (completed?.result?.is_error ? ' tool-error' : '')}>
       <summary>
@@ -142,7 +146,8 @@ function ProgramCard({
   onRefresh,
   initialView = null,
   toolName,
-  toolResult = null
+  toolResult = null,
+  compact = false
 }: {
   summary: ProgramSummary
   visible: boolean
@@ -150,6 +155,7 @@ function ProgramCard({
   initialView?: ProgramView | null
   toolName?: string
   toolResult?: ChatEntry['result']
+  compact?: boolean
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const [view, setView] = useState<ProgramView | null>(null)
@@ -223,6 +229,26 @@ function ProgramCard({
     }
   }
 
+  if (compact)
+    return (
+      <div className="program-quick-controls">
+        <span>
+          {states[current.status]}
+          {current.exit_code !== null && ` (exit ${current.exit_code})`}
+        </span>
+        {alive.has(current.status) && (
+          <button disabled={busy} onClick={() => void control('stop')}>
+            停止程序
+          </button>
+        )}
+        {current.status === 'ready' && current.url && (
+          <button disabled={busy} onClick={() => void control('open')}>
+            打开预览
+          </button>
+        )}
+        {error && <p role="alert">{error}</p>}
+      </div>
+    )
   return (
     <details
       className="program-card"

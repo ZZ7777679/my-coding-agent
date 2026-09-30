@@ -20,6 +20,7 @@ from my_agent.errors import AgentError
 from my_agent.models.types import JsonObject, ModelData, ToolCall, ToolResult
 from my_agent.runtime.tools import ToolContext
 from my_agent.storage import utc_now
+from my_agent.tools.arguments import argument_message
 from my_agent.tools.policy import checkpoint
 from my_agent.tools.read_only import ReadTools, encode, newline_kind
 from my_agent.worker import BusinessWorker
@@ -316,8 +317,8 @@ class FileTools:
         Return tool results so the loop can distinguish local feedback from execution faults."""
         try:
             return await self._write(call)
-        except ValidationError:
-            code, message = "INVALID_TOOL_ARGUMENTS", "参数不符合文件工具 schema。"
+        except ValidationError as exc:
+            code, message = "INVALID_TOOL_ARGUMENTS", argument_message(exc)
         except UnicodeError:
             code, message = "FILE_ENCODING", "无法将内容可靠编码为 UTF-8。"
         except AgentError as exc:

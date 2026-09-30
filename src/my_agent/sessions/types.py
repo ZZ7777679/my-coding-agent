@@ -211,6 +211,10 @@ class RunFinished(ModelData):
     # 仅记录宿主单调时钟测得的活跃耗时，旧日志 / 崩溃未知时保留 None。
     # Record host-measured monotonic active time; old logs and crashes remain unknown.
     elapsed_seconds: Annotated[float, Field(ge=0)] | None = None
+    # 失败响应仍可报告真实计量；显式关联未提交请求，不制造完整模型回合。
+    # Failed responses can report usage; link the unanswered request without a complete turn.
+    failed_request_id: SessionId | None = None
+    failed_request_usage: TokenUsage | None = None
     report: WorkReport | None = None
     # 宿主只在完整配对边界让出执行；不是模型自行宣布一个工作单元完成。
     # Only the host yields at a paired boundary; this is not a model's completion claim.

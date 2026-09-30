@@ -20,6 +20,7 @@ import type { QuestionMaterial } from './KnowledgeDetails'
 import { TaskNavigation, type WorkspaceSelection } from './TaskNavigation'
 import { TaskPanel } from './TaskPanel'
 import { ProgramCards } from './ProgramCards'
+import { Resources } from './Resources'
 import './style.css'
 
 /**
@@ -59,7 +60,9 @@ function App() {
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
-  const [view, setView] = useState<'projects' | 'settings' | 'chat' | 'task'>('projects')
+  const [view, setView] = useState<'projects' | 'settings' | 'chat' | 'task' | 'skills' | 'mcp'>(
+    'projects'
+  )
   const [selection, setSelection] = useState<WorkspaceSelection | null>(null)
   const [treeRevision, setTreeRevision] = useState(0)
   const [activeRuns, setActiveRuns] = useState<SessionSummary[]>([])
@@ -266,6 +269,20 @@ function App() {
           </span>
           <span>设置与诊断</span>
         </button>
+        <button
+          className={'nav-item ' + (view === 'skills' ? 'nav-current' : '')}
+          onClick={() => setView('skills')}
+        >
+          <span aria-hidden="true">◇</span>
+          <span>Skill 管理</span>
+        </button>
+        <button
+          className={'nav-item ' + (view === 'mcp' ? 'nav-current' : '')}
+          onClick={() => setView('mcp')}
+        >
+          <span aria-hidden="true">⌘</span>
+          <span>MCP 管理</span>
+        </button>
         <div className="section-label">
           项目与任务<span>{info?.projects.recent_projects.length ?? 0}</span>
         </div>
@@ -281,7 +298,7 @@ function App() {
           <span data-testid="connection-status">
             {phase === 'loading' ? '正在连接后端' : connected ? '本地后端已连接' : '后端不可用'}
           </span>
-          <small>{info?.app.stage ?? 'M3'}</small>
+          <small>{info?.app.stage ?? 'M4'}</small>
         </div>
       </aside>
 
@@ -292,7 +309,15 @@ function App() {
               <span className="breadcrumb">工作台</span>
               <span className="separator">/</span>
               <strong>
-                {view === 'projects' ? '项目' : view === 'task' ? '任务' : '设置与诊断'}
+                {view === 'projects'
+                  ? '项目'
+                  : view === 'task'
+                    ? '任务'
+                    : view === 'skills'
+                      ? 'Skill 管理'
+                      : view === 'mcp'
+                        ? 'MCP 管理'
+                        : '设置与诊断'}
               </strong>
             </div>
             {
@@ -471,7 +496,9 @@ function App() {
             )}
             <footer className="footer-note">
               <span>◎</span>
-              <p>任务与会话在左侧管理。可在原项目编辑代码，选择项目默认环境后执行与预览。</p>
+              <p>
+                任务与会话在左侧管理。可在原项目编辑并直接使用本机工具；需要特定环境时再到设置中选择。
+              </p>
               <span className="version">v{info?.app.app_version ?? '—'}</span>
             </footer>
           </div>
@@ -503,6 +530,15 @@ function App() {
             connected={connected}
             onSelect={(next) => void navigate(next)}
             onChanged={refreshTree}
+          />
+        )}
+        {(view === 'skills' || view === 'mcp') && (
+          <Resources
+            key={view}
+            kind={view}
+            projects={info?.projects.recent_projects ?? []}
+            selected={selection}
+            activeProjectId={project?.project_id ?? null}
           />
         )}
         <div hidden={view !== 'settings'}>

@@ -4,6 +4,41 @@
  */
 
 import type {
+  ParseWorkflowParams,
+  WorkflowTemplate,
+  WorkflowCatalog,
+  SaveWorkflowParams,
+  RemoveWorkflowParams,
+  UpdateTaskWorkflowParams,
+  EmptyParams,
+  McpParams,
+  SaveMcpParams,
+  McpControlParams,
+  McpCatalog,
+  McpArtifactParams,
+  McpArtifact,
+  SkillParams,
+  SkillReadParams,
+  SaveSkillParams,
+  SelectSkillsParams,
+  EnableSkillParams,
+  SkillCatalog,
+  SkillDocument,
+  OnlineSkillCancel,
+  OnlineSkillDocument,
+  OnlineSkillInspect,
+  OnlineSkillInstall,
+  OnlineSkillRead,
+  OnlineSkillSearch,
+  OnlineSkillStatus,
+  SkillSiteControl,
+  SkillSiteLayout,
+  SkillSiteState,
+  SkillSiteSources,
+  TraceParams,
+  TraceDetailParams,
+  TracePage,
+  TraceDetail,
   WorkerSessionParams,
   ConfigureWorkersParams,
   WorkerControlParams,
@@ -72,6 +107,7 @@ import type {
   ChangePage,
   ChangeView,
   EnvironmentCatalog,
+  EnvironmentProbe,
   EnvironmentProjectParams,
   SaveEnvironmentParams,
   RemoveEnvironmentParams,
@@ -101,6 +137,32 @@ export type Result<T> = { ok: true; data: T } | { ok: false; error: OperationErr
  * The renderer's trusted entry point, without filesystem, secret or arbitrary-command access.
  */
 export interface DesktopAPI {
+  parseWorkflow: (params: ParseWorkflowParams) => Promise<Result<WorkflowTemplate>>
+  listWorkflows: (params: EmptyParams) => Promise<Result<WorkflowCatalog>>
+  saveWorkflow: (params: SaveWorkflowParams) => Promise<Result<WorkflowCatalog>>
+  removeWorkflow: (params: RemoveWorkflowParams) => Promise<Result<WorkflowCatalog>>
+  updateTaskWorkflow: (params: UpdateTaskWorkflowParams) => Promise<Result<TaskView>>
+  listMcp: (params: McpParams) => Promise<Result<McpCatalog>>
+  saveMcp: (params: SaveMcpParams) => Promise<Result<McpCatalog>>
+  controlMcp: (params: McpControlParams) => Promise<Result<McpCatalog>>
+  readMcpArtifact: (params: McpArtifactParams) => Promise<Result<McpArtifact>>
+  listSkills: (params: SkillParams) => Promise<Result<SkillCatalog>>
+  searchOnlineSkills: (params: OnlineSkillSearch) => Promise<Result<OnlineSkillStatus>>
+  inspectOnlineSkill: (params: OnlineSkillInspect) => Promise<Result<OnlineSkillStatus>>
+  onlineSkillStatus: () => Promise<Result<OnlineSkillStatus>>
+  skillSiteControl: (params: SkillSiteControl) => Promise<Result<SkillSiteState>>
+  skillSiteLayout: (params: SkillSiteLayout) => Promise<Result<SkillSiteState>>
+  skillSiteSources: () => Promise<Result<SkillSiteSources>>
+  readOnlineSkill: (params: OnlineSkillRead) => Promise<Result<OnlineSkillDocument>>
+  installOnlineSkill: (params: OnlineSkillInstall) => Promise<Result<OnlineSkillStatus>>
+  cancelOnlineSkill: (params: OnlineSkillCancel) => Promise<Result<OnlineSkillStatus>>
+  readSkill: (params: SkillReadParams) => Promise<Result<SkillDocument>>
+  saveSkill: (params: SaveSkillParams) => Promise<Result<SkillCatalog>>
+  selectSkills: (params: SelectSkillsParams) => Promise<Result<SkillCatalog>>
+  enableSkill: (params: EnableSkillParams) => Promise<Result<SkillCatalog>>
+
+  listTrace: (params: TraceParams) => Promise<Result<TracePage>>
+  getTraceDetail: (params: TraceDetailParams) => Promise<Result<TraceDetail>>
   /** Read internal workers. */
   listWorkers(params: WorkerSessionParams): Promise<Result<WorkerPage>>
   /** Configure optional delegation. */
@@ -157,6 +219,8 @@ export interface DesktopAPI {
   controlGoal(params: ControlGoalParams): Promise<Result<GoalView>>
   /** 查看登记和项目默认。 Read registrations and project defaults. */
   listEnvironments(params: EnvironmentProjectParams): Promise<Result<EnvironmentCatalog>>
+  /** 按需检查当前项目实际 Python。 Inspect the effective Python on demand. */
+  inspectPython(params: EnvironmentProjectParams): Promise<Result<EnvironmentProbe>>
   /** 导入已有环境引用。 Register an existing environment reference. */
   saveEnvironment(params: SaveEnvironmentParams): Promise<Result<EnvironmentCatalog>>
   /** 移除登记，不删除环境。 Remove a reference without deleting the environment. */

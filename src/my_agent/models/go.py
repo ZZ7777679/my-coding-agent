@@ -67,10 +67,17 @@ class TurnBuffer:
             raise AgentError("MODEL_STREAM_ERROR", "模型服务在流中返回错误，请显式重试。")
         usage = value.get("usage")
         if isinstance(usage, dict):
+            details = usage.get("prompt_tokens_details")
+            cached = (
+                details.get("cached_tokens", usage.get("prompt_cache_hit_tokens"))
+                if isinstance(details, dict)
+                else usage.get("prompt_cache_hit_tokens")
+            )
             self.usage = TokenUsage.model_validate(
                 {
                     "input_tokens": usage.get("prompt_tokens"),
                     "output_tokens": usage.get("completion_tokens"),
+                    "cached_input_tokens": cached,
                 }
             )
         choices = value.get("choices")
@@ -308,6 +315,9 @@ class GoClient:
             if on_reasoning is not None:
                 await on_reasoning(delta)
 
+        # 计量早于结束标记到达时，断流也不能丢失它；残缺回合仍不能执行。
+        # Preserve usage that precedes completion on stream failure; never execute a partial turn.
+        buffered_turn = TurnBuffer()
         code = "UNEXPECTED_ERROR"
         http_status = None
         try:
@@ -335,7 +345,7 @@ class GoClient:
                             "检查认证、Go 额度或网络后显式重试。",
                         )
                     turn = await self._stream(
-                        response, limits, deliver_text, timing, deliver_reasoning
+                        response, limits, deliver_text, timing, deliver_reasoning, buffered_turn
                     )
                     await timing.set_phase("completed")
                     code = "OK"
@@ -343,12 +353,14 @@ class GoClient:
         except (TimeoutError, httpx.HTTPError) as exc:
             failure = request_failure(exc, timing, limits.request_timeout_seconds)
             code = failure.code
-            raise failure from exc
+            raise buffered_turn.failure(failure.code, failure.message) from exc
         except (ValidationError, ValueError, UnicodeError) as exc:
             code = "MODEL_PROTOCOL"
-            raise AgentError(code, "模型返回了无法可靠解析的流。") from exc
+            raise buffered_turn.failure(code, "模型返回了无法可靠解析的流。") from exc
         except AgentError as exc:
             code = exc.code
+            if not isinstance(exc, ModelResponseError) and code.startswith("MODEL_"):
+                raise buffered_turn.failure(code, exc.message) from exc
             raise
         except asyncio.CancelledError:
             code = "CANCELLED"
@@ -384,6 +396,7 @@ class GoClient:
         on_text: TextSink,
         timing: RequestTiming,
         on_reasoning: TextSink | None = None,
+        turn: TurnBuffer | None = None,
     ) -> ModelTurn:
         """按字节有界组 SSE 帧，要求 DONE 与完整回合。
 
@@ -391,7 +404,8 @@ class GoClient:
         """
         buffer = bytearray()
         data_lines: list[str] = []
-        turn = TurnBuffer()
+        if turn is None:
+            turn = TurnBuffer()
         done = False
         # 指定 chunk_size 会等到攒满才交付；按网络到达解析，容量约束施加在行 / 事件上。
         # A fixed chunk_size delays delivery; parse arrivals and bound lines/events instead.

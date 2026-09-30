@@ -9,7 +9,10 @@ class RequestTiming:
     """单次请求的可公开计时器；网络追踪只取事件名。 Per-request timing using trace names only."""
 
     def __init__(self, sink: ProgressSink | None) -> None:
-        """从模型入口起算，不包含 UI / 存储。 Start at the model call, excluding UI/storage."""
+        """从模型入口起算，包含流回调等待，不包含入口前的工作。
+
+        Start at the model call, including awaited stream callbacks but excluding earlier work.
+        """
         self.sink = sink
         self.started = perf_counter()
         self.progress = ModelProgress(phase="preparing", elapsed_ms=0.0, received_bytes=0)
@@ -30,7 +33,12 @@ class RequestTiming:
             await self.sink(self.progress)
 
     async def set_phase(self, phase: str) -> None:
-        """校验自有阶段标识后发布。 Validate an application-owned phase before publishing."""
+        """仅在阶段改变时发布，连续片段的收包统计沿用节流。
+
+        Publish phase changes only; consecutive deltas retain throttled byte updates.
+        """
+        if self.progress.phase == phase:
+            return
         await self.publish(
             ModelProgress.model_validate({**self.progress.model_dump(), "phase": phase})
         )

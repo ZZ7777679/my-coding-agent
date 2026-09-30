@@ -16,6 +16,7 @@ from my_agent.execution.types import (
 )
 from my_agent.models.types import JsonObject, ModelData, ToolCall, ToolResult
 from my_agent.runtime.tools import ToolContext, ToolExecutor
+from my_agent.tools.arguments import argument_message
 from my_agent.tools.policy import checkpoint
 from my_agent.tools.read_only import encode
 
@@ -38,6 +39,7 @@ def parse_program_arguments(call: ToolCall) -> ProgramArguments:
     """
     models: dict[str, type[ProgramArguments]] = {
         "execution_environment": NoArguments,
+        "inspect_python": NoArguments,
         "run_command": RunCommandArgs,
         "start_service": StartServiceArgs,
         "read_program": GetProgramParams,
@@ -64,10 +66,7 @@ def argument_failure(call: ToolCall, error: ValidationError) -> ToolResult:
     Report field locations and type errors without echoing command text or input values.
     """
     issues = error.errors(include_input=False, include_context=False, include_url=False)
-    details = "; ".join(
-        f"{'.'.join(str(part) for part in issue['loc'])}: {issue['msg']}" for issue in issues
-    )
-    message = "程序工具参数错误：" + details
+    message = argument_message(error)
     if any(issue["loc"] and issue["loc"][0] == "command" for issue in issues):
         message += (
             '。command 示例：{"kind":"powershell","script":"Get-Location"}；'
@@ -112,7 +111,14 @@ class ProjectTools:
                 NoArguments,
                 "Read project environment and execution mode. No installation or execution. "
                 "An unbound project uses existing system tools without a separate trust switch. "
-                "Import/select a Python/Conda/uv environment only when that task needs it.",
+                "Import/select a Python/Conda/uv environment only when that task needs it. "
+                "Use inspect_python on demand to learn the effective path and version.",
+            ),
+            (
+                "inspect_python",
+                NoArguments,
+                "Check the current project's effective Python executable and version on demand. "
+                "Uses the selected environment. Does not install packages or run project code.",
             ),
             (
                 "read_program",
@@ -166,6 +172,7 @@ class ProjectTools:
         Validate full arguments and ownership; reap cancellation."""
         if call.name not in {
             "execution_environment",
+            "inspect_python",
             "read_program",
             "run_command",
             "start_service",
@@ -181,8 +188,12 @@ class ProjectTools:
             except ValidationError as exc:
                 return argument_failure(call, exc)
             if isinstance(args, NoArguments):
-                result: ModelData = await self.programs.worker.call(
-                    self.programs.environments.catalog, self.context.project_id
+                result: ModelData = (
+                    await self.programs.inspect_python(self.context.project_id)
+                    if call.name == "inspect_python"
+                    else await self.programs.worker.call(
+                        self.programs.environments.catalog, self.context.project_id
+                    )
                 )
             elif isinstance(args, RunCommandArgs):
                 result = await self.programs.run(self.context, args, call.tool_call_id)

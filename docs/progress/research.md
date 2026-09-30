@@ -1,6 +1,36 @@
 # 大模型应用与 Coding Agent 专题调研进度
 
-> 最近更新：2026-09-21。四个 Coding Agent、每个两个版本的源码专题与仓库组织补充已完成，入口为 [源码调研索引](../research/agents/README.md)。2026-09-16 的综合专题与两轮复查历史保留在后文；内容交付不代表用户验收。未运行第三方 Agent，不启动新的实现阶段。
+> 最近更新：2026-09-23。[非官方 DSH 生态第二轮](../research/deepseek-plugins-v2/README.md) 已完成本轮整理，替代前轮推荐；共 11 份文档，含 100 项候选处置、6 条架构主线、当前项目建议和固定版本证据。原稿仅作历史留存。此前 [多 Agent 协作](../research/multi-agent/README.md)、[四个 Coding Agent 源码专题](../research/agents/README.md) 与综合研究历史保留在后文。内容交付不代表用户验收。未运行第三方 Agent，不启动新的实现阶段。
+
+## 非官方 DSH 生态第二轮（2026-09-23，已完成本轮整理）
+
+- 用户要求上一轮不再使用，重新筛选和深入研究，并明确纳入时效性、Star、用户吸引力和工业落地价值。旧稿在原位置标为历史，保留已有阅读链接；不沿用旧清单的推荐结论。
+- 新写入范围为 `docs/research/deepseek-plugins-v2/`、本独立进度和研究缓存。基于当日公开 Star 前 100、近期更新与问题导向候选，先做同类比较，再固定入选实现；区分成熟产品参考、近期机制、探索性候选和未证实的营销指标。
+- 已读取当前 M4 与实际 MCP / Skill / 协作 / Trace 实现，并在重连后复核进度。按需 MCP schema、Skill 目录与附件、在线导入、OAuth、协作邮箱和 Goal 均按已有能力处理；不沿用旧阶段“尚未实现”的判断。用户断网暂停后按明确接续继续，保持独立写入范围。
+- 产物为 [专题入口](../research/deepseek-plugins-v2/README.md) 与 10 篇正文 / 附录，共 11 份 Markdown。先保存 [筛选方法](../research/deepseek-plugins-v2/01-selection.md) 与 [Star 前 100 处置](../research/deepseek-plugins-v2/10-candidates.md)，再按工作台、协作、记忆、Skill、浏览器、上下文 / 扩展生命周期六条主线分析 21 个产品或插件对象，涉及 22 个源码仓库（含局部比较和 EverOS 独立适配），不表示全仓审计或全生态穷举。
+- 新重点包含 Archify、Distilly、EverOS、MemOS、BrowserSkill、LoopX、iPolloWork、Vibe-Skills、SkillCorpus；重读 Anywhere / OpenDesign 等主线，并用少量低热度样本比较成员身份、上下文代理、MCP 生命周期和规则兼容。候选表逐项区分主线、局部比较、保留候选、发现入口和范围外，不把元数据筛选说成 100 个项目全部源码精读。
+- 正文从问题引入进入仓库组织，再沿使用 / 数据流说明状态所有者、核心模块、失败 / 取消 / 恢复及价值。重点包括配置检查点与依赖恢复的区别、持久化后报告结果、attempt / Member / Session 身份、记忆 capture 与索引新鲜度、结构化成果交付、Skill 检索与 bundle 路径、浏览器启动账本、工具排队、请求事件投影和独立恢复入口。
+- 时效复核修正了 SkillCorpus 默认 on-demand 与文件头注释差异、Vibe 旧入口到共享 runtime core 的迁移、billion-context 原生 DSH 入口及独立内核、market 当前已处理的 profileContext 旧问题。OpenViking 较新 HEAD 的四项增量未改本次精读适配目录；dsh-context 初次 TLS 获取失败后已补齐新 SHA。iPolloWork LICENSE 重连后取得，确认为 Source Available License 1.0，不按宽松开源代码推荐移植。
+- 使用证据包括明确版本的 Anywhere / BrowserSkill Windows 更新报告、Nanmi fork / 兼容报告和 market profile 报告，均未称本轮复现。Vibe 作者评测的最高 reward / 同分最低 token 选择规则、完整原轨迹未公开等限制已写明；未将 Star、测试目录、作者效果数字或局部反馈循环升级为企业生产规模或强 RSI 实证。
+- [本项目建议](../research/deepseek-plugins-v2/08-project-lessons.md) 按任务入口、请求装配、长任务、协作、执行观察与更新恢复组织，优先参考可接续成果、请求来源 / 生效状态、跨运行协作关联及明确资源生命周期。保留原目录、固定模型、实际故障停止、最小报告及可选沙箱规则；不自动引入通用插件系统、多引擎、自动重试或运行门槛。
+- 2026-09-23 用 `.venv\Scripts\python.exe -X utf8 -` 直接检查：11 份 Markdown 的 UTF-8 / LF、BOM / 替换字符、末尾换行、尾空格、围栏、引用定义、49 处本地引用和 118 处固定 SHA 源码目标（116 个唯一目标，22 个仓库）全部通过。初查发现 SkillCorpus match 文档路径缺少 `skillcorpus/`，已修正后通过。另将候选表 100 行的顺序、仓库、Star / Fork 和 push 日期与原始 API 逐项核对，0 差异；进度差异空白检查通过。证据为 `.artifacts/research/deepseek-plugins-v2-20260923/document-check-final.json`、`candidate-check.json` 与 `local-source-snapshot.json`。
+- 获取边界保留在 [证据登记](../research/deepseek-plugins-v2/09-evidence.md)：近期页限流、匿名 API 额度、iPolloWork 的定向源码而非完整归档、BrowserSkill Rust / WeKnora Go 后端与独立算法依赖未完整审计。未安装或运行上游、调用真实模型或测试 OS 沙箱；纯文档工作未跑本项目应用回归。结构检查不替代语义与运行效果验证。
+- 正式写入限本专题、本独立进度和旧专题 README 的历史标记；原始材料归忽略的研究缓存。保留其他任务对源码、规划、共享总览和 M4 的修改，未提交 / 推送。没有新增产品硬编码、依赖或执行条件；本轮所选文档无剩余阻塞。后续可针对实际交接、成果接续、资源更新等问题选取机制作小范围设计，长尾候选与实测缺口不被宣布已完成。
+
+## DeepSeek Harness 非官方插件与二次开发专题（2026-09-23，已完成本轮整理）
+
+- 2026-09-23 后续纠正：用户要求整轮重做，下面记录仅为历史交付，原推荐清单已撤回。中间筛选复查取得的公开元数据和固定源码可作为一手材料，取舍与推荐须重新判断，不把旧稿完成状态当作新轮完成。
+- 范围：按用户进一步澄清，以官方链接的 GitHub `dsh-plugin` 话题中的非官方社区 / 第三方二次开发为主体；官方契约只作辅助核对。从发现 / 安装、能力装配、交互与上下文、执行协作到持久化 / 恢复，选择代表项目深入源码，并对照本项目 M4 当前实现提出参考建议。研究不构成引入插件运行时或修改产品的授权。
+- 写入仅限新建 `docs/research/deepseek-plugins/` 与本独立进度；公开源码和取证记录放在忽略目录 `.artifacts/research/deepseek-plugins-20260923/`。保留其他任务对源码、共享总览、M4 和规划的修改。
+- 开始时已读取 AGENTS、进度总览、M4 最新记录和已有 DSH 源码专题，核对工作区；计划固定代表源码并区分实际实现、作者宣称和验证。未安装或运行上游、未调用真实模型、不启动子 Agent、不提交或推送。
+- 中间进展（历史）：保存社区 Desktop、上下文可视化、记忆、自进化、Agent Teams、工作流 / 会话协调、多模态 / 浏览器、工作台 / 恢复与市场正文；沿话题页补查 Open Design、dsh-web 和推理路由套件。当时总结与证据检查未完成，现已完成如下。
+- 最终产物：[专题索引](../research/deepseek-plugins/README.md) 及正文 / 附录共 16 份 Markdown。成功固定 28 个仓库快照，其中 22 个第三方项目分析代表接入 / 核心链、2 个仓库仅做边界筛查、3 个目录用于发现、1 个官方仓库仅作契约对照；没有将快照数量写成完整仓库审计数量，也没有声称穷举整个话题。
+- 深入内容沿发现 / 装配、会话与请求、工具及协作循环、持久化 / 恢复组织，解释仓库入口、状态所有者、关键实现和实际价值。包括上下文事件投影、记忆队列、Agent Teams 的 attempt 与 mailbox、工作流 effect 回放、Ouroboros host dispatch、Odai Skill generation、浏览器 tab 归属、GenUI 动作、ChangeLedger 恢复、市场 profile 与救援，以及完整产品的进程桥 / Host 调度。
+- 版本复核纠正了三类陈旧描述：Ouroboros 当前默认 host 运行方向、Qwen 社区包当前薄 MCP carrier、推理路由 YAML 的实际 v34 入口；另将 Ruflo 同名子包归为其他生态入口。作者小样本措辞分类不作为编程效果证据，记忆 / Skill 迭代不直接称为已证明的强 RSI；具体版本、许可差异、阅读范围与获取限制见 [证据登记](../research/deepseek-plugins/13-evidence-register.md)。
+- [本项目参考总结](../research/deepseek-plugins/12-project-implications.md) 以当前 M4 和实际源码为依据，优先解释请求材料来源、跨运行成果 / 消息关联、能力版本生效与生命周期恢复。已有 Skill 在线导入、MCP、Trace、记忆、协作和 worker 不重复列为待建项；未采纳上游自动重试、固定阶段门槛或运行时自修改为本项目规则。
+- 2026-09-23 用 `.venv\Scripts\python.exe -X utf8 -` 对 16 份 Markdown 直接检查：UTF-8 / LF、BOM / 替换字符、末尾换行、尾空格、围栏、引用定义、69 处本地引用和 123 处固定提交源码 / 树目标全部通过；显式行号也落在缓存文件范围内。证据为 `.artifacts/research/deepseek-plugins-20260923/document-check-final.json`，同目录有快照清单、阅读行段和本地源码身份记录。结构检查不代替语义审阅或全网链接可达性测试。
+- 获取限制：`amplifthq/oh-my-dsh` 的远端读取失败，未计入成功快照；Odai 首次漏选的 .mts / .cts 已按同一 SHA 补齐后阅读；Anywhere 仓库更名跳转已核实。未运行上游、进行模型效果 / OS 沙箱实验或宣称企业生产采用规模。纯文档改动未执行本项目应用回归。
+- 本轮只写独立专题、本进度和忽略的研究缓存，保留其他任务的实现、共享总览、M4 与规划修改。没有新增产品硬编码、依赖或运行门槛；后续实际采用机制时再按对应范围复查。当前选定范围无剩余文档阻塞；下一步可按具体使用问题选择候选作实现前验证，本研究不自动启动实施。
 
 ## 四个 Coding Agent 源码专题（2026-09-21，已完成本轮整理）
 
@@ -33,6 +63,20 @@
 - 2026-09-21 对新增总结、专题索引与本进度做 UTF-8 / LF、末尾换行、尾空格、围栏、引用定义和本地目标检查，均通过；`git diff --check -- docs/progress/research.md` 通过。核查辅助记录保存到 `.artifacts/research/agent-source-20260921/core-module-summary-check.json`。上游 DSH 发布页复核成功；Pi 固定 README 的网页读取失败，沿用已固定本地源码，不改变版本依据。
 - 未修改运行代码、M3 规划或共享总览，未提交 / 推送。下一步由实际产品需求选择吸收项；普通任务无需等待这些建议全部实施。
 - 2026-09-21 按用户明确要求，将近期成果摘要、文件绝对位置、模块参考价值、版本与验证边界发送至 [总规划与实现](codex://threads/01a09f7a-af9a-7563-9864-80b68ea338bf)。发送工具已返回成功；交接说明资料供现有工作参考，不因消息本身启动新实现。
+
+## 多 Agent 协作框架与多会话优化调研（2026-09-22，已完成本轮整理）
+
+- 用户要求覆盖国内外开源、闭源与商业项目，分析协作架构和实现，为后续多会话优化提供依据。本轮只调研、阅读源码和编写文档，不启动子 Agent，不实施产品改动。
+- 已重新读取仓库规范、进度总览、M3 / M4 进度并核对 Git 状态。当前基线已包含 M4 Skill、MCP、工作流模板和 Trace；上一轮 9 月 21 日总结中的缺失项属于历史快照，不能作为本轮当前状态。
+- 写入限定为新目录 `docs/research/multi-agent/`、本进度及忽略目录下的研究缓存；不改共享研究索引、进度总览、M3 / M4 或其他任务的代码。保留全部已有修改。
+- 按任务建立、上下文分配、调度、消息传递、工具 / 文件副作用、结果汇合、持久化与恢复的顺序分析。开源项目核对固定提交和关键实现；闭源产品区分公开机制、厂商案例和无法验证的内部实现。
+- 已新增 [多 Agent 专题索引](../research/multi-agent/README.md) 与 15 篇正文 / 证据文件，共 16 份 Markdown。重点分析 Deep Agents / LangGraph、Claude / DSH Agent Teams、DeerFlow、AgentScope、Eino、AutoGen / MAF、OpenAI Agents SDK / ADK、CrewAI / Agno、MetaGPT / ChatDev / CAMEL、Strands；另覆盖商业 Coding Agent 和企业托管平台。
+- 固定 18 个当日仓库快照；历史 Claude 2.1.88 和 DSH 0.1.6-alpha.2 与当前文档分开使用。源码分析涉及仓库组织、装配、上下文、工具 / Skill / MCP、并发、消息、结果、状态与恢复，逐篇注明分析边界；闭源产品只依据官方契约和工程披露，不推测内部事务或性能。
+- 时效性核查补入 AgentScope 2.0 / Runtime 迁移、ChatDev 2.0 九月论文、Dify Graphon / Agent v2、Strands Harness 单仓、Claude Teams 生命周期变化、腾讯 ADP 团队通信、AWS Agents Classic / AgentCore，以及 MCP 2026-07-28 / SDK v2、A2A 1.0。LangSmith 与 Langfuse 均纳入跨 Agent 观测对照。
+- [本项目参考总结](../research/multi-agent/12-project-implications.md) 按核心模块区分已有能力和候选增量：跨运行成果导航、简报与来源回读、角色配置快照、按需求采用可执行工作流或持续团队。现有工作图、消息投递和 worker 不重复列为待建项；模板明确仍为描述性数据。未改变默认原目录、模型范围、故障停止、可选沙箱和最小验证规则。
+- 2026-09-22 使用 `.venv\Scripts\python.exe -X utf8 -` 对 16 份 Markdown 检查 UTF-8 / LF、BOM / 替换字符、末尾换行、尾空格、围栏、引用定义、77 处本地目标及 94 处固定源码目标，全部通过；`git diff --check -- docs/progress/research.md` 通过。核查输出为 `.artifacts/research/multi-agent-20260922/document-check-final.json`，同目录保存快照清单、阅读范围和本地源码身份记录。结构检查不代替语义审阅，也未声称所有外网链接可达。
+- 获取限制保留在 [证据登记](../research/multi-agent/13-evidence-register.md)：GitHub API 匿名限流改用 `git ls-remote` 和固定 SHA 压缩包；Coze / Spring 长路径中止后保留所需文件，Spring 定向补齐五个核心 Java 文件；部分商业网页仅取得官方索引，明确限制推断深度。未安装 / 运行上游、部署服务、测试 sandbox 或调用真实模型；文档任务未运行本项目应用回归。
+- 正式写入仅限新专题与本进度，保留其他任务的代码及 docs 修改；未提交、未推送，未再次向其他任务发送消息。当前本轮文档没有剩余阻塞。下一步如选定具体协作场景，可依据参考总结核对最新工作区并做相应机制的小范围设计与验证；本研究本身不启动实现。
 
 ## 本次范围
 

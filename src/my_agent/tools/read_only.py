@@ -15,6 +15,7 @@ from my_agent.errors import AgentError
 from my_agent.models.types import JsonObject, ModelData, ToolCall, ToolResult
 from my_agent.processes import probe_environment
 from my_agent.runtime.settings import RunLimits
+from my_agent.tools.arguments import argument_message
 from my_agent.tools.policy import ReadPolicy, checkpoint
 
 
@@ -94,7 +95,9 @@ class ReadTools:
                 "read_file",
                 ReadFileArgs,
                 "Read UTF-8 lines at an explicit path, even if ignored by discovery. "
-                "Accepts paths relative to the project or absolute paths; returns line metadata.",
+                "Accepts relative or absolute paths; returns line metadata. "
+                "Use integer start_line and lines (not limit). "
+                'Example: {"path":"main.py","start_line":1,"lines":50}.',
             ),
             (
                 "search",
@@ -313,13 +316,20 @@ class ReadTools:
             if len(content.encode("utf-8")) > self.limits.max_tool_bytes:
                 raise AgentError("TOOL_OUTPUT_LIMIT", "工具结果超过预算，请缩小范围。")
             return ToolResult(tool_call_id=call.tool_call_id, content=content, is_error=False)
-        except ValidationError:
+        except ValidationError as exc:
             return ToolResult(
                 tool_call_id=call.tool_call_id,
                 content=encode(
                     {
                         "code": "INVALID_TOOL_ARGUMENTS",
-                        "message": "参数不符合工具 schema。",
+                        "message": argument_message(
+                            exc,
+                            example=(
+                                '{"path":"main.py","start_line":1,"lines":50}'
+                                if call.name == "read_file"
+                                else None
+                            ),
+                        ),
                     }
                 ),
                 is_error=True,

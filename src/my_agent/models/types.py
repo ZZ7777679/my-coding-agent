@@ -42,6 +42,9 @@ class TokenUsage(ModelData):
 
     input_tokens: Annotated[int, Field(ge=0)] | None
     output_tokens: Annotated[int, Field(ge=0)] | None
+    # 缓存命中是输入的子集，不重复加入请求 / Goal 输入账本；未返回时不填零。
+    # Cache hits are an input subset, not extra budget tokens; absence remains unknown.
+    cached_input_tokens: Annotated[int, Field(ge=0)] | None = None
 
 
 class ModelProgress(ModelData):

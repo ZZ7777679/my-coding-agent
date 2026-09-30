@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type {
   EnvironmentCatalog,
+  EnvironmentProbe,
   EnvironmentRecord,
   ExecutionSettings
 } from '../../generated/protocol'
@@ -39,6 +40,9 @@ export function EnvironmentSettings({
   const [editing, setEditing] = useState<string | null>(null)
   const [environmentId, setEnvironmentId] = useState('')
   const [limits, setLimits] = useState<ExecutionSettings | null>(null)
+  const [pythonProbe, setPythonProbe] = useState<EnvironmentProbe | null>(null)
+  const [pythonBusy, setPythonBusy] = useState(false)
+  const [pythonError, setPythonError] = useState('')
   const generation = useRef(0)
 
   /** 接受同一项目的最新保存结果。 Accept saved facts belonging to the current project. */
@@ -46,6 +50,7 @@ export function EnvironmentSettings({
     setCatalog(data)
     setEnvironmentId(data.binding?.environment_id ?? '')
     setLimits(data.settings)
+    setPythonProbe(null)
   }
 
   useEffect(() => {
@@ -54,6 +59,9 @@ export function EnvironmentSettings({
     setError('')
     setEditing(null)
     setBusy(false)
+    setPythonProbe(null)
+    setPythonBusy(false)
+    setPythonError('')
     if (connected)
       void window.agent
         .listEnvironments({ project_id: projectId })
@@ -122,6 +130,25 @@ export function EnvironmentSettings({
     return { kind, scope, launcher, interpreter }
   }
 
+  /** 只在用户点击时检查已保存项目环境，结果不自动绑定或安装。 Inspect the saved project environment only on request. */
+  async function inspectPython(): Promise<void> {
+    if (!projectId || pythonBusy) return
+    const current = generation.current
+    setPythonBusy(true)
+    setPythonError('')
+    setPythonProbe(null)
+    try {
+      const result = await window.agent.inspectPython({ project_id: projectId })
+      if (current !== generation.current) return
+      if (result.ok) setPythonProbe(result.data)
+      else setPythonError(result.error.message)
+    } catch {
+      if (current === generation.current) setPythonError('本机 Python 检查未完成。')
+    } finally {
+      if (current === generation.current) setPythonBusy(false)
+    }
+  }
+
   return (
     <section className="detail-card settings-card environment-settings" aria-label="项目执行环境">
       <h2>项目执行环境</h2>
@@ -178,6 +205,26 @@ export function EnvironmentSettings({
             >
               保存项目环境
             </button>
+            <div>
+              <button disabled={pythonBusy || !projectId} onClick={() => void inspectPython()}>
+                {pythonBusy ? '正在检查 Python…' : '查看当前项目实际 Python'}
+              </button>
+              <p className="settings-hint">
+                按需检查已保存的项目环境；更改选择后先保存，普通执行无需检查。
+              </p>
+              {pythonError && <p role="alert">{pythonError}</p>}
+              {pythonProbe && (
+                <p role={pythonProbe.code === 'PYTHON_READY' ? 'status' : 'alert'}>
+                  {pythonProbe.code === 'PYTHON_READY' ? (
+                    <>
+                      Python {pythonProbe.version} · <code>{pythonProbe.interpreter}</code>
+                    </>
+                  ) : (
+                    pythonProbe.message
+                  )}
+                </p>
+              )}
+            </div>
           </div>
           <div className="environment-list">
             {!catalog.environments.length && (

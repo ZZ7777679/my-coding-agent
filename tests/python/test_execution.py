@@ -4,10 +4,12 @@ Real Windows process ownership and output checks."""
 
 import ctypes
 import json
+import os
 import subprocess
 import sys
 import time
 from ctypes import wintypes
+from pathlib import Path
 
 from my_agent.execution.windows import WindowsProcess
 from my_agent.processes import probe_environment
@@ -41,6 +43,9 @@ def test_program_tools_json_commands_and_service(tmp_path, monkeypatch):
     from my_agent.tools.programs import ProjectTools
     from my_agent.worker import BusinessWorker
 
+    # 隔离进程的 PATH 优先当前测试解释器，不更改机器环境。
+    # Prefer this test interpreter in the child PATH without changing machine settings.
+    monkeypatch.setenv("PATH", str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"])
     root = tmp_path / "project"
     root.mkdir()
     storage = Storage(resolve_data_dir(str(tmp_path / "data")))
@@ -93,6 +98,14 @@ def test_program_tools_json_commands_and_service(tmp_path, monkeypatch):
             )
             assert not environment.is_error
             assert "trusted" not in json.loads(environment.content)["binding"]
+            python_probe = await tools.execute(
+                ToolCall(tool_call_id=str(uuid4()), name="inspect_python", arguments={})
+            )
+            assert not python_probe.is_error, python_probe.content
+            inspected = json.loads(python_probe.content)
+            assert inspected["code"] == "PYTHON_READY"
+            assert inspected["version"] == sys.version.split()[0]
+            assert Path(inspected["interpreter"]).resolve() == Path(sys.executable).resolve()
             for command_input, expected in cases:
                 call = ToolCall(
                     tool_call_id=str(uuid4()),

@@ -277,6 +277,11 @@ export function Collaboration({
           </p>
           <details>
             <summary>普通协作消息（空闲时只收件）</summary>
+            {target && page && !link?.enabled && (
+              <p className="settings-hint" role="status">
+                尚未为所选会话保存协作约定。请在下方选择「日常协作请求」并保存分工，然后发送消息。
+              </p>
+            )}
             <textarea
               aria-label="协作消息"
               value={message}

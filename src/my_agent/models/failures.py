@@ -45,7 +45,7 @@ def request_failure(error: BaseException, timing: RequestTiming, timeout: float)
         code, message = "MODEL_POOL_TIMEOUT", "等待可用模型连接超时。"
     elif isinstance(error, TimeoutError):
         code = "MODEL_REQUEST_TIMEOUT"
-        message = f"模型请求达到设定的 {timeout:g} 秒总时限。"
+        message = f"模型请求达到设定的 {timeout:g} 秒总时限，未收到完整回合。"
     elif isinstance(error, httpx.ProxyError):
         code, message = "MODEL_PROXY_ERROR", "模型请求的代理连接失败。"
     elif isinstance(error, httpx.ConnectError):
@@ -58,7 +58,15 @@ def request_failure(error: BaseException, timing: RequestTiming, timeout: float)
         code, message = "MODEL_NETWORK", "模型请求发生网络传输错误。"
     if timing.progress.last_data_ms is not None:
         gap = max(0, timing.milliseconds() - timing.progress.last_data_ms) / 1000
-        message += f"结束前 {gap:.1f} 秒未收到新数据；最后输出阶段不代表连接仍正常。"
+        phase = {
+            "reasoning": "思考片段",
+            "tool_arguments": "工具参数片段（尚未执行）",
+            "text": "回答正文片段",
+        }.get(timing.progress.phase, "响应数据")
+        message += (
+            f"已接收 {(timing.progress.received_bytes or 0) / 1024:.1f} KiB，"
+            f"最后观测为{phase}；结束前 {gap:.1f} 秒未收到新数据。"
+        )
     else:
         message += "尚未收到响应正文数据。"
     return AgentError(code, message + " 未自动重试。")

@@ -64,6 +64,7 @@ class WorkItem(ModelData):
     evidence: list[EvidenceRef] = Field(default_factory=list)
     feedback_from: list[EvidenceRef] = Field(default_factory=list)
     method: WorkMethod = "implement"
+    stage_id: str | None = None
 
 
 class CriterionResult(ModelData):

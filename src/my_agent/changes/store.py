@@ -82,17 +82,22 @@ class ChangeStore:
             raise AgentError("CHANGE_STORAGE_INVALID", "修改成果目录含有不支持的链接。")
         if not directory.exists():
             return ChangePage(changes=[], next_cursor=None, unavailable_count=0)
-        changes: list[ChangeSummary] = []
+        ordered: list[ChangeSummary] = []
         unavailable = 0
-        size = 0
-        for path in sorted(directory.glob("*.json")):
-            if cursor and path.stem <= cursor:
-                continue
+        for path in directory.glob("*.json"):
             try:
                 summary = self.load(session_id, path.stem).summary
             except AgentError:
                 unavailable += 1
                 continue
+            ordered.append(summary)
+        # UUID 文件名只是存储身份；按记录时间展示并用身份定位下一页。
+        # UUID filenames identify records; chronological pages resume by record identity.
+        ordered.sort(key=lambda item: (item.created_at, item.change_id))
+        start = next((i + 1 for i, item in enumerate(ordered) if item.change_id == cursor), 0)
+        changes: list[ChangeSummary] = []
+        size = 0
+        for summary in ordered[start:]:
             item_size = len(summary.model_dump_json().encode("utf-8"))
             if changes and (len(changes) >= limit or size + item_size > 200000):
                 return ChangePage(

@@ -1,5 +1,15 @@
 # 测试与回归
 
+M4 后续定向入口：`python/test_file_changes.py -k read_argument_feedback` 复现原 `limit` 错误并检查具体字段反馈；`python/test_agent_core.py -k read_field_correction` 检查同一 Run 修正字段 / 类型后完成；`python/test_go.py -k 'reasoning_stream_does_not or failure_cause_is_separate'` 检查思考即时输出、状态节流与真实失败分类。均离线。`python -m tests.models.persona_coding_live --enable-real-models --diagnostics` 使用原双模型加法器，最多 12 次请求 / 10 分钟，记录思考 / 正文 / 工具片段和生产回调耗时，仅在显式运行时联网；不更改产品默认模型参数，产物位于 `.artifacts/tests/persona-coding-live-*/`。
+
+同入口 `--resume-report <report.json> --diagnostics --followup` 明确追加一个 `--abs` 小修改，保存原报告快照，另有最多 12 次请求 / 5 分钟、每模型 6 请求的验收保护；不是自动继续原失败或产品默认限制。`--finish-report` 与 `--followup` 互斥，只明确请求报告已完成结果，另最多 2 次 / 2 分钟、每模型 1 请求，提示不再调用工具；真实工具事实仍保留，不能把预算失败改写成成功。9 月 30 日追加样本原配置只有每模型 4 请求，已执行修改 / 两次运行却缺最终回答，两个预算终态保留；随后明确收尾 2 请求通过。修正的是后续实验默认保护，不回写旧证据。该观察器串行包裹原模型解析 / 回调，计时不改变模型参数，不保存第二份流原文；回调耗时属于后端，不能代表完整 Electron 渲染。
+
+匿名 MCP 定向入口：显式设置 `MY_AGENT_TEST_MCP_SERVICES=1` 后运行 `pytest tests/python/test_mcp_presets.py -k context7_anonymous_tool`，在指定的隔离 `--basetemp=.artifacts/tests/<本次目录>` 中，经生产 McpTools 将 Context7 启用到项目、发现并选中库检索 / 文档工具、真实查询 React 文档。不读取个人服务令牌、不调用模型；报告在该 pytest 临时目录内。与账号发现 / OAuth 测试分开，不进入普通 CI。Skill 导入材料 / 刷新与工作流快照复用 `test_online_skill_snapshot_install_project_and_restart`、`test_skill_selection_refresh_and_project_rules`、`test_templates_snapshot_and_task_edits_preserve_reports`，不额外造验证框架。
+
+本轮补核：`python/test_go.py -k reported_usage_survives` 用合成断流 / 无效 JSON 验证已报告计量不丢失；`python/test_mcp_arguments.py` 使用真实 SDK 内存服务验证参数错误零派发、可修正及真实执行失败仍停止，另核对本地 / 外部 schema 引用边界，均不访问网络或模型。`models/ticket_experiment.py --variant <baseline|implement_only|tools_subset|brief|examples|batch> --only-phase <implementation|followup>` 在独立根进行单变量真实对照；真实请求必须显式 `--enable-real-models`，同限额用 `--output-tokens` / `--request-timeout`，已有结果不自动重放。`--seed-project` 仅复制 Agent 已完成答案用于后续编辑对照，manifest 保存种子指纹；`--probe-reference` 引用旧探测，不计作新增请求。
+
+2026-09-30 实验反馈增量：`python/test_trace.py` 覆盖失败请求关联、usage 保存 / 未知及重启；`python/test_go.py` 覆盖尾部真实缓存字段；`python/test_ticket_manifest.py` 覆盖源码指纹、补丁不落盘与阶段配置保留。共享 `v6-*` 正反样本覆盖真实缓存 / 未知 / 非法计量与旧协议拒绝，公开协议现为 v6。`models/ticket_manifest.py` 为既有 ticket 实验保存独立阶段快照，不采集凭据或项目外文件；格式 / 类型和相关隔离检查按改动选择，真实对照另显式启用，保留原实验记录。
+
 本目录集中管理正式用例、回归脚本、辅助代码和测试专用样本。新增测试按职责归组并更新本清单；规则见 [AGENTS.md](../AGENTS.md)，实际运行结果见 [进度总览](../docs/progress/README.md) 与对应阶段记录。
 
 测试与回归按最小必要原则选择，能省略的新增用例、重复验证与全量回归不做。日常先看实际改动与已有证据，只有需要验证的行为或关键风险才运行相应检查；低影响文档修改无需启动应用测试。集中管理不代表每次都要执行本清单。
@@ -15,6 +25,14 @@ uv run --locked python scripts/check.py --desktop
 去掉 `--desktop` 可运行不打开窗口的工程检查。CI 使用相同入口，覆盖版本 / 锁文件、格式、类型、测试、协议生成漂移、桌面构建、示例基线、wheel 安装与开发诊断。wheel 依赖安装可能访问包仓库；默认测试不访问模型服务、不读取真实密钥、不消耗模型额度。
 
 ## 分组与独立命令
+
+用户视角探索性评价（2026-09-22）：`npm.cmd --prefix apps/desktop run test:desktop -- persona-onboarding.spec.ts`、`persona-coding.spec.ts`、`persona-long-tasks.spec.ts` 分别覆盖首用 / 资源接入、编码 / Trace / 程序、工作流 / 协作 / 记忆 / Goal。均使用真实 Electron / RPC 与隔离项目，仅模型决策为替身；不登录个人账号。测试记录当前观察到的行为，不将已知问题当成修复后的验收预期；评价与证据见 `docs/progress/m4-user-evaluation-2026-09-22.md`。本轮按用户明确要求执行，不加入每次小改动必跑清单。
+
+同轮真实编码样本：`.venv/Scripts/python.exe -X utf8 -m tests.models.persona_coding_live --enable-real-models`，GLM / DeepSeek 各接受普通自然语言加法器任务，仅发送隔离素材，总预算 12 次 / 600 秒。`--resume-report <report.json>` 只在原报告剩余预算内接续未完成会话，不重复已完成模型；报告保留测试截止和后续接续，不把它们误判为默认产品限制。自动后台记忆提取在该编码样本中关闭，正常记忆工具仍可调用；产物在 `.artifacts/tests/persona-coding-live-*/`，不进入普通 CI。
+
+GitHub OAuth TLS 排查：`.venv/Scripts/python.exe -X utf8 -m tests.models.mcp_tls --enable-network` 仅读取公开授权元数据，记录 TCP / TLS / HTTP 时序与异常类型。可用 `--client httpx` 对照旧客户端，`--certifi` 对照已有 CA 库，`--system-proxy` 仅对该请求使用现有 Windows 代理；均保留证书校验，不修改系统。`--url` 可指定另一公开元数据地址，报告在 `.artifacts/tests/mcp-tls-*/`。此诊断不进入默认测试或正常应用启动。
+
+OAuth 定向验证：`pytest tests/python/test_mcp_oauth.py -q` 使用 `support/mcp_oauth_fixture.py` 的真实本机 HTTP、SDK 与 Windows DPAPI，覆盖授权码 / PKCE、静态身份、刷新 / 重启、取消 / 拒绝、端点变更和失败不重放；无个人账号、默认不联网。桌面构建后运行 `npm.cmd --prefix apps/desktop run test:desktop -- mcp-oauth.spec.ts`，真实 Electron 验证表单、授权状态、重启与退出，系统浏览器入口接隔离样本同意页。四个 `mcp-oauth-*` 共享契约可用 Python `-k mcp-oauth` 与 Node `--test-name-pattern=mcp-oauth` 单独检查。外网公开发现需显式设置 `MY_AGENT_TEST_MCP_OAUTH_DISCOVERY=1`，再运行 `test_mcp_oauth_discovery_live`；只读取 Context7 / GitHub 的认证元数据，不登记客户端或登录真实账户，产物仍归 `.artifacts/tests/`。
 
 程序与 Goal 收尾的定向检查复用 `desktop/execution.spec.ts` 和 `desktop/goals.spec.ts`：真实 Electron 验证逐调用卡片、输出、服务保留 / 退出清理，以及终态 Goal 只在历史出现、活动 Goal 仍可控制。`python/test_goal_records.py::test_ended_goal_is_history_for_followup_and_after_reload` 验证完成 / 取消后的上下文标注、普通新请求、工具配对和重载原记录不变。使用模型替身与隔离目录，不调用真实模型；按改动选择，不自动重复全部 UI 检查。
 
@@ -33,6 +51,27 @@ uv run --locked python scripts/check.py --desktop
 | `fixtures/` | Python 与 TypeScript 共用的合法 / 非法契约样本 | 两端测试自动读取 `contracts.json` | 不联网 |
 | `support/` | Node 入口定位、共用依赖解析与测试专用模型装配 | 由各测试组引用 | 不单独执行 |
 | `models/` | 显式启用的 Go 双模型真实工具回合 | `.venv\Scripts\python.exe tests/models/go_roundtrip.py --enable-real-models` | 联网、使用现有 Go 凭据；每模型最多 3 请求 / 3 分钟，默认 CI 不运行 |
+
+## M4 定向入口
+
+- `models/ticket_experiment.py` / `ticket_browser.mjs`：合成工单 CSV → 标准库清洗 / 统计 / 离线 HTML，追加搜索及负责人统计并验证真实后端重启接续。`.venv/Scripts/python.exe -X utf8 -B -m tests.models.ticket_experiment --root .artifacts/tests/<独立实验目录>` 默认仅准备合成输入；加 `--enable-real-models` 后才经生产 RpcApplication 使用指定模型运行，要求该目录已有真实 `probe.json` 成功证据且尚无运行报告，不自动重放。失败报告检查后，仅明确授权的 `--resume` 可接续原会话，备份原报告并跳过已通过阶段；当前输出截断接续使用单次 16384 输出 / 300 秒等待，不改产品默认值。实验保护最多 50 个编码请求 / 1200 秒，含接续；两轮间关闭并重开后端。Python oracle 和已安装 Edge（经 Playwright）独立验证固定 / 留出样本及实际筛选，0 新依赖；默认 CI 不运行，公开模型调用需用户授权，无个人项目 / MCP / OAuth。
+- `desktop/persona-long-tasks.spec.ts -g associates`：来源 Run 完成后显式交接，接收方已有不同答案时仍按新 Run / 结果序号关联；检查来源简报、角色 / 阶段、双方事实与请求在重启后不变、无活动运行。`desktop/chat.spec.ts` 保留独立 wait 标记的长等待 / 停止语义，两者使用真实 Electron / RPC 和模型替身，不联网。
+- `python/test_mcp_presets.py`：预设不自动连接、旧配置兼容、环境引用、Windows DPAPI 加密 / 重启 / 删除、实际本地 HTTP 401、重连与项目范围；默认无外网或真实模型。设置 `MY_AGENT_TEST_MCP_SERVICES=1` 后可单独运行 `::test_mcp_public_services_live`，使用隔离目录查询 Context7 的公开 React 文档，明确配置 `GITHUB_MCP_TOKEN` 时只读发现 GitHub 工具；摘要保存到该测试临时目录的 `report.json`，不写远端仓库。
+- `desktop/mcp-services.spec.ts`：真实 Electron + `support/mcp_http_fixture.py` 本地 MCP，检查预设取消、普通表单、合成令牌加密、401 修复、工具目录、配置重连、项目启停、重启与清除。先构建，再运行 `npm.cmd --prefix apps/desktop run test:desktop -- mcp-services.spec.ts`；不访问真实外部账户，不请求模型，截图归 `.artifacts/tests/desktop-mcp-services-*/`。
+- `fixtures/contracts.json` 的 `mcp-preset-*` 四项验证新增只写凭据与旧目录兼容；Python / Ajv 共用。可分别运行 `pytest tests/python/test_diagnostics_contracts.py -k mcp-preset` 与 `node --test --test-isolation=none --test-name-pattern=mcp-preset tests/contracts/schema.test.mjs`，无需完整契约回归。
+
+- `python/test_trace.py`：事件配对、分页、迟到结果、参数 / 结果详情及原生状态排除。
+- `python/test_skills.py`：来源覆盖、会话引用、版本归档、坏配置局部降级、资源库及项目导入（含附属文件）。
+- `python/test_workflow_templates.py`：模板快照、任务修改、报告保留及旧任务兼容。
+- `python/test_mcp_http.py`：真实本地 Streamable HTTP，工具 / 资源、全局测试与项目启用范围、慢目录及多会话清理，无外网或模型。
+- `python/test_mcp.py`：仅在 `MY_AGENT_TEST_MCP=1` 下启动锁定的 Playwright MCP；`MY_AGENT_TEST_BROWSER` 可指定已有兼容浏览器。实际导航、点击、截图、两会话隔离、取消与清理。仅本机页面；可选 `MY_AGENT_TEST_INSTALL_BROWSER=1` 会联网下载安装配套运行包，不在普通 CI 默认运行。
+- `python/test_m4_journey.py`：同一 MCP 开关下运行真实文件 / 命令 / 浏览器的空白计数器场景，仅替换模型；覆盖 Goal 中阶段切换、Skill、浏览器动作、既有 Review 会话、显式修改及重启恢复。
+- `desktop/m4.spec.ts`：实际 Electron 检查左侧资源入口、Skill 项目导入、MCP 项目启用、会话选择、工具摘要、Trace 折叠 / 关闭与重启。先构建，再运行 `npm.cmd --prefix apps/desktop run test:desktop -- m4.spec.ts`；不调用模型。
+- `desktop/mcp-layout.spec.ts`：本地 stdio MCP 样本检查工具名称 / 用途搜索、参数、原始定义折叠与连接状态；隔离会话验证默认及较小窗口的对话滚动、输入可见、Trace 与子任务面板。先构建，再运行 `npm.cmd --prefix apps/desktop run test:desktop -- mcp-layout.spec.ts`；使用 `support/mcp_catalog_fixture.py` 和模型替身，无真实模型或外网调用，截图及布局数据归 `.artifacts/tests/desktop-mcp-layout-*/`。
+- `fixtures/contracts.json` 中 `m4-*` 共用样本分别由 `pytest tests/python/test_diagnostics_contracts.py -k m4` 和 `node --test --test-name-pattern=m4 tests/contracts/schema.test.mjs` 使用。
+- `models/m4_tools_checks.py --enable-real-models`：GLM / DeepSeek 各一次隔离计数器闭环，首次最多 12 次 / 900 秒；只有明确补充验收时才使用 `--resume-report <已有报告>`，跳过已成功模型、每次最多补 6 次 / 300 秒，并继续累计同一报告内的真实请求。已保存截图时只接续回答，不重做工具。2026-09-22 实际 19 次请求（GLM 6、DeepSeek 13），初次预算结束与接续事实全部保留。
+
+产物统一归 `.artifacts/tests/`。以上是按改动选择的入口，不是普通任务或每次修改的前置检查。
 
 ## M3 定向入口
 
@@ -127,6 +166,17 @@ M2 收尾复用该文件中的三条定向检查：`::test_bidirectional_deliver
 真实计数器中断后可显式添加 `--resume-report <该次报告路径>`，复用已通过步骤、项目和会话，另存 `report-resume-*.json` 保留原失败；没有后台重试。应用退出会停止预览，接续浏览器步骤会明确请求在原地址启动服务。相关修复检查 `python/test_execution.py::test_cwd_accepts_absolute_project_path_without_escape` 只核对绝对 / 相对 cwd 和真实目录边界，不启动程序。`python/test_work_reports.py` 直接使用模型所收结果的 `_evidence`，同时验证历史恢复引用一致和同步不重放。
 
 ## 数据与产物
+
+### Skill 在线发现增量
+
+- `.venv/Scripts/python.exe -X utf8 -m pytest tests/python/test_skills.py -q`：覆盖九项预装资源来源 / 许可证、旧方法身份与版本、按需正文、用户覆盖、归档及完整附件复制，不访问网络。桌面构建后 `npm.cmd --prefix apps/desktop run test:desktop -- bundled-skills.spec.ts` 验证预装来源、复制后编辑、附件导入与原版保持不变，产物在 `.artifacts/tests/desktop-bundled-skills-*/`。
+- `.venv/Scripts/python.exe -X utf8 -m pytest tests/python/test_online_skills.py -q`：本地场景使用 HTTP 替身、真实 RPC / 存储，覆盖搜索、快照预览、附属文件、同名保留、项目导入 / 加载 / 重启、取消和 ZIP 目标边界；另覆盖 SkillHub 标准与无 YAML 头的根目录包，预览和项目导入内容一致。公开联网用例默认跳过。
+- 显式 `$env:MY_AGENT_TEST_SKILL_ONLINE='1'` 后选择 `::test_online_skill_public_live`：skills.sh 真实搜索和 codeload 下载，在 pytest 隔离数据根安装公开 Skill、导入隔离项目并验证重启恢复，生成 `report.json`，不读取 API key 或调用模型。不是普通 CI 的前置条件。
+- 同一开关下选择 `::test_skillhub_public_live`：SkillHub 官方详情 / 下载 API 获取标准包和无头用户上传包，从真实预览直接导入隔离项目并在重启后读取；只访问公开资源，生成 `report.json`，不调用模型。
+- 桌面构建后 `npm.cmd --prefix apps/desktop run test:desktop -- online-skills.spec.ts`：测试入口仅将网站 HTTP 替换为 `support/online_skill_fixture.py`，保留生产 RPC / 文件写入；检查在线搜索、预览关闭 / 恢复、安装、项目导入和取消。产物归 `.artifacts/tests/desktop-online-skills-*/`。测试开关只由测试 peer 转发，不改变生产后端环境规则。
+- `fixtures/contracts.json` 的 `skill-online-*` 两项共用样本：Python `test_diagnostics_contracts.py -k skill-online` 与 `node --test --test-name-pattern=skill-online tests/contracts/schema.test.mjs`，检查显式来源参数与数值类型一致性。
+- `npm.cmd --prefix apps/desktop run test:desktop -- skill-sites.spec.ts`：真实原生网页视图访问本地站点，验证站内搜索、翻页、后退、来源到预览、离页隐藏，以及页面无应用 preload；不依赖外网。
+- `node tests/desktop/skill-sites-live.mjs --enable-network`：生产桌面在隔离数据根访问腾讯 SkillHub 和 skills.sh，使用原站搜索、继续加载、详情来源与公开下载预览；SkillHub 用户上传项直接导入隔离项目，skills.sh 项安装到隔离资源库。保留逐站结果 / 截图，不登录、不写个人目录、不调用模型。属于显式网络验收，网站改版或网络失败保留真实失败，不进入普通 CI。产物位于 `.artifacts/tests/skill-sites-live-*/`。
 
 - 自动化只使用 `.artifacts/tests/` 下的独立目录。pytest 默认创建 `python-<id>/`，显式 `--basetemp` 也必须是该根内的独立子目录。集中配置保证直接运行 pytest 不落到系统临时目录。
 - 启动、网关和桌面组分别创建 `启动 路径-*`、`gateway-*`、`desktop-*`；其中保存隔离项目、数据根、截图与导出文件。设置验收把真实桌面构建资源复制到隔离工作区，并通过 junction 复用项目 `.venv`；本机启动文件也位于隔离工作区，不修改真实的 `agent.paths.local.json`。
