@@ -9,6 +9,7 @@ from contextlib import ExitStack
 from pydantic import BaseModel
 
 from my_agent import __version__
+from my_agent.attachments.types import AttachmentParams
 from my_agent.bootstrap import build_model_http, build_sessions
 from my_agent.changes.store import ChangeStore
 from my_agent.changes.types import GetChangeParams, ListChangesParams
@@ -92,6 +93,8 @@ from my_agent.rpc.dto import (
     StartRunParams,
     UpdateConfigParams,
 )
+from my_agent.rpc.m5_routes import M5_METHODS, dispatch_m5
+from my_agent.runtime.tools import ToolContext
 from my_agent.sessions.trace import TraceDetailParams, TraceParams, trace_detail, trace_page
 from my_agent.skills.online import OnlineSkills
 from my_agent.skills.online_types import (
@@ -108,9 +111,14 @@ from my_agent.skills.types import (
     SkillParams,
     SkillReadParams,
 )
+from my_agent.spaces.types import (
+    BindSpaceMemberParams,
+    SaveSpaceLayoutParams,
+    SaveSpaceParams,
+    SpaceParams,
+    SpaceStartParams,
+)
 from my_agent.storage import Storage
-from my_agent.tasks.service import TaskService
-from my_agent.tasks.store import TaskStore
 from my_agent.tasks.types import AssignSessionParams, CreateTaskParams, TaskParams, UpdateTaskParams
 from my_agent.worker import BusinessWorker
 from my_agent.workflow.templates import (
@@ -151,7 +159,26 @@ class RpcApplication:
         self.sessions = build_sessions(
             self.storage, self.worker, credential, http=self.http, programs=self.programs
         )
-        self.tasks = TaskService(TaskStore(self.storage), self.sessions, self.worker)
+        tasks, spaces, team = self.sessions.tasks, self.sessions.spaces, self.sessions.team
+        intelligence, terminals = self.sessions.intelligence, self.sessions.terminals
+        local_git, documents = self.sessions.local_git, self.sessions.documents
+        attachments = self.sessions.attachments
+        if (
+            tasks is None
+            or spaces is None
+            or team is None
+            or intelligence is None
+            or terminals is None
+            or local_git is None
+            or documents is None
+            or attachments is None
+        ):
+            # 缺失的是装配不变量，不是 pywinpty、LSP 或 Git 的可用性门槛。
+            # This is a composition invariant, not a pywinpty/LSP/Git availability gate.
+            raise RuntimeError("M5 shared services were not composed")
+        self.tasks, self.spaces, self.team = tasks, spaces, team
+        self.intelligence, self.terminals = intelligence, terminals
+        self.local_git, self.documents, self.attachments = local_git, documents, attachments
         self.online_skills = (
             OnlineSkills(self.sessions.skills, self.worker) if self.sessions.skills else None
         )
@@ -162,6 +189,15 @@ class RpcApplication:
         self.diagnostic_lock = asyncio.Lock()
         self.connection_probe_lock = asyncio.Lock()
         self.connection_control_lock = asyncio.Lock()
+
+    async def document_context(self, session_id: str) -> ToolContext:
+        """
+        人工文件操作复用已选项目和运行配置，来源不冒充模型执行。
+
+        Human file actions reuse the selected project and run
+        configuration without claiming model execution.
+        """
+        return await self.documents.resolve_context(session_id)
 
     async def test_connection(self, timeout_seconds: float) -> ConnectionStatus:
         """互斥手动探测，不阻塞模型取消或状态读取。
@@ -186,6 +222,10 @@ class RpcApplication:
 
         Validate and dispatch short control operations.
         """
+        if method in M5_METHODS:
+            if not self.initialized:
+                raise AgentError("NOT_INITIALIZED", "请先初始化应用。")
+            return await dispatch_m5(self, method, params)
         if method == "initialize":
             if (
                 type(params.get("protocol_version")) is not int
@@ -210,13 +250,65 @@ class RpcApplication:
                     app=AppInfo(
                         name=DEFAULTS["app_name"],
                         app_version=__version__,
-                        protocol_version=6,
-                        stage="M4",
+                        protocol_version=10,
+                        stage="M5",
                     ),
                     storage=self.storage.info(),
                     config=config.public(self.credential.info),
                     projects=self.projects.view(),
                     capabilities=[
+                        "spaces.work",
+                        "spaces.work_graph",
+                        "spaces.work_graph_save",
+                        "spaces.work_graph_start",
+                        "spaces.generate",
+                        "spaces.chat_view",
+                        "spaces.chat",
+                        "spaces.start_round",
+                        "spaces.stop",
+                        "spaces.templates",
+                        "spaces.template_save",
+                        "spaces.template_copy",
+                        "spaces.template_import",
+                        "spaces.template_export",
+                        "documents.list",
+                        "documents.read",
+                        "documents.search",
+                        "documents.save",
+                        "documents.drafts",
+                        "documents.draft",
+                        "documents.operate",
+                        "documents.patch",
+                        "documents.diff",
+                        "documents.restore",
+                        "terminals.list",
+                        "terminals.open",
+                        "terminals.read",
+                        "terminals.write",
+                        "terminals.resize",
+                        "terminals.control",
+                        "terminals.interrupt",
+                        "terminals.stop",
+                        "git.status",
+                        "git.settings",
+                        "git.configure",
+                        "git.diff",
+                        "git.stage",
+                        "git.unstage",
+                        "git.init",
+                        "git.commit",
+                        "git.history",
+                        "intelligence.list",
+                        "intelligence.configure",
+                        "intelligence.query",
+                        "attachments.import",
+                        "attachments.chunk",
+                        "attachments.read",
+                        "spaces.get",
+                        "spaces.save",
+                        "spaces.start",
+                        "spaces.bind",
+                        "spaces.layout",
                         "workflows.parse",
                         "workflows.list",
                         "workflows.save",
@@ -492,6 +584,16 @@ class RpcApplication:
                 return await collaboration.arrangements.create(
                     ArrangeSessionWorkParams.model_validate(params)
                 )
+        if method == "spaces.get":
+            return await self.spaces.get(SpaceParams.model_validate(params))
+        if method == "spaces.save":
+            return await self.spaces.save(SaveSpaceParams.model_validate(params))
+        if method == "spaces.start":
+            return await self.spaces.start(SpaceStartParams.model_validate(params))
+        if method == "spaces.bind":
+            return await self.spaces.bind(BindSpaceMemberParams.model_validate(params))
+        if method == "spaces.layout":
+            return await self.spaces.layout(SaveSpaceLayoutParams.model_validate(params))
         if method == "tasks.create":
             return await self.tasks.create(CreateTaskParams.model_validate(params))
         if method == "tasks.list":
@@ -695,6 +797,11 @@ class RpcApplication:
             return EmptyParams()
         if method == "runs.start":
             start = StartRunParams.model_validate(params)
+            for identity in start.attachment_ids:
+                await self.worker.call(
+                    self.attachments._read,
+                    AttachmentParams(session_id=start.session_id, attachment_id=identity),
+                )
             return await self.sessions.start(
                 start.session_id,
                 start.operation_id,
@@ -702,6 +809,7 @@ class RpcApplication:
                 start.limits,
                 start.mode,
                 start.plan_document,
+                attachment_ids=start.attachment_ids,
             )
         if method in {"goals.create", "goals.list", "goals.control"}:
             goals = self.sessions.goals
@@ -709,6 +817,11 @@ class RpcApplication:
                 raise AgentError("GOAL_UNAVAILABLE", "Goal 控制器未装配。")
             if method == "goals.create":
                 create_goal = CreateGoalParams.model_validate(params)
+                for identity in create_goal.attachment_ids:
+                    await self.worker.call(
+                        self.attachments._read,
+                        AttachmentParams(session_id=create_goal.session_id, attachment_id=identity),
+                    )
                 return await goals.create(
                     create_goal.session_id,
                     GoalCreated.model_validate(create_goal.model_dump(exclude={"session_id"})),
@@ -765,8 +878,18 @@ class RpcApplication:
         if method == "changes.list":
             changes = ListChangesParams.model_validate(params)
             await self.sessions.view(changes.session_id)
+            identities = [changes.session_id]
+            if changes.scope == "task":
+                if self.sessions.collaboration is None:
+                    raise AgentError("COLLABORATION_UNAVAILABLE", "任务协作服务未装配。")
+                identities = await self.sessions.collaboration.task_session_ids(changes.session_id)
             return await self.worker.call(
-                self.changes.list, changes.session_id, changes.cursor, changes.limit
+                self.changes.list_many,
+                identities,
+                changes.cursor,
+                changes.limit,
+                changes.path,
+                changes.scope == "task",
             )
         if method == "changes.get":
             change = GetChangeParams.model_validate(params)
@@ -795,7 +918,6 @@ class RpcApplication:
                 await self.sessions.close()
         finally:
             try:
-                await self.http.close()
-            finally:
                 await self.worker.call(self.stack.close)
+            finally:
                 self.worker.close()

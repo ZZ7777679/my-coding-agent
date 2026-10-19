@@ -6,6 +6,7 @@ Schedule complete work units for local goals without creating sessions or a seco
 from __future__ import annotations
 
 import asyncio
+import builtins
 import json
 import logging
 from collections.abc import Callable
@@ -32,7 +33,7 @@ from my_agent.runtime.settings import RunLimits
 from my_agent.sessions.projection import summarize
 from my_agent.sessions.store import SessionLog
 from my_agent.sessions.types import ProgressSynced, RunAccepted, RunFinished, SessionSummary
-from my_agent.workflow.scheduling import select_work
+from my_agent.workflow.scheduling import execution_mode, select_work
 from my_agent.workflow.types import WorkItem
 
 if TYPE_CHECKING:
@@ -384,6 +385,7 @@ class GoalService:
         prompt: str,
         requested_limits: RunLimits | None,
         mode: RunMode,
+        attachment_ids: builtins.list[str] | None = None,
     ) -> SessionSummary | None:
         """运行入口持锁时接纳普通插话，完整边界让出，失败 Goal 不因此恢复。
 
@@ -402,6 +404,7 @@ class GoalService:
             if (
                 existing.prompt != prompt
                 or existing.requested_limits != requested_limits
+                or existing.attachment_ids != (attachment_ids or [])
                 or mode != "normal"
             ):
                 raise AgentError("OPERATION_CONFLICT", "该插话标识已用于不同输入。")
@@ -420,6 +423,7 @@ class GoalService:
                 operation_id=operation_id,
                 prompt=prompt,
                 requested_limits=requested_limits,
+                attachment_ids=attachment_ids or [],
             ),
             None,
         )
@@ -541,9 +545,14 @@ class GoalService:
                     prompt,
                     limits,
                     "plan"
-                    if question or (work.method if work else state.definition.method) == "plan"
+                    if question
+                    or execution_mode(state.definition.method) == "plan"
+                    or (work is not None and execution_mode(work.method) == "plan")
                     else "normal",
                     goal=binding,
+                    attachment_ids=question.attachment_ids
+                    if question
+                    else state.definition.attachment_ids,
                 )
                 active = self.sessions.active_for(log.session_id)
                 if active is None or active.task is None:

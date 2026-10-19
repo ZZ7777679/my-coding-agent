@@ -10,6 +10,7 @@ import httpx
 
 from my_agent.config import DEFAULTS, MODEL_DEFAULTS, ModelConfig
 from my_agent.models.connections import ConnectionStatus
+from my_agent.models.endpoints import GO_MODELS_URL
 from my_agent.models.http import ModelHttpPool, public_request_headers
 from my_agent.models.timing import RequestTiming
 
@@ -45,7 +46,7 @@ async def probe_connection(pool: ModelHttpPool, timeout_seconds: float) -> Conne
         async with asyncio.timeout(timeout_seconds), pool.borrow() as client:
             async with client.stream(
                 "GET",
-                str(MODEL_DEFAULTS["base_url"]) + "/models",
+                GO_MODELS_URL,
                 headers={**public_request_headers(str(uuid4())), "Accept": "application/json"},
                 timeout=timeout_seconds,
                 extensions={"trace": timing.trace},

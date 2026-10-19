@@ -5,16 +5,13 @@ Workflows are editable task data, not a separate execution runtime.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, TypeAdapter
 
 from my_agent.errors import AgentError
 from my_agent.models.types import ModelData
 from my_agent.sessions.types import SessionId
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 class WorkflowStage(ModelData):
@@ -152,11 +149,12 @@ class WorkflowTemplates:
         """内置模板始终可用，坏配置作为问题展示。
 
         Keep the builtin available with visible load issues."""
+        builtins = builtin_templates()
         try:
             saved = self._saved()
         except AgentError as exc:
-            return WorkflowCatalog(templates=[default_template()], issues=[exc.message])
-        return WorkflowCatalog(templates=[default_template(), *saved.templates])
+            return WorkflowCatalog(templates=builtins, issues=[exc.message])
+        return WorkflowCatalog(templates=[*builtins, *saved.templates])
 
     def snapshot(self, identity: str | None) -> TaskWorkflow | None:
         """创建时复制模板，后续编辑不会反向改变任务。
@@ -178,7 +176,7 @@ class WorkflowTemplates:
         Save user templates; copy builtins to edit."""
         from my_agent.storage import write_document
 
-        if params.template.template_id == "builtin:personal":
+        if params.template.template_id.startswith("builtin:"):
             raise AgentError("WORKFLOW_BUILTIN", "请复制为自定义模板后保存。")
         catalog = self._saved()
         catalog.templates = [
@@ -194,7 +192,18 @@ class WorkflowTemplates:
         Remove catalog entries, preserving task snapshots."""
         from my_agent.storage import write_document
 
+        if params.template_id.startswith("builtin:"):
+            raise AgentError("WORKFLOW_BUILTIN", "内置模板随应用提供；可复制为自定义模板。")
         catalog = self._saved()
         catalog.templates = [t for t in catalog.templates if t.template_id != params.template_id]
         write_document(self.path, catalog)
         return self.list()
+
+
+def builtin_templates() -> list[WorkflowTemplate]:
+    """读取随应用分发的适配流程；每次创建返回独立对象。
+
+    Load packaged workflow adaptations with fresh objects for task snapshots.
+    """
+    content = Path(__file__).with_name("presets.json").read_text(encoding="utf-8")
+    return [default_template(), *TypeAdapter(list[WorkflowTemplate]).validate_json(content)]

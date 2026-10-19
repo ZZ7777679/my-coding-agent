@@ -4,6 +4,7 @@ import base64
 import binascii
 import difflib
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from uuid import UUID
 
@@ -59,14 +60,13 @@ class ChangeStore:
             record = ChangeRecord.model_validate_json(self.path(session_id, change_id).read_bytes())
             if record.summary.session_id != session_id or record.summary.change_id != change_id:
                 raise ValueError
-            if (record.before_base64 is None) != (record.summary.operation == "create"):
+            if record.summary.operation in {"create", "edit"} and (
+                (record.before_base64 is None) != (record.summary.operation == "create")
+            ):
                 raise ValueError
             for raw in (record.before_base64, record.after_base64):
                 if raw is not None:
-                    decoded = base64.b64decode(raw, validate=True)
-                    decoded.decode("utf-8-sig")
-                    if b"\x00" in decoded:
-                        raise ValueError
+                    base64.b64decode(raw, validate=True)
             return record
         except (ValidationError, ValueError, binascii.Error) as exc:
             raise AgentError("CHANGE_DAMAGED", "修改记录损坏，已保留原文件。") from exc
@@ -77,23 +77,40 @@ class ChangeStore:
         """读取会话成果分页；损坏文件不隐藏或覆盖。
 
         Page artifacts without hiding damaged entries."""
-        directory = self.root / identity(session_id)
-        if directory.resolve() != directory:
-            raise AgentError("CHANGE_STORAGE_INVALID", "修改成果目录含有不支持的链接。")
-        if not directory.exists():
-            return ChangePage(changes=[], next_cursor=None, unavailable_count=0)
+        return self.list_many([session_id], cursor, limit)
+
+    def list_many(
+        self,
+        session_ids: Sequence[str],
+        cursor: str | None,
+        limit: int,
+        file_path: str | None = None,
+        newest_first: bool = False,
+    ) -> ChangePage:
+        """聚合同任务已记录来源；路径只用于筛选，不读取项目文件。
+
+        Aggregate recorded provenance; the path is a filter, never a file read.
+        """
         ordered: list[ChangeSummary] = []
         unavailable = 0
-        for path in directory.glob("*.json"):
-            try:
-                summary = self.load(session_id, path.stem).summary
-            except AgentError:
-                unavailable += 1
-                continue
-            ordered.append(summary)
+        for session_id in session_ids:
+            directory = self.root / identity(session_id)
+            if directory.resolve() != directory:
+                raise AgentError("CHANGE_STORAGE_INVALID", "修改成果目录含有不支持的链接。")
+            for path in directory.glob("*.json"):
+                try:
+                    summary = self.load(session_id, path.stem).summary
+                except AgentError:
+                    unavailable += 1
+                    continue
+                if file_path is None or file_path.replace("\\", "/").casefold() in {
+                    summary.path.replace("\\", "/").casefold(),
+                    (summary.destination or "").replace("\\", "/").casefold(),
+                }:
+                    ordered.append(summary)
         # UUID 文件名只是存储身份；按记录时间展示并用身份定位下一页。
         # UUID filenames identify records; chronological pages resume by record identity.
-        ordered.sort(key=lambda item: (item.created_at, item.change_id))
+        ordered.sort(key=lambda item: (item.created_at, item.change_id), reverse=newest_first)
         start = next((i + 1 for i, item in enumerate(ordered) if item.change_id == cursor), 0)
         changes: list[ChangeSummary] = []
         size = 0
@@ -114,8 +131,11 @@ class ChangeStore:
 
         Page diffs within JSON frame capacity."""
         record = self.load(session_id, change_id)
-        before = base64.b64decode(record.before_base64 or "").decode("utf-8-sig")
-        after = base64.b64decode(record.after_base64).decode("utf-8-sig")
+        try:
+            before = base64.b64decode(record.before_base64 or "").decode("utf-8-sig")
+            after = base64.b64decode(record.after_base64).decode("utf-8-sig")
+        except UnicodeError as exc:
+            raise AgentError("FILE_ENCODING", "该修改是二进制文件，文本差异不可用。") from exc
 
         # 保留行结束符的可见标记，避免无末尾换行或 CRLF 被误认为同一内容。
         # Represent line endings explicitly so newline-only edits remain visible.

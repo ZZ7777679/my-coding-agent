@@ -12,6 +12,9 @@ from my_agent.models.types import ModelData
 
 WorkId = Annotated[str, Field(pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$")]
 Description = Annotated[str, Field(min_length=1, max_length=16000, pattern=r"\S")]
+# 执行目标由已有传输帧与上下文预算约束，不复用短元数据的字符上限。
+# Execution objectives use existing frame/context budgets, not short metadata limits.
+WorkObjective = Annotated[str, Field(min_length=1, pattern=r"\S")]
 WorkMethod = Literal["discuss", "plan", "implement", "diagnose", "review", "handoff"]
 
 
@@ -50,6 +53,16 @@ class HumanQuestion(ModelData):
     )
 
 
+class WorkPosition(ModelData):
+    """用户保存的任务图位置，不参与执行排序。
+
+    User-saved graph position, independent of scheduling.
+    """
+
+    x: float
+    y: float
+
+
 class WorkItem(ModelData):
     """一个有意义的工作单元；依赖和反馈不等同于单个工具调用。
 
@@ -61,10 +74,16 @@ class WorkItem(ModelData):
     scope: Description
     status: Literal["planned", "in_progress", "completed", "waiting"]
     depends_on: list[WorkId] = Field(default_factory=list)
+    feedback_to: list[WorkId] = Field(default_factory=list)
     evidence: list[EvidenceRef] = Field(default_factory=list)
     feedback_from: list[EvidenceRef] = Field(default_factory=list)
     method: WorkMethod = "implement"
     stage_id: str | None = None
+    owner_member_id: EntityId | None = None
+    claim_status: Literal["unclaimed", "assigned", "claimed", "released"] | None = None
+    run_id: EntityId | None = None
+    result: str | None = None
+    position: WorkPosition | None = None
 
 
 class CriterionResult(ModelData):
@@ -127,6 +146,7 @@ class SourcedWorkItem(ModelData):
 
     item: WorkItem
     source: EventRef
+    updated_at: str | None = None
 
 
 class MemberProgress(ModelData):
@@ -150,6 +170,22 @@ class SourcedDecision(ModelData):
     source: EventRef
 
 
+class WorkAssignment(ModelData):
+    """宿主保存的工作承接事实，独立于模型报告并保留任务版本。
+
+    Host-saved work assignments remain separate from model reports and task-versioned.
+    """
+
+    work_id: WorkId
+    owner_member_id: EntityId | None = None
+    claim_status: Literal["assigned", "claimed", "released"]
+    run_id: EntityId | None = None
+    result: str | None = None
+    status: Literal["planned", "in_progress", "completed", "waiting"] | None = None
+    progress_updated_at: str | None = None
+    updated_at: str
+
+
 class TaskWork(ModelData):
     """任务当前工作图与最近一次报告，历史在任务版本日志保留。
 
@@ -157,7 +193,10 @@ class TaskWork(ModelData):
     """
 
     items: list[SourcedWorkItem] = Field(default_factory=list)
+    planned_items: list[WorkItem] = Field(default_factory=list)
+    removed_work_ids: list[WorkId] = Field(default_factory=list)
     last_report: WorkReport | None = None
     source: EventRef | None = None
     members: list[MemberProgress] = Field(default_factory=list)
     decisions: list[SourcedDecision] = Field(default_factory=list)
+    assignments: list[WorkAssignment] = Field(default_factory=list)

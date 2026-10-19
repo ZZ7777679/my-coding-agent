@@ -92,3 +92,5 @@ class SharedContext:
     task_id: str
     revision: int
     text: str
+    additional_text: str = ""
+    additional_materials: tuple[ContextMaterial, ...] = ()

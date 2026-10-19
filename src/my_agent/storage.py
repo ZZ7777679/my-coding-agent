@@ -48,6 +48,9 @@ class StorageMetadata(DTO):
     initialized_at: Timestamp
 
 
+MAX_DOCUMENT_BYTES = 4 * 1024 * 1024
+
+
 def read_document[T: BaseModel](path: Path, model: type[T]) -> T:
     """有界读取并严格解析数据文件；损坏时不返回空记录。
 
@@ -56,8 +59,8 @@ def read_document[T: BaseModel](path: Path, model: type[T]) -> T:
 
     try:
         with path.open("rb") as stream:
-            raw = stream.read(4 * 1024 * 1024 + 1)
-        if len(raw) > 4 * 1024 * 1024:
+            raw = stream.read(MAX_DOCUMENT_BYTES + 1)
+        if len(raw) > MAX_DOCUMENT_BYTES:
             raise AgentError("DATA_INVALID", "应用记录超过大小限制。")
         return model.model_validate_json(raw)
     except (ValidationError, UnicodeError) as exc:

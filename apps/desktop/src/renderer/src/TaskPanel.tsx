@@ -4,6 +4,7 @@ import type { ModelId, ProjectSummary, TaskFields, TaskView } from '../../genera
 import type { WorkspaceSelection } from './TaskNavigation'
 import { WorkItems } from './WorkItems'
 import { Workflows, TaskWorkflowEditor } from './Workflows'
+import { SpacePanel } from './SpacePanel'
 
 type Props = {
   project: ProjectSummary | null
@@ -233,6 +234,14 @@ export function TaskPanel({
         <>
           {!task && <Workflows selected={templateId} onSelect={setTemplateId} />}
           {task && (
+            <SpacePanel
+              task={task}
+              connected={connected}
+              onSelect={onSelect}
+              onChanged={onChanged}
+            />
+          )}
+          {task && (
             <TaskWorkflowEditor
               task={task}
               onChanged={(next) => {
@@ -245,88 +254,91 @@ export function TaskPanel({
             />
           )}
           {task && <WorkItems task={task} onSelect={onSelect} />}
-          <form
-            className="task-form"
-            onSubmit={(event) => {
-              event.preventDefault()
-              void save()
-            }}
-          >
-            <label>
-              任务名称（可选）
-              <input
-                aria-label="任务名称"
-                value={fields.title}
-                maxLength={256}
-                onChange={(event) => setFields({ ...fields, title: event.target.value })}
-              />
-            </label>
-            <label>
-              阶段目标
-              <textarea
-                aria-label="阶段目标"
-                value={fields.goal}
-                required
-                rows={3}
-                maxLength={16000}
-                onChange={(event) => setFields({ ...fields, goal: event.target.value })}
-              />
-            </label>
-            {task && (
-              <label>
-                任务状态
-                <select
-                  aria-label="任务状态"
-                  value={fields.status ?? 'active'}
-                  onChange={(event) =>
-                    setFields({
-                      ...fields,
-                      status:
-                        event.target.value === 'completed'
-                          ? 'completed'
-                          : event.target.value === 'archived'
-                            ? 'archived'
-                            : 'active'
-                    })
-                  }
-                >
-                  <option value="active">进行中</option>
-                  <option value="completed">已完成</option>
-                  <option value="archived">已归档</option>
-                </select>
-              </label>
-            )}
-            <details open={!!task}>
-              <summary>约束、进度与接续信息</summary>
-              {(
-                [
-                  { key: 'constraints', label: '约束' },
-                  { key: 'progress', label: '当前进度' },
-                  { key: 'decisions', label: '已确认结论' },
-                  { key: 'unresolved', label: '未决事项' },
-                  { key: 'artifacts', label: '成果与证据入口（用户记录）' }
-                ] as const
-              ).map(({ key, label }) => (
-                <label key={key}>
-                  {label}
-                  <textarea
-                    aria-label={label}
-                    rows={2}
-                    maxLength={16000}
-                    value={fields[key] ?? ''}
-                    onChange={(event) => setFields({ ...fields, [key]: event.target.value })}
-                  />
-                </label>
-              ))}
-            </details>
-            {!task && <ModelPicker model={model} onChange={setModel} />}
-            <button
-              className="primary"
-              disabled={busy || !connected || !project.available || !fields.goal.trim()}
+          <details className="task-shared" open={!task}>
+            <summary>任务目标与共享信息</summary>
+            <form
+              className="task-form"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void save()
+              }}
             >
-              {busy ? '正在保存…' : task ? '保存共享信息' : '创建任务与首会话'}
-            </button>
-          </form>
+              <label>
+                任务名称（可选）
+                <input
+                  aria-label="任务名称"
+                  value={fields.title}
+                  maxLength={256}
+                  onChange={(event) => setFields({ ...fields, title: event.target.value })}
+                />
+              </label>
+              <label>
+                阶段目标
+                <textarea
+                  aria-label="阶段目标"
+                  value={fields.goal}
+                  required
+                  rows={3}
+                  maxLength={16000}
+                  onChange={(event) => setFields({ ...fields, goal: event.target.value })}
+                />
+              </label>
+              {task && (
+                <label>
+                  任务状态
+                  <select
+                    aria-label="任务状态"
+                    value={fields.status ?? 'active'}
+                    onChange={(event) =>
+                      setFields({
+                        ...fields,
+                        status:
+                          event.target.value === 'completed'
+                            ? 'completed'
+                            : event.target.value === 'archived'
+                              ? 'archived'
+                              : 'active'
+                      })
+                    }
+                  >
+                    <option value="active">进行中</option>
+                    <option value="completed">已完成</option>
+                    <option value="archived">已归档</option>
+                  </select>
+                </label>
+              )}
+              <details open={!!task}>
+                <summary>约束、进度与接续信息</summary>
+                {(
+                  [
+                    { key: 'constraints', label: '约束' },
+                    { key: 'progress', label: '当前进度' },
+                    { key: 'decisions', label: '已确认结论' },
+                    { key: 'unresolved', label: '未决事项' },
+                    { key: 'artifacts', label: '成果与证据入口（用户记录）' }
+                  ] as const
+                ).map(({ key, label }) => (
+                  <label key={key}>
+                    {label}
+                    <textarea
+                      aria-label={label}
+                      rows={2}
+                      maxLength={16000}
+                      value={fields[key] ?? ''}
+                      onChange={(event) => setFields({ ...fields, [key]: event.target.value })}
+                    />
+                  </label>
+                ))}
+              </details>
+              {!task && <ModelPicker model={model} onChange={setModel} />}
+              <button
+                className="primary"
+                disabled={busy || !connected || !project.available || !fields.goal.trim()}
+              >
+                {busy ? '正在保存…' : task ? '保存共享信息' : '创建任务与首会话'}
+              </button>
+            </form>
+          </details>
           {task && (
             <section className="task-session-create">
               <details>

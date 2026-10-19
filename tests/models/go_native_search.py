@@ -15,9 +15,15 @@ from uuid import uuid4
 import httpx
 
 from my_agent.bootstrap import build_model_http
-from my_agent.config import MAX_FRAME_BYTES, MODEL_DEFAULTS
+from my_agent.config import DEFAULTS, MAX_FRAME_BYTES
 from my_agent.credentials import resolve_credential
+from my_agent.errors import AgentError
+from my_agent.models.endpoints import GO_BASE_URL, GO_MESSAGES_URL
+from my_agent.models.go import GoClient
 from my_agent.models.http import public_request_headers
+from my_agent.models.native_search import NativeSearchClient
+from my_agent.models.types import ModelProgress
+from my_agent.runtime.settings import RunLimits
 
 ROOT = Path(__file__).resolve().parents[2]
 MODEL_ID = "deepseek-v4.1-flash"
@@ -96,17 +102,18 @@ async def probe(args: argparse.Namespace, path: Path) -> dict[str, object]:
 
     Reuse trusted credentials and HTTP composition for exactly one bounded Go request.
     """
-    endpoint = str(MODEL_DEFAULTS["base_url"]).rstrip("/") + "/messages"
+    endpoint = GO_MESSAGES_URL
     report: dict[str, object] = {
         "started_at": datetime.now(UTC).isoformat(),
         "endpoint": endpoint,
         "model": MODEL_ID,
-        "mode": "native-search",
+        "mode": "production-search" if args.production_client else "native-search",
         "attempts": 0,
         "request_budget": 1,
         "timeout_seconds": args.timeout_seconds,
         "max_tokens": args.max_tokens,
         "max_search_uses": 1,
+        "response_limit_bytes": None if args.production_client else args.max_response_bytes,
         "query": QUERY,
         "network_policy": "unchanged_httpx_environment_no_redirects_no_retries",
     }
@@ -129,6 +136,7 @@ async def probe(args: argparse.Namespace, path: Path) -> dict[str, object]:
     body: dict[str, object] = {
         "model": MODEL_ID,
         "max_tokens": args.max_tokens,
+        "stream": False,
         "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
         "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 1}],
     }
@@ -137,19 +145,53 @@ async def probe(args: argparse.Namespace, path: Path) -> dict[str, object]:
     try:
         report["attempts"] = 1
         save_report(path, report)
+        if args.production_client:
+
+            async def observe(progress: ModelProgress) -> None:
+                """只记录时序，不保存正文。 Record timing without bodies."""
+                report["progress"] = progress.model_dump()
+
+            client = NativeSearchClient(GoClient(credential, GO_BASE_URL, pool), MODEL_ID)
+            result = await client.search(
+                QUERY,
+                1,
+                str(uuid4()),
+                RunLimits.model_validate(
+                    {
+                        **DEFAULTS["run"],
+                        "request_timeout_seconds": int(args.timeout_seconds),
+                        "max_output_tokens": args.max_tokens,
+                    }
+                ),
+                observe,
+            )
+            report.update(
+                result="native_results_received"
+                if result.sources
+                else "native_search_not_confirmed",
+                sources=[{"url": item.url, "title": item.title} for item in result.sources],
+                usage=result.usage.model_dump(),
+                search_uses=result.search_uses,
+            )
+            return report
         async with asyncio.timeout(args.timeout_seconds), pool.borrow() as client:
             async with client.stream(
                 "POST", endpoint, headers=headers, json=body, timeout=args.timeout_seconds
             ) as response:
                 report["http_status"] = response.status_code
+                report["content_type"] = response.headers.get("content-type", "")
                 data = bytearray()
                 async for chunk in response.aiter_bytes():
                     data.extend(chunk)
-                    if len(data) > MAX_FRAME_BYTES:
+                    report["received_bytes"] = len(data)
+                    if len(data) > args.max_response_bytes:
+                        report["failure_cause"] = "response_limit"
                         raise ValueError("Response exceeds the existing frame budget")
                 report.update(summarize(json.loads(data), secret))
                 if not response.is_success:
                     report["result"] = "http_error"
+    except AgentError as error:
+        report.update(result="production_error", code=error.code, message=error.message)
     except (httpx.HTTPError, TimeoutError, ValueError) as error:
         # 异常文本可能包含认证信息，只记录类型。 Exception messages may contain credentials.
         report.update(result="transport_or_payload_error", error_type=type(error).__name__)
@@ -169,8 +211,13 @@ def main() -> None:
     parser.add_argument("--enable-real-models", action="store_true", required=True)
     parser.add_argument("--timeout-seconds", type=float, default=90)
     parser.add_argument("--max-tokens", type=int, default=2048)
+    parser.add_argument("--max-response-bytes", type=int, default=8 * MAX_FRAME_BYTES)
+    parser.add_argument("--production-client", action="store_true")
     args = parser.parse_args()
-    if not 0 < args.timeout_seconds < float("inf") or args.max_tokens <= 0:
+    if (
+        not 0 < args.timeout_seconds < float("inf")
+        or min(args.max_tokens, args.max_response_bytes) <= 0
+    ):
         parser.error("Use a finite positive timeout and positive token budget")
     directory = ROOT / ".artifacts/tests" / ("go-native-search-" + uuid4().hex[:12])
     directory.mkdir(parents=True)

@@ -3,12 +3,16 @@
 import asyncio
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Annotated
 
+from pathspec import GitIgnoreSpec
+from pathspec.patterns.gitignore.base import GitIgnorePatternError
 from pydantic import Field, ValidationError
 
 from my_agent.errors import AgentError
@@ -36,11 +40,16 @@ class ReadFileArgs(ModelData):
 
 
 class SearchArgs(ModelData):
-    """字面搜索参数，不接受 shell / 正则选项。 Literal search without shell or regex options."""
+    """字面或 rg 正则搜索，支持路径筛选和上下文。 Literal/rg regex search with paths and context."""
 
     query: Annotated[str, Field(min_length=1, max_length=4096)]
     glob: str = "*"
     limit: Annotated[int, Field(ge=1, le=1000)] = 100
+    regex: bool = False
+    before: Annotated[int, Field(ge=0)] = 0
+    after: Annotated[int, Field(ge=0)] = 0
+    include_globs: list[str] = Field(default_factory=list)
+    exclude_globs: list[str] = Field(default_factory=list)
 
 
 def encode(value: JsonObject) -> str:
@@ -102,7 +111,10 @@ class ReadTools:
             (
                 "search",
                 SearchArgs,
-                "Find literal text in readable source files; no shell or regex.",
+                "Search source lines (literal by default; regex=true uses ripgrep regex). "
+                "before/after include numbered context. include_globs/exclude_globs use "
+                "gitignore-style patterns, e.g. ['**/*.py'], ['tests/**']. "
+                "Existing discovery ignores still apply. Results report truncation.",
             ),
         ):
             definitions.append(
@@ -202,6 +214,7 @@ class ReadTools:
                 "--files-with-matches",
                 "--null",
                 "--fixed-strings",
+                "--crlf",
                 "--text",
                 "--no-config",
                 "--no-ignore",
@@ -254,13 +267,30 @@ class ReadTools:
 
     def _search(self, args: SearchArgs) -> JsonObject:
         """返回可核对匹配，区分无匹配、跳过与截断。 Return verifiable matches and limitations."""
-        if "\n" in args.query or "\r" in args.query:
-            raise AgentError("INVALID_TOOL_ARGUMENTS", "搜索查询必须是单行字面文本。")
+        if "\n" in args.query or "\r" in args.query or "\x00" in args.query:
+            raise AgentError("INVALID_TOOL_ARGUMENTS", "搜索查询必须是单行文本或正则。")
         scan = self.policy.scan(glob=args.glob)
-        candidates, backend = self._rg_candidates(scan.files, args.query)
+        try:
+            include = GitIgnoreSpec.from_lines(args.include_globs)
+            exclude = GitIgnoreSpec.from_lines(args.exclude_globs)
+        except (GitIgnorePatternError, re.PatternError) as exc:
+            raise AgentError(
+                "INVALID_TOOL_ARGUMENTS", f"包含 / 排除路径模式无效，请修改后再搜索：{exc}"
+            ) from exc
+        files = [
+            file
+            for file in scan.files
+            if (not args.include_globs or include.match_file(file)) and not exclude.match_file(file)
+        ]
+        if args.regex:
+            candidates = self._regex_matches(files, args.query, args.limit + 1)
+            backend = "rg"
+        else:
+            names, backend = self._rg_candidates(files, args.query)
+            candidates = ((name, None) for name in names)
         matches: list[JsonObject] = []
         size = 0
-        for file in candidates:
+        for file, hits in candidates:
             try:
                 text, _, _ = self._read(file)
             except AgentError as exc:
@@ -268,11 +298,49 @@ class ReadTools:
                     raise
                 scan.skipped += 1
                 continue
-            for number, line in enumerate(text.splitlines(), 1):
+            lines = text.splitlines()
+            # 并发编辑后不把旧匹配和新正文混合；只跳过该文件，不中断运行。
+            # Skip changed files rather than mixing old matches with new context or stopping a run.
+            if hits is not None and any(
+                number > len(lines) or lines[number - 1] != text for number, text in hits.items()
+            ):
+                scan.skipped += 1
+                continue
+            for number, line in enumerate(lines, 1):
                 checkpoint(self.stop)
-                if args.query not in line:
+                matched = number in hits if hits is not None else args.query in line
+                if not matched:
                     continue
                 match: JsonObject = {"path": file, "line": number, "text": line}
+                if args.before or args.after:
+                    # 按预算逐行追加，避免先复制全部上下文再反复序列化。
+                    # Append within budget instead of repeatedly serializing a large context.
+                    remaining = (
+                        self.limits.max_tool_bytes // 2
+                        - size
+                        - len(encode(match).encode("utf-8"))
+                        - 64
+                    )
+                    for key, indexes in (
+                        (
+                            "context_before",
+                            range(number - 2, max(-1, number - 2 - args.before), -1),
+                        ),
+                        ("context_after", range(number, min(len(lines), number + args.after))),
+                    ):
+                        context: list[JsonObject] = []
+                        for i in indexes:
+                            checkpoint(self.stop)
+                            entry: JsonObject = {"line": i + 1, "text": lines[i]}
+                            length = len(encode(entry).encode("utf-8")) + 1
+                            if length > remaining:
+                                scan.truncated = True
+                                break
+                            context.append(entry)
+                            remaining -= length
+                        if key == "context_before":
+                            context.reverse()
+                        match[key] = list(context)
                 size += len(encode(match).encode("utf-8"))
                 if len(matches) >= args.limit or size > self.limits.max_tool_bytes // 2:
                     scan.truncated = True
@@ -287,6 +355,106 @@ class ReadTools:
             "skipped": scan.skipped,
             "backend": backend,
         }
+
+    def _regex_matches(
+        self, files: list[str], query: str, limit: int
+    ) -> Iterator[tuple[str, dict[int, str] | None]]:
+        """分批获取路径和匹配行，按需停止；空项目也返回正则语法错误。
+
+        Fetch paths and matching lines in lazy batches; validate regex even in an empty project.
+        """
+        executable = shutil.which("rg")
+        if not executable:
+            raise AgentError(
+                "INVALID_TOOL_ARGUMENTS", "正则搜索需要 rg；可安装 rg 或改用字面搜索。"
+            )
+        command = [
+            executable,
+            "--line-number",
+            "--with-filename",
+            "--null",
+            "--no-heading",
+            "--color=never",
+            "--crlf",
+            "--text",
+            "--no-config",
+            "--no-ignore",
+            "--hidden",
+            "--encoding=utf-8",
+            "--max-filesize",
+            str(self.limits.max_file_bytes),
+            "--max-count",
+            str(limit),
+            "-e",
+            query,
+            "--",
+        ]
+        # 固定小批只限制命令长度和单批内存，不限制搜索范围。
+        # Small batches bound command length and memory, not the searchable scope.
+        for offset in range(0, max(1, len(files)), 32):
+            checkpoint(self.stop)
+            batch = files[offset : offset + 32]
+            output = self._run_regex(
+                [*command, *["./" + name for name in batch]] if batch else [*command, "-"],
+            )
+            found: dict[str, dict[int, str]] = {}
+            # 路径后为 NUL，匹配正文后为 LF；路径中的冒号不参与分割。
+            # NUL ends the path and LF ends the match; colons in paths remain intact.
+            cursor = 0
+            while cursor < len(output):
+                end_path = output.index(b"\x00", cursor)
+                end_line = output.find(b"\n", end_path)
+                if end_line < 0:
+                    end_line = len(output)
+                name = output[cursor:end_path].decode("utf-8").replace("\\", "/").removeprefix("./")
+                number, _, content = output[end_path + 1 : end_line].partition(b":")
+                # _read 仍负责完整 UTF-8 / 二进制判断；这里不改变文件编码。
+                # _read still checks whole-file UTF-8/binary content; no encoding conversion here.
+                found.setdefault(name, {})[int(number)] = content.removesuffix(b"\r").decode(
+                    "utf-8", errors="replace"
+                )
+                cursor = end_line + 1
+            for name in batch:
+                if name in found:
+                    yield name, found[name]
+
+    def _run_regex(self, command: list[str]) -> bytes:
+        """持续收取有界批次输出，取消时回收 rg。
+
+        Drain bounded batch output and reap rg on cancellation.
+        """
+        try:
+            with subprocess.Popen(
+                command,
+                cwd=self.policy.root,
+                env=probe_environment(),
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            ) as process:
+                payload: bytes | None = b""
+                try:
+                    while True:
+                        checkpoint(self.stop)
+                        try:
+                            output, error = process.communicate(input=payload, timeout=0.1)
+                            break
+                        except subprocess.TimeoutExpired:
+                            payload = None
+                finally:
+                    if process.poll() is None:
+                        process.kill()
+                        process.communicate()
+            if process.returncode not in {0, 1}:
+                detail = error.decode("utf-8", errors="replace")[-1500:]
+                raise AgentError(
+                    "INVALID_TOOL_ARGUMENTS" if "regex parse error" in detail else "SEARCH_FAILED",
+                    "rg 搜索未完成：" + detail,
+                )
+            return output
+        except OSError as exc:
+            raise AgentError("SEARCH_FAILED", "无法运行正则搜索辅助程序。") from exc
 
     def _execute(self, call: ToolCall) -> ToolResult:
         """校验完整参数后分发，预期错误作为工具结果回传。 Validate and dispatch complete calls."""

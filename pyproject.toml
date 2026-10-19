@@ -10,6 +10,7 @@ dependencies = [
     "pathspec==1.1.1",
     "portalocker==4.3.2",
     "pydantic==2.13.5",
+    "pywinpty==3.0.5 ; sys_platform == 'win32'",
     "pyyaml==6.0.3",
     "typer==0.27.2",
 ]

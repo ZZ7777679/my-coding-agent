@@ -15,9 +15,9 @@ from uuid import uuid4
 import httpx
 
 from my_agent import __version__
-from my_agent.config import MODEL_DEFAULTS
+from my_agent.models.endpoints import GO_MODELS_URL
 
-URL = str(MODEL_DEFAULTS["base_url"]) + "/models"
+URL = GO_MODELS_URL
 
 
 def endpoint(value: str | None) -> dict[str, object] | None:

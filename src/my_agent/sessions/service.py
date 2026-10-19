@@ -3,7 +3,10 @@
 Shared session, run and subscription service.
 """
 
+from __future__ import annotations
+
 import asyncio
+import builtins
 import logging
 import threading
 import time
@@ -54,14 +57,23 @@ from my_agent.workflow.tools import WorkflowTools
 from my_agent.workflow.types import WorkMethod
 
 if TYPE_CHECKING:
+    from my_agent.attachments.service import AttachmentService
     from my_agent.collaboration.service import CollaborationService
     from my_agent.context.service import ContextService
     from my_agent.delegation.service import DelegationService
+    from my_agent.documents.service import DocumentService
     from my_agent.goals.service import GoalService
+    from my_agent.intelligence.service import IntelligenceService
+    from my_agent.local_git.service import LocalGitService
     from my_agent.mcp_client.service import McpService
     from my_agent.memory.service import MemoryService
     from my_agent.sessions.recovery import RecoveryService
     from my_agent.skills.service import SkillService
+    from my_agent.spaces.service import SpaceService
+    from my_agent.spaces.team_service import SpaceTeamService
+    from my_agent.tasks.service import TaskService
+    from my_agent.terminals.service import TerminalService
+    from my_agent.tools.files import FileCoordinator
 
 
 @dataclass
@@ -175,6 +187,15 @@ class SessionService:
         self.delegations: DelegationService | None = None
         self.mcp: McpService | None = None
         self.skills: SkillService | None = None
+        self.attachments: AttachmentService | None = None
+        self.file_coordinator: FileCoordinator | None = None
+        self.tasks: TaskService | None = None
+        self.spaces: SpaceService | None = None
+        self.team: SpaceTeamService | None = None
+        self.documents: DocumentService | None = None
+        self.intelligence: IntelligenceService | None = None
+        self.terminals: TerminalService | None = None
+        self.local_git: LocalGitService | None = None
         self.closing = False
 
     def active_for(self, session_id: str) -> ActiveRun | None:
@@ -511,6 +532,7 @@ class SessionService:
         goal: GoalRunBinding | None = None,
         collaboration_id: str | None = None,
         work_method: WorkMethod | None = None,
+        attachment_ids: builtins.list[str] | None = None,
     ) -> SessionSummary:
         """先持久接纳再快速确认，同操作标识不重复请求。
 
@@ -545,7 +567,7 @@ class SessionService:
                 )
             ):
                 queued = await self.goals.offer_input_locked(
-                    log, operation_id, prompt, requested_limits, mode
+                    log, operation_id, prompt, requested_limits, mode, attachment_ids
                 )
                 if queued is not None:
                     return queued
@@ -553,6 +575,7 @@ class SessionService:
                 if isinstance(fact.data, RunAccepted) and fact.data.operation_id == operation_id:
                     if (
                         fact.data.prompt != prompt
+                        or fact.data.attachment_ids != (attachment_ids or [])
                         or fact.data.requested_limits != requested_limits
                         or fact.data.mode != mode
                         or fact.data.plan_document != plan_document
@@ -578,7 +601,7 @@ class SessionService:
                     )
             if goal is None and collaboration_id is None and self.goals is not None:
                 queued = await self.goals.offer_input_locked(
-                    log, operation_id, prompt, requested_limits, mode
+                    log, operation_id, prompt, requested_limits, mode, attachment_ids
                 )
                 if queued is not None:
                     return queued
@@ -655,6 +678,7 @@ class SessionService:
                 RunAccepted(
                     operation_id=operation_id,
                     prompt=prompt,
+                    attachment_ids=attachment_ids or [],
                     limits=limits,
                     requested_limits=requested_limits,
                     mode=mode,
@@ -978,6 +1002,8 @@ class SessionService:
                     await self.finish_run(active.run_id)
                 except AgentError as exc:
                     finished = RunFinished(status="failed", code=exc.code, message=exc.message)
+            if self.attachments is not None:
+                self.attachments.pending.pop(active.run_id, None)
             try:
                 if tools is not None:
                     finished = finished.model_copy(update={"report": tools.report})
@@ -1030,12 +1056,25 @@ class SessionService:
             await asyncio.gather(*(active.task for active in running if active.task is not None))
         finally:
             try:
-                try:
-                    if self.mcp is not None:
-                        await self.mcp.close()
-                finally:
-                    if self.close_execution is not None:
-                        await self.close_execution()
+                # CLI 与 RPC 共用进程所有者；一个失败也必须尝试清理其余连接和进程。
+                # CLI and RPC share lifecycle owners; one failure cannot skip other cleanup.
+                operations: list[Awaitable[None]] = []
+                if self.mcp is not None:
+                    operations.append(self.mcp.close())
+                if self.terminals is not None:
+                    operations.append(self.terminals.close())
+                if self.local_git is not None:
+                    operations.append(self.local_git.close())
+                if self.intelligence is not None:
+                    operations.append(self.intelligence.close())
+                if self.attachments is not None:
+                    operations.append(self.attachments.close())
+                if self.close_execution is not None:
+                    operations.append(self.close_execution())
+                results = await asyncio.gather(*operations, return_exceptions=True)
+                for result in results:
+                    if isinstance(result, BaseException):
+                        raise result
             finally:
                 if self.close_model is not None:
                     await self.close_model()

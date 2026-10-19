@@ -55,7 +55,9 @@ def test_fetch_dns_preflight_uses_actual_httpx_route(monkeypatch):
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("case", ["complete", "run_budget", "goal_budget", "cancel", "http_error"])
+@pytest.mark.parametrize(
+    "case", ["complete", "large_envelope", "run_budget", "goal_budget", "cancel", "http_error"]
+)
 def test_search_in_real_run_and_goal(tmp_path, monkeypatch, case):
     """一次辅助请求正确归属 / 计量，预算和取消停止，主模型不切换。
 
@@ -78,12 +80,13 @@ def test_search_in_real_run_and_goal(tmp_path, monkeypatch, case):
             Check Go identity/query isolation and supply success, failure or cancellable waiting.
             """
             requests.append(request)
-            assert request.url == "https://opencode.ai/zen/go/v1/messages"
+            assert request.url == "https://opencode.ai/inference/go/anthropic/v1/messages"
             assert request.headers["x-api-key"] == secret
             assert request.headers["authorization"] == "Bearer " + secret
             assert request.headers["x-opencode-session"] == session_id
             body = json.loads(request.content)
             assert body["model"] == "deepseek-v4.1-flash"
+            assert body["stream"] is False
             assert "PRIVATE_TASK_CONTEXT" not in request.content.decode()
             assert QUERY in request.content.decode()
             if case == "cancel":
@@ -92,7 +95,10 @@ def test_search_in_real_run_and_goal(tmp_path, monkeypatch, case):
                     await asyncio.Event().wait()
                 finally:
                     cancelled.set()
-            return httpx.Response(401 if case == "http_error" else 200, json=native_response())
+            payload = native_response()
+            if case == "large_envelope":
+                payload["opaque_provider_data"] = "x" * (DEFAULTS["run"]["max_file_bytes"] + 1)
+            return httpx.Response(401 if case == "http_error" else 200, json=payload)
 
         async def checked(url):
             """测试不查真实 DNS；仍校验调用传入的公开 URL。
@@ -182,7 +188,7 @@ def test_search_in_real_run_and_goal(tmp_path, monkeypatch, case):
             log = app.sessions.store.load(session_id)
             assert log.issue is None and not list(project.iterdir())
             assert secret not in app.sessions.store.path(session_id).read_text(encoding="utf-8")
-            if case == "complete":
+            if case in {"complete", "large_envelope"}:
                 assert goal.status == "completed" and view.summary.run.status == "completed"
                 assert model.calls == 4 and len(requests) == 1
                 assert goal.usage.requests == view.summary.run.requests == 5
@@ -190,6 +196,9 @@ def test_search_in_real_run_and_goal(tmp_path, monkeypatch, case):
                 cards = [entry.web_result for entry in view.entries if entry.web_result]
                 assert [card.kind for card in cards] == ["web.search", "web.page"]
                 assert cards[0].sources[0].excerpt == "JSON encoder and decoder"
+                assert "opaque_provider_data" not in app.sessions.store.path(session_id).read_text(
+                    encoding="utf-8"
+                )
                 assert (
                     len([fact for fact in log.facts if isinstance(fact.data, AuxiliaryCompleted)])
                     == 1

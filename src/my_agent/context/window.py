@@ -79,6 +79,7 @@ def task_context(task: TaskView, budget: int) -> str:
         "decisions": [item.model_dump(mode="json") for item in reversed(task.work.decisions)],
         "members": [item.model_dump(mode="json") for item in reversed(task.work.members)],
         "items": [item.model_dump(mode="json") for item in task.work.items],
+        "assignments": [item.model_dump(mode="json") for item in task.work.assignments],
     }
     text = json.dumps(work, ensure_ascii=False)
     if len(text.encode("utf-8")) > budget:

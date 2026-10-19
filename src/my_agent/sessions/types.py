@@ -92,6 +92,7 @@ class RunAccepted(ModelData):
     kind: Literal["run.accepted"] = "run.accepted"
     operation_id: SessionId
     prompt: str
+    attachment_ids: list[EntityId] = Field(default_factory=list)
     limits: RunLimits
     requested_limits: RunLimits | None
     mode: RunMode = "plan"

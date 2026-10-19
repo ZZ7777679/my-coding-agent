@@ -11,6 +11,7 @@ import urllib.request
 
 from my_agent import __version__
 from my_agent.config import MODEL_DEFAULTS, ModelConfig
+from my_agent.models.endpoints import GO_MODELS_URL
 
 
 def probe() -> dict[str, object]:
@@ -20,7 +21,7 @@ def probe() -> dict[str, object]:
     """
 
     request = urllib.request.Request(
-        str(MODEL_DEFAULTS["base_url"]) + "/models",
+        GO_MODELS_URL,
         headers={"Accept": "application/json", "User-Agent": "my-coding-agent/" + __version__},
     )
     try:

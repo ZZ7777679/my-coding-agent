@@ -15,6 +15,7 @@ import {
 import path from 'node:path'
 import defaults from '../../../../src/my_agent/defaults.json'
 import { Backend, BackendError } from './backend'
+import { registerM5Ipc } from './m5'
 import type { Result } from '../shared/api'
 import { validate } from '../shared/validation'
 import { startupPaths, saveStartupPaths, canonicalDirectory, workspaceRoot } from './startup-paths'
@@ -224,6 +225,33 @@ app
       dialog.showErrorBox('界面加载失败', '请重新构建桌面资源后再打开应用。')
     })
     handle('agent:info', 0, async () => (await readyBackend()).info())
+    registerM5Ipc(handle, readyBackend)
+    handle('agent:m5-pick-attachments', 1, async (value) => {
+      const params = validate('DocumentSessionParams', value)
+      const service = await readyBackend()
+      const session = await service.call('sessions.get', { session_id: params.session_id }, 'SessionView')
+      const projects = await service.call('projects.list', {}, 'ProjectsView')
+      const project = projects.recent_projects.find(item => item.project_id === session.summary.project_id)
+      if (!project) throw new BackendError({ code: 'PROJECT_UNAVAILABLE', message: '项目记录不可用，请重新打开项目。', remediation: '' })
+      const selected = await dialog.showOpenDialog({ title: '选择本次输入材料', defaultPath: project?.path, properties: ['openFile', 'multiSelections'] })
+      const attachments = []
+      if (!selected.canceled) {
+        for (const file of selected.filePaths) attachments.push(await service.call('attachments.import', { session_id: params.session_id, path: file, purpose: 'User selected input file' }, 'Attachment'))
+      }
+      return validate('AttachmentPage', { attachments })
+    })
+    handle('agent:m5-editor-open', 1, async (value) => {
+      const params = validate('DocumentParams', value)
+      const service = await readyBackend()
+      await service.call('documents.read', params, 'DocumentView')
+      const snapshot = await service.call('sessions.get', { session_id: params.session_id, before_seq: null }, 'SessionView')
+      const info = await service.info()
+      const project = info.projects.recent_projects.find((item) => item.project_id === snapshot.summary.project_id)
+      if (!project) throw new BackendError({ code: 'PROJECT_NOT_FOUND', message: '项目登记不存在。', remediation: '' })
+      const result = await shell.openPath(path.resolve(project.path, params.path))
+      if (result) throw new BackendError({ code: 'EDITOR_OPEN_FAILED', message: '系统没有可用的外部编辑器关联。', remediation: '' })
+      return validate('EmptyParams', {})
+    })
     handle('agent:environments', 1, async (value) =>
       (await readyBackend()).call(
         'environments.list',
@@ -571,6 +599,33 @@ app
       await shell.openExternal(url.toString())
       return {}
     })
+    handle('agent:space-get', 1, async (value) =>
+      (await readyBackend()).call('spaces.get', validate('SpaceParams', value), 'SpaceResult')
+    )
+    handle('agent:space-save', 1, async (value) =>
+      (await readyBackend()).call('spaces.save', validate('SaveSpaceParams', value), 'SpaceResult')
+    )
+    handle('agent:space-start', 1, async (value) =>
+      (await readyBackend()).call(
+        'spaces.start',
+        validate('SpaceStartParams', value),
+        'SpaceResult'
+      )
+    )
+    handle('agent:space-bind', 1, async (value) =>
+      (await readyBackend()).call(
+        'spaces.bind',
+        validate('BindSpaceMemberParams', value),
+        'SpaceResult'
+      )
+    )
+    handle('agent:space-layout', 1, async (value) =>
+      (await readyBackend()).call(
+        'spaces.layout',
+        validate('SaveSpaceLayoutParams', value),
+        'SpaceResult'
+      )
+    )
     handle('agent:task-create', 1, async (value) =>
       (await readyBackend()).call(
         'tasks.create',

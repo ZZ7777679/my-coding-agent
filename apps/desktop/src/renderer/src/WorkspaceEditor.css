@@ -1,0 +1,155 @@
+.workspace-editor {
+  display: grid;
+  grid-template-columns: minmax(160px, 240px) minmax(0, 1fr);
+  height: 100%;
+  min-height: 360px;
+  overflow: hidden;
+  background: #16191f;
+  color: #d4dae3;
+}
+.workspace-files {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+  border-right: 1px solid #343a45;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.workspace-files input,
+.workspace-files select {
+  width: 100%;
+  min-width: 0;
+}
+.workspace-file-toolbar,
+.workspace-code-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.workspace-file-toolbar {
+  justify-content: space-between;
+}
+.workspace-files nav {
+  flex: 1;
+  min-height: 80px;
+}
+.workspace-files nav button,
+.workspace-files details button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 3px 0;
+}
+.workspace-files button small {
+  display: block;
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.workspace-files details {
+  border-top: 1px solid #343a45;
+  padding-top: 8px;
+}
+.workspace-files details input[type='checkbox'] {
+  width: auto;
+}
+.workspace-code {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.workspace-code > section {
+  flex: 1;
+  min-height: 0;
+}
+.workspace-tabs {
+  display: flex;
+  overflow-x: auto;
+  flex-shrink: 0;
+  background: #1e232c;
+}
+.workspace-tabs > div {
+  display: flex;
+  border-right: 1px solid #343a45;
+  white-space: nowrap;
+}
+.workspace-tabs > div.active {
+  background: #313846;
+  border-top: 2px solid #7cafeb;
+}
+.workspace-tabs button {
+  border: 0;
+  background: transparent;
+}
+.workspace-code-toolbar {
+  padding: 7px 10px;
+  background: #202630;
+  flex-shrink: 0;
+}
+.workspace-code-toolbar span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-code-toolbar input {
+  width: 64px;
+}
+.workspace-notice {
+  margin: 0;
+  padding: 8px 12px;
+  background: #302c23;
+  overflow-wrap: anywhere;
+  max-height: 90px;
+  overflow: auto;
+  flex-shrink: 0;
+}
+.workspace-code footer {
+  padding: 5px 10px;
+  font-size: 11px;
+  opacity: 0.75;
+  flex-shrink: 0;
+}
+.workspace-empty {
+  padding: 25px;
+}
+@media (max-width: 760px) {
+  .workspace-editor {
+    grid-template-columns: 145px minmax(0, 1fr);
+  }
+  .workspace-code-toolbar {
+    gap: 4px;
+  }
+  .workspace-code-toolbar button {
+    font-size: 11px;
+  }
+}
+.workspace-language-panel {
+  max-height: 300px;
+  overflow: auto;
+  padding: 8px 12px;
+  border-bottom: 1px solid #39434f;
+}
+.workspace-language-result pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.workspace-language-result small {
+  display: block;
+}
+.workspace-language-result button {
+  margin: 3px;
+}
+.workspace-language-toolbar small {
+  width: 100%;
+}
+.workspace-rename-diff {
+  height: 220px;
+}

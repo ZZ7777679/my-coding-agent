@@ -414,8 +414,9 @@ def test_fragmented_tools_headers_native_state_and_partial_rejection(broken):
             assert request.headers["Authorization"] == "Bearer sentinel-only"
             assert request.headers["User-Agent"].startswith("my-coding-agent/")
             assert request.headers["x-opencode-session"] == "session-fixed"
-            assert str(request.url) == "https://opencode.ai/zen/go/v1/chat/completions"
+            assert str(request.url) == "https://opencode.ai/inference/go/openai/v1/chat/completions"
             seen.append(json.loads(request.content))
+            assert seen[-1]["tools"][0]["function"]["name"] == "read_file"
             return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=stream)
 
         client = GoClient(
@@ -446,7 +447,18 @@ def test_fragmented_tools_headers_native_state_and_partial_rejection(broken):
             model_id="glm-5.3-flash",
             session_id="session-fixed",
             messages=[{"role": "user", "content": "read source"}],
-            tools=[],
+            tools=[
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read_file",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"path": {"type": "string"}},
+                        },
+                    },
+                }
+            ],
             limits=RunLimits.model_validate(DEFAULTS["run"]),
             on_text=text,
             on_progress=observe,
@@ -471,7 +483,8 @@ def test_fragmented_tools_headers_native_state_and_partial_rejection(broken):
     asyncio.run(scenario())
 
 
-def test_auth_failure_no_retry_or_raw_body():
+@pytest.mark.parametrize("expired", [False, True])
+def test_auth_failure_no_retry_or_raw_body(expired):
     """认证错误不重试、不回显原始网络内容。 Do not retry or expose raw authentication failures."""
 
     async def scenario():
@@ -482,7 +495,8 @@ def test_auth_failure_no_retry_or_raw_body():
             """统计模拟请求。 Count simulated requests."""
             nonlocal calls
             calls += 1
-            return httpx.Response(401, json={"error": {"message": "private-body-sentinel"}})
+            message = ("This API key has expired. " if expired else "") + "private-body-sentinel"
+            return httpx.Response(401, json={"error": {"message": message}})
 
         client = GoClient(
             ResolvedCredential(
@@ -513,6 +527,9 @@ def test_auth_failure_no_retry_or_raw_body():
             )
         assert error.value.code == "AUTHENTICATION_FAILED" and calls == 1
         assert "private-body-sentinel" not in str(error.value)
+        assert ("已过期" in str(error.value)) is expired
+        if expired:
+            assert "OpenCode Console" in error.value.remediation
         await client.http.close()
 
     asyncio.run(scenario())

@@ -4,19 +4,20 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron'
+import { m5Api } from './m5'
 import type { DesktopAPI, Result } from '../shared/api'
-import type { ProtocolV6 } from '../generated/protocol'
+import type { ProtocolV10 } from '../generated/protocol'
 import { validate } from '../shared/validation'
 
 /**
  * 校验 IPC 结果封装与方法契约，拒绝混合成功和失败字段。
  * Validate the IPC envelope and method contract, rejecting mixed success/error fields.
  */
-async function invoke<K extends keyof ProtocolV6>(
+async function invoke<K extends keyof ProtocolV10>(
   channel: string,
   contract: K,
   args: unknown[] = []
-): Promise<Result<ProtocolV6[K]>> {
+): Promise<Result<ProtocolV10[K]>> {
   const raw: unknown = await ipcRenderer.invoke(channel, ...args)
   if (typeof raw !== 'object' || raw === null || !('ok' in raw)) throw new Error('IPC_INVALID')
   if (raw.ok === false && 'error' in raw && !('data' in raw)) {
@@ -41,6 +42,12 @@ async function nullableProjects(): ReturnType<DesktopAPI['chooseProject']> {
 }
 
 const api: DesktopAPI = {
+  ...m5Api(invoke),
+  getSpace: (taskId) => invoke('agent:space-get', 'SpaceResult', [{ task_id: taskId }]),
+  saveSpace: (params) => invoke('agent:space-save', 'SpaceResult', [params]),
+  startSpace: (params) => invoke('agent:space-start', 'SpaceResult', [params]),
+  bindSpaceMember: (params) => invoke('agent:space-bind', 'SpaceResult', [params]),
+  saveSpaceLayout: (params) => invoke('agent:space-layout', 'SpaceResult', [params]),
   parseWorkflow: (params) => invoke('agent:workflow-parse', 'WorkflowTemplate', [params]),
   listWorkflows: (params) => invoke('agent:workflows-list', 'WorkflowCatalog', [params]),
   saveWorkflow: (params) => invoke('agent:workflow-save', 'WorkflowCatalog', [params]),

@@ -19,7 +19,9 @@ class ChangeSummary(ModelData):
     project_id: str
     tool_call_id: str
     path: str
-    operation: Literal["create", "edit"]
+    operation: Literal["create", "edit", "delete", "move", "create_directory", "delete_directory"]
+    destination: str | None = None
+    source: Literal["agent", "user", "restore"] = "agent"
     status: Literal["prepared", "applied", "failed"]
     created_at: str
     before_sha256: str | None
@@ -36,6 +38,7 @@ class ChangeRecord(ModelData):
     summary: ChangeSummary
     before_base64: str | None
     after_base64: str
+    directory_manifest: dict[str, str] | None = None
 
 
 class ListChangesParams(ModelData):
@@ -44,6 +47,8 @@ class ListChangesParams(ModelData):
     session_id: SessionId
     cursor: SessionId | None
     limit: Annotated[int, Field(ge=1, le=100)] = 20
+    scope: Literal["session", "task"] = "session"
+    path: str | None = None
 
 
 class GetChangeParams(ModelData):
@@ -60,6 +65,7 @@ class ChangePage(ModelData):
     changes: list[ChangeSummary]
     next_cursor: SessionId | None
     unavailable_count: int
+    coverage: str = "文件工具及编辑器保存的修改；未记录的外部或 shell 写入来源未知。"
 
 
 class ChangeView(ModelData):

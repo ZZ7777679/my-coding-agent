@@ -20,7 +20,8 @@ def test_skill_selection_refresh_and_project_rules(tmp_path):
         """隔离应用不访问模型。 An isolated app never calls a model."""
         async with app_at(tmp_path / "data", None) as app:
             library = await app.dispatch("skills.list", {})
-            assert library.project_directory == "" and len(library.items) == 9
+            assert library.project_directory == "" and library.items
+            assert all(item.source == "builtin" for item in library.items)
             created = await create_session(app, tmp_path / "project")
             sid, pid = created.session.session_id, created.task.project_id
             params = {"project_id": pid, "session_id": sid}
@@ -135,6 +136,9 @@ def test_bundled_resources_legacy_methods_and_complete_copy(tmp_path):
                 "frontend-design",
                 "vercel-react-best-practices",
                 "vercel-composition-patterns",
+                "workflow-openspec",
+                "workflow-superpowers",
+                "workflow-spec-kit",
             }
             assert {i.name for i in catalog.items if i.source == "builtin"} == expected
             for item in catalog.items:

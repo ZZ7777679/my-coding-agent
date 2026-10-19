@@ -15,12 +15,14 @@ import type {
 import type { Result } from '../../shared/api'
 import { Settings } from './Settings'
 import { Chat } from './Chat'
+import { CodeWorkbench } from './CodeWorkbench'
 import type { KnowledgeUi } from './ContextMemory'
 import type { QuestionMaterial } from './KnowledgeDetails'
 import { TaskNavigation, type WorkspaceSelection } from './TaskNavigation'
 import { TaskPanel } from './TaskPanel'
 import { ProgramCards } from './ProgramCards'
 import { Resources } from './Resources'
+import { Workflows } from './Workflows'
 import './style.css'
 
 /**
@@ -60,9 +62,9 @@ function App() {
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
-  const [view, setView] = useState<'projects' | 'settings' | 'chat' | 'task' | 'skills' | 'mcp'>(
-    'projects'
-  )
+  const [view, setView] = useState<
+    'projects' | 'settings' | 'chat' | 'task' | 'skills' | 'mcp' | 'code' | 'workflows'
+  >('projects')
   const [selection, setSelection] = useState<WorkspaceSelection | null>(null)
   const [treeRevision, setTreeRevision] = useState(0)
   const [activeRuns, setActiveRuns] = useState<SessionSummary[]>([])
@@ -261,6 +263,14 @@ function App() {
           <span className="nav-dot" />
         </button>
         <button
+          className={'nav-item ' + (view === 'code' ? 'nav-current' : '')}
+          disabled={!project}
+          onClick={() => setView('code')}
+        >
+          <span aria-hidden="true">⌨</span>
+          <span>编码工作台</span>
+        </button>
+        <button
           className={'nav-item ' + (view === 'settings' ? 'nav-current' : '')}
           onClick={() => setView('settings')}
         >
@@ -283,6 +293,13 @@ function App() {
           <span aria-hidden="true">⌘</span>
           <span>MCP 管理</span>
         </button>
+        <button
+          className={'nav-item ' + (view === 'workflows' ? 'nav-current' : '')}
+          onClick={() => setView('workflows')}
+        >
+          <span aria-hidden="true">⇢</span>
+          <span>工作流管理</span>
+        </button>
         <div className="section-label">
           项目与任务<span>{info?.projects.recent_projects.length ?? 0}</span>
         </div>
@@ -298,12 +315,18 @@ function App() {
           <span data-testid="connection-status">
             {phase === 'loading' ? '正在连接后端' : connected ? '本地后端已连接' : '后端不可用'}
           </span>
-          <small>{info?.app.stage ?? 'M4'}</small>
+          <small>{info?.app.stage ?? 'M5'}</small>
         </div>
       </aside>
 
-      <main className={'workspace' + (view === 'chat' ? ' workspace-chat' : '')}>
-        {view !== 'chat' && (
+      <main
+        className={
+          'workspace' +
+          (view === 'chat' ? ' workspace-chat' : '') +
+          (view === 'code' ? ' workspace-code' : '')
+        }
+      >
+        {view !== 'chat' && view !== 'code' && (
           <header className="toolbar">
             <div>
               <span className="breadcrumb">工作台</span>
@@ -317,7 +340,9 @@ function App() {
                       ? 'Skill 管理'
                       : view === 'mcp'
                         ? 'MCP 管理'
-                        : '设置与诊断'}
+                        : view === 'workflows'
+                          ? '工作流管理'
+                          : '设置与诊断'}
               </strong>
             </div>
             {
@@ -521,6 +546,16 @@ function App() {
             onSelect={(next) => void navigate(next)}
           />
         </div>
+        <div className="workbench-page" hidden={view !== 'code'}>
+          {project && (
+            <CodeWorkbench
+              key={project.project_id + '/' + (selection?.sessionId ?? '')}
+              projectId={project.project_id}
+              sessionId={selection?.sessionId ?? null}
+              onChat={() => setView('chat')}
+            />
+          )}
+        </div>
         {view === 'task' && (
           <TaskPanel
             key={`${project?.project_id}/${selection?.taskId}`}
@@ -540,6 +575,16 @@ function App() {
             selected={selection}
             activeProjectId={project?.project_id ?? null}
           />
+        )}
+        {view === 'workflows' && (
+          <section className="content" aria-label="工作流管理">
+            <h1>开发工作流</h1>
+            <p className="muted">
+              在这里查看、复制和编辑开发方法；新建任务时选择，已有任务可在「任务流程」中套用。
+              个人流程仍是默认，开源方法均为本应用适配版。
+            </p>
+            <Workflows initiallyOpen />
+          </section>
         )}
         <div hidden={view !== 'settings'}>
           <Settings

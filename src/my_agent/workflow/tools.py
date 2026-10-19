@@ -59,6 +59,12 @@ def argument_error_message(error: ValidationError, model: type[ModelData]) -> st
     Show known fields and error categories without echoing argument values or raw exceptions.
     """
     issues = error.errors(include_input=False, include_context=False, include_url=False)
+    if any(issue["type"] == "extra_forbidden" for issue in issues):
+        return (
+            "工作信息含有当前 schema 不支持的字段。请按工具定义提交；"
+            "报告最小字段为 summary / outcome，来源由宿主记录，无需自行提供 evidence。"
+            "已有执行结果保留。"
+        )
     fields = sorted(
         {
             str(issue["loc"][0])

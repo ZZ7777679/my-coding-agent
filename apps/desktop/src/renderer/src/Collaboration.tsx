@@ -349,6 +349,20 @@ export function Collaboration({
             </select>
           </label>
           {!peers.length && <p className="muted">此任务暂无其他会话，可从左侧任务新建。</p>}
+          {page && (
+            <p className="muted">
+              {page.reason === 'no_agreements_configured'
+                ? '尚未安排协作约定。'
+                : page.reason === 'no_task'
+                  ? '当前会话尚未归属任务。'
+                  : '协作约定已配置。'}
+              {page.next_step} {page.worker_reason}
+            </p>
+          )}
+          <p className="muted">
+            请求会等待接收会话空闲；已有未结束 Goal 或上次失败由你明确处理。
+            可在请求卡片停止指定请求，不会停止对方无关工作。模型等待到时只返回现状。
+          </p>
           {target && (
             <>
               <label>
@@ -449,7 +463,7 @@ export function Collaboration({
                     kind === 'review' ? '审查范围' : kind === 'handoff' ? '接手目标' : '协作请求'
                   }
                   value={objective}
-                  maxLength={8000}
+                  maxLength={kind === 'request' ? undefined : 8000}
                   onChange={(event) => setObjective(event.target.value)}
                   placeholder="说明要做什么，以及希望返回什么结果。"
                 />
@@ -540,7 +554,28 @@ export function Collaboration({
                 </strong>
                 <p>{request.params.objective}</p>
                 {request.reason && <p>{request.reason}</p>}
-                {request.result && <pre>{request.result}</pre>}
+                {request.outcome && (
+                  <p>
+                    工作报告：
+                    {
+                      {
+                        complete: '完成',
+                        continue: '部分完成，需接续',
+                        wait: '等待补充信息',
+                        return: '已报告，返回用户'
+                      }[request.outcome]
+                    }
+                  </p>
+                )}
+                {request.next_action && <p>建议下一步：{request.next_action}</p>}
+                {request.result && (
+                  <details open={request.status === 'failed'}>
+                    <summary>
+                      {request.status === 'running' ? '查看阶段进展' : '查看返回结果'}
+                    </summary>
+                    <pre>{request.result}</pre>
+                  </details>
+                )}
                 {request.brief && (
                   <details>
                     <summary>查看来源简报 · 任务版本 {request.brief.task.revision}</summary>

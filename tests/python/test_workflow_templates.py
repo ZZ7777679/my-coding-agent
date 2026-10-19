@@ -3,6 +3,9 @@
 import asyncio
 from uuid import uuid4
 
+import pytest
+
+from my_agent.errors import AgentError
 from tests.python.test_goal_controller import app_at, create_session
 
 
@@ -62,5 +65,79 @@ def test_templates_snapshot_and_task_edits_preserve_reports(tmp_path):
             legacy = task.model_dump()
             legacy.pop("workflow")
             assert type(task).model_validate(legacy).workflow is None
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("method", ["openspec", "superpowers", "spec-kit"])
+def test_builtin_workflow_guidance_selection_and_restart(tmp_path, method):
+    """适配流程真正组装对应方法，阶段切换和重启保留快照。
+
+    Adapted workflows inject their own guidance and preserve stage snapshots across restart.
+    """
+
+    async def scenario():
+        """复用真实 RPC 与存储，不调用模型或改项目文件。
+
+        Use real RPC/storage without model requests or project writes.
+        """
+        identity = "builtin:" + method
+        workflow_skill = "builtin:workflow-" + method
+        async with app_at(tmp_path / "data", None) as app:
+            initial = await create_session(app, tmp_path / "project")
+            before = sorted(
+                p.relative_to(tmp_path / "project") for p in (tmp_path / "project").rglob("*")
+            )
+            catalog = await app.dispatch("workflows.list", {})
+            template = next(t for t in catalog.templates if t.template_id == identity)
+            assert "适配版" in template.name and "MIT" in template.description
+            for operation, payload in (
+                ("workflows.save", {"template": template.model_dump()}),
+                ("workflows.remove", {"template_id": identity}),
+            ):
+                with pytest.raises(AgentError) as error:
+                    await app.dispatch(operation, payload)
+                assert error.value.code == "WORKFLOW_BUILTIN"
+            created = await app.dispatch(
+                "tasks.create",
+                {
+                    "operation_id": str(uuid4()),
+                    "project_id": initial.task.project_id,
+                    "model_id": "glm-5.3-flash",
+                    "fields": {"title": method, "goal": "Add a counter"},
+                    "workflow_template_id": identity,
+                },
+            )
+            task = created.task
+            log = await app.sessions._load(created.session.session_id)
+            _, materials = await app.worker.call(app.sessions.skills.materials, log)
+            selected = [m for m in materials if m.kind == "skill"]
+            assert any(m.source_id == workflow_skill for m in selected)
+            assert not any(
+                m.source_id.startswith("builtin:workflow-") and m.source_id != workflow_skill
+                for m in selected
+            )
+            flow = task.workflow.model_copy(deep=True)
+            flow.current_stage_id = "implement"
+            saved = await app.dispatch(
+                "tasks.workflow",
+                {
+                    "task_id": task.task_id,
+                    "operation_id": str(uuid4()),
+                    "expected_revision": task.revision,
+                    "workflow": flow.model_dump(),
+                },
+            )
+            text, materials = await app.worker.call(app.sessions.skills.materials, log)
+            assert "This session's stage: implement" in text
+            assert any(m.source_id == "builtin:implement" for m in materials)
+            assert not app.sessions.active_runs
+            assert before == sorted(
+                p.relative_to(tmp_path / "project") for p in (tmp_path / "project").rglob("*")
+            )
+        async with app_at(tmp_path / "data", None) as app:
+            restored = await app.dispatch("tasks.get", {"task_id": saved.task_id})
+            assert restored.workflow == flow
+            assert not app.sessions.active_runs
 
     asyncio.run(scenario())

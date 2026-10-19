@@ -150,6 +150,23 @@ class CollaborationService:
 
         Both parties can inspect status; detailed history still uses directional grants.
         """
+        source = (await self.sessions.view(params.session_id)).summary
+        candidates = await self.sessions.list(source.project_id, params.peer_cursor, params.limit)
+        worker_enabled = False
+        worker_reason = "内部子 Agent 未开启；可在会话输入区启用，启用后提供 spawn_worker。"
+        if self.sessions.delegations:
+            try:
+                settings = await self.sessions.delegations.prepare(params.session_id)
+                worker_enabled = settings.enabled and not self.sessions.delegations.child_record(
+                    params.session_id
+                )
+                worker_reason = (
+                    "可用 spawn_worker 按实际并行收益发起子工作。"
+                    if worker_enabled
+                    else "子 Agent 开关关闭或当前已经是内部 worker；正式会话由用户创建。"
+                )
+            except AgentError as exc:
+                worker_reason = exc.code + ": " + exc.message
         async with self.lock:
             links = await self.worker.call(self.store.links, params.session_id)
             requests = await self.worker.call(self.store.requests)
@@ -177,7 +194,86 @@ class CollaborationService:
                 requests=page,
                 next_cursor=page[-1].request_id if len(selected) > len(page) else None,
                 error=self.error,
+                task_id=source.task_id,
+                reason="no_task"
+                if source.task_id is None
+                else "ready"
+                if any(
+                    link.enabled
+                    and link.source_session_id == params.session_id
+                    and link.task_id == source.task_id
+                    for link in links
+                )
+                else "no_agreements_configured",
+                next_step=(
+                    "先在会话的归属与分工中选择任务，或在左侧任务中创建会话。"
+                    if source.task_id is None
+                    else "候选会话可按角色选择；未安排的成员由用户保存约定，"
+                    "或在任务合作空间组建团队。"
+                ),
+                candidates=[
+                    candidate
+                    for candidate in candidates.sessions
+                    if source.task_id
+                    and candidate.task_id == source.task_id
+                    and candidate.session_id != params.session_id
+                ],
+                next_peer_cursor=candidates.next_cursor,
+                unavailable_peers=candidates.unavailable_count,
+                worker_enabled=worker_enabled,
+                worker_reason=worker_reason,
             )
+
+    async def peer_summary(self, source: str, target: str) -> JsonObject:
+        """读取已有摘要和最近工作报告，不重新调用模型总结。
+
+        Read durable summaries and the latest report without a model call.
+        """
+        async with self.sessions.lock:
+            await self._grant_locked(source, target)
+            log = await self.sessions._load(target)
+            report = next(
+                (
+                    f
+                    for f in reversed(log.facts)
+                    if isinstance(f.data, RunFinished) and f.data.report
+                ),
+                None,
+            )
+            return {
+                "summary": summarize(
+                    log, active=self.sessions.active_for(target) is not None
+                ).model_dump(mode="json"),
+                "watermark": len(log.facts),
+                "report": report.data.report.model_dump(mode="json")
+                if report and isinstance(report.data, RunFinished) and report.data.report
+                else None,
+                "source": {"session_id": target, "run_id": report.run_id, "seq": report.seq}
+                if report
+                else None,
+                "waiting_reason": self._blocker(log),
+            }
+
+    async def task_session_ids(self, session_id: str) -> list[str]:
+        """同任务共享成果来源；未绑定任务时只包含自身。
+
+        Resolve shared task artifact sources, or only self for an unbound session.
+        """
+        source = (await self.sessions.view(session_id)).summary
+        identities = [session_id]
+        if source.task_id is None:
+            return identities
+        cursor = None
+        while True:
+            page = await self.sessions.list(source.project_id, cursor, 100)
+            identities.extend(
+                s.session_id
+                for s in page.sessions
+                if s.task_id == source.task_id and s.session_id != session_id
+            )
+            cursor = page.next_cursor
+            if cursor is None:
+                return identities
 
     async def submit(
         self,
@@ -313,8 +409,25 @@ class CollaborationService:
             )
             active = self.sessions.active_for(log.session_id)
             if active is not None and active.run_id == start.run_id:
+                progress = next(
+                    (
+                        f
+                        for f in reversed(log.facts)
+                        if f.run_id == start.run_id
+                        and isinstance(f.data, AssistantCommitted)
+                        and f.data.turn.text
+                    ),
+                    None,
+                )
                 return request.model_copy(
-                    update={"status": "running", "target_run_id": start.run_id}
+                    update={
+                        "status": "running",
+                        "target_run_id": start.run_id,
+                        "result": progress.data.turn.text
+                        if progress and isinstance(progress.data, AssistantCommitted)
+                        else "",
+                        "result_seq": progress.seq if progress else None,
+                    }
                 )
             if end is None or not isinstance(end.data, RunFinished):
                 return request.model_copy(
@@ -344,6 +457,8 @@ class CollaborationService:
                     ),
                     "target_run_id": start.run_id,
                     "result_seq": end.seq,
+                    "outcome": end.data.report.outcome if end.data.report else None,
+                    "next_action": end.data.report.next_action if end.data.report else "",
                     "result": end.data.report.summary
                     if end.data.report
                     else (answers[-1] if answers else ""),
@@ -594,12 +709,14 @@ class CollaborationService:
         *,
         wait: bool,
         waiting_run_id: str | None = None,
+        wait_seconds: float | None = None,
     ) -> CollaborationRequest:
         """按事件等待；插话或真实循环等待返回现状，保留已投递工作。
 
         Await events; return status on user input or a live wait cycle without cancelling delivery.
         """
         waiter = (session_id, waiting_run_id) if waiting_run_id is not None else None
+        deadline = asyncio.get_running_loop().time() + wait_seconds if wait_seconds else None
         try:
             while True:
                 if self.closed:
@@ -647,7 +764,16 @@ class CollaborationService:
                         active = self.sessions.active_for(session_id)
                         if active is not None:
                             await self.sessions.set_wait(active, request_id)
-                await changed.wait()
+                remaining = deadline - asyncio.get_running_loop().time() if deadline else None
+                try:
+                    async with asyncio.timeout(remaining):
+                        await changed.wait()
+                except TimeoutError:
+                    return value.model_copy(
+                        update={
+                            "reason": "本次等待时间已到，请求仍保留；可处理其他工作或稍后查看。"
+                        }
+                    )
         finally:
             if waiter is not None:
                 self.waiting.pop(waiter, None)
@@ -655,13 +781,17 @@ class CollaborationService:
                 if active is not None and active.run_id == waiting_run_id:
                     await self.sessions.set_wait(active, None)
 
-    async def control(self, params: ControlCollaborationParams) -> CollaborationRequest:
+    async def control(
+        self, params: ControlCollaborationParams, *, source_session_id: str | None = None
+    ) -> CollaborationRequest:
         """用户可取消精确请求，恢复仅限尚未启动项，不重放未知副作用。
 
         Cancel an exact request; resuming unstarted items never replays unknown effects.
         """
         async with self.lock:
             value = await self.worker.call(self.store.request, params.request_id)
+            if source_session_id and value.params.source_session_id != source_session_id:
+                raise AgentError("COLLABORATION_SCOPE", "只能停止自己发起的协作请求。")
             if params.action == "resume":
                 if value.target_run_id is not None or value.status not in {"held", "queued"}:
                     raise AgentError(
@@ -681,7 +811,7 @@ class CollaborationService:
                 if active is not None and active.collaboration_id == value.request_id:
                     await self.sessions.cancel(active.run_id)
                 value = value.model_copy(
-                    update={"status": "cancelled", "reason": "用户停止了此请求。"}
+                    update={"status": "cancelled", "reason": "发起方停止了此请求。"}
                 )
             await self._save(value.model_copy(update={"updated_at": utc_now()}))
             return value

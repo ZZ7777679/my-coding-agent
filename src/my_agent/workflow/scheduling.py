@@ -5,8 +5,17 @@ Select the next complete unit from durable dependencies without taking unrelated
 
 from collections.abc import Sequence
 
+from my_agent.runtime.modes import RunMode
 from my_agent.sessions.types import Fact, RunAccepted, RunFinished
-from my_agent.workflow.types import WorkItem, WorkReport
+from my_agent.workflow.types import WorkItem, WorkMethod, WorkReport
+
+
+def execution_mode(method: WorkMethod) -> RunMode:
+    """讨论、规划与审查沿用只读能力，不随轮次改变。
+
+    Keep discussion, planning and review read-only across execution rounds.
+    """
+    return "plan" if method in {"discuss", "plan", "review"} else "normal"
 
 
 def select_work(facts: Sequence[Fact], goal_id: str, shared: Sequence[WorkItem]) -> WorkItem | None:

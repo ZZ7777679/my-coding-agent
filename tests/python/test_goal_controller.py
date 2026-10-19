@@ -178,6 +178,7 @@ class SequenceModel:
         """
         self.calls = 0
         self.step = 0
+        self.question_images = []
 
     def check_available(self):
         """不连接 provider。
@@ -193,6 +194,13 @@ class SequenceModel:
         self.calls += 1
         messages = kwargs["messages"]
         if "ordinary question interrupting" in messages[0]["content"]:
+            self.question_images = [
+                part
+                for message in messages
+                if isinstance(message.get("content"), list)
+                for part in message["content"]
+                if part.get("type") == "image_url"
+            ]
             assert any(
                 "Create the requested files and report them" in str(message.get("content"))
                 for message in messages[1:]
@@ -322,8 +330,22 @@ def test_goal_continuation_question_boundary_and_idempotency(tmp_path):
             driver = goals.driver(session_id)
             await asyncio.wait_for(entered.wait(), 3)
             question_id = str(uuid4())
+            from my_agent.attachments.types import ImportAttachment
+
+            picture = tmp_path / "project" / "question.png"
+            picture.write_bytes(b"\x89PNG\r\n\x1a\n" + b"isolated transport fixture")
+            image = await app.attachments.import_file(
+                ImportAttachment(session_id=session_id, path=str(picture))
+            )
             for _ in range(2):
-                await app.sessions.start(session_id, question_id, "What is saved?", None, "normal")
+                await app.sessions.start(
+                    session_id,
+                    question_id,
+                    "What is saved?",
+                    None,
+                    "normal",
+                    attachment_ids=[image.attachment_id],
+                )
             assert len((await goals.list(session_id))[0].pending_inputs) == 1
             assert model.calls == 1
             release.set()
@@ -334,6 +356,7 @@ def test_goal_continuation_question_boundary_and_idempotency(tmp_path):
             assert view.usage.reserved_seconds == 0 and view.usage.active_seconds > 0
             assert view.objective == goal.objective and view.criteria == goal.criteria
             assert view.pending_inputs == []
+            assert len(model.question_images) == 1
             assert (tmp_path / "project" / "one.txt").read_text() == "one"
             assert (tmp_path / "project" / "two.txt").read_text() == "two"
             assert not (tmp_path / "project" / "must-not-execute.txt").exists()
@@ -363,7 +386,14 @@ def test_goal_continuation_question_boundary_and_idempotency(tmp_path):
                 "second": "completed",
             }
             await goals.create(session_id, goal)
-            await app.sessions.start(session_id, question_id, "What is saved?", None, "normal")
+            await app.sessions.start(
+                session_id,
+                question_id,
+                "What is saved?",
+                None,
+                "normal",
+                attachment_ids=[image.attachment_id],
+            )
             assert model.calls == 7 and goals.driver(session_id) is None
 
     asyncio.run(scenario())

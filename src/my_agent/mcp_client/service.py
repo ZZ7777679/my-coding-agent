@@ -922,6 +922,18 @@ class McpService:
                 images.append(identity)
         if images:
             value["mcp_artifacts"] = list(dict.fromkeys(images))
+            value["image_inputs"] = [
+                {
+                    "artifact_id": identity,
+                    "read_tool": "view_image",
+                    "read_arguments": {
+                        "path": str((self.artifacts_dir(params) / identity).resolve()),
+                        "purpose": "Inspect the browser screenshot",
+                    },
+                    "note": "Saved only; call view_image to send original pixels to the model.",
+                }
+                for identity in dict.fromkeys(images)
+            ]
         return value
 
     async def close(self) -> None:

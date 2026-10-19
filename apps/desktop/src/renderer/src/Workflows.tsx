@@ -151,10 +151,12 @@ function StageEditor({
 /** 模板编辑、JSON 交换与新任务模板选择共用目录。 Share a catalog for template editing and selection. */
 export function Workflows({
   selected,
-  onSelect
+  onSelect,
+  initiallyOpen = false
 }: {
   selected?: string | null
   onSelect?: (identity: string | null) => void
+  initiallyOpen?: boolean
 }) {
   const [catalog, setCatalog] = useState<WorkflowCatalog | null>(null)
   const [draft, setDraft] = useState<WorkflowTemplate | null>(null)
@@ -210,7 +212,7 @@ export function Workflows({
     }
   }
   return (
-    <details className="detail-card settings-card">
+    <details className="detail-card settings-card workflow-catalog" open={initiallyOpen}>
       <summary>
         工作流模板
         {onSelect &&
@@ -218,8 +220,12 @@ export function Workflows({
       </summary>
       {onSelect && (
         <label>
-          新任务使用
-          <select value={selected ?? ''} onChange={(e) => onSelect(e.target.value || null)}>
+          选择流程
+          <select
+            aria-label="选择流程"
+            value={selected ?? ''}
+            onChange={(e) => onSelect(e.target.value || null)}
+          >
             <option value="">不使用模板</option>
             {catalog?.templates?.map((t) => (
               <option key={t.template_id} value={t.template_id}>
@@ -229,6 +235,11 @@ export function Workflows({
           </select>
         </label>
       )}
+      {onSelect && selected && (
+        <p className="muted workflow-description">
+          {catalog?.templates?.find((t) => t.template_id === selected)?.description}
+        </p>
+      )}
       <p className="muted">任务保存独立快照；编辑模板不改动已有任务。内置模板请复制后修改。</p>
       {catalog?.issues?.map((item) => (
         <p key={item} className="error">
@@ -236,10 +247,12 @@ export function Workflows({
         </p>
       ))}
       {catalog?.templates?.map((t) => (
-        <div key={t.template_id}>
-          {t.name}{' '}
+        <details key={t.template_id} className="workflow-option">
+          <summary>{t.name}</summary>
+          <p className="workflow-description">{t.description}</p>
+          <p className="muted">{t.stages?.map((stage) => stage.name).join(' → ')}</p>
           <button type="button" onClick={() => setDraft(t)}>
-            查看 / 编辑
+            {t.template_id.startsWith('builtin:') ? '查看阶段' : '查看 / 编辑'}
           </button>
           <button
             type="button"
@@ -249,7 +262,7 @@ export function Workflows({
           >
             复制
           </button>
-        </div>
+        </details>
       ))}
       <button
         type="button"
@@ -259,10 +272,22 @@ export function Workflows({
       </button>
       {draft && (
         <fieldset disabled={busy}>
-          <StageEditor template={draft} onChange={setDraft} />
+          <fieldset disabled={draft.template_id.startsWith('builtin:')}>
+            <StageEditor template={draft} onChange={setDraft} />
+          </fieldset>
+          {draft.template_id.startsWith('builtin:') && (
+            <button
+              type="button"
+              onClick={() =>
+                setDraft({ ...draft, template_id: crypto.randomUUID(), name: `${draft.name} 副本` })
+              }
+            >
+              复制后编辑
+            </button>
+          )}
           <button
             type="button"
-            disabled={draft.template_id === 'builtin:personal'}
+            disabled={draft.template_id.startsWith('builtin:')}
             onClick={() => void save()}
           >
             保存模板
@@ -272,7 +297,7 @@ export function Workflows({
           </button>
           <button
             type="button"
-            disabled={draft.template_id === 'builtin:personal'}
+            disabled={draft.template_id.startsWith('builtin:')}
             onClick={() => void save(true)}
           >
             删除模板
@@ -398,6 +423,13 @@ export function TaskWorkflowEditor({
       </details>
       {draft ? (
         <>
+          <p>
+            <strong>{draft.template.name}</strong>
+          </p>
+          <details>
+            <summary>流程来源与适配说明</summary>
+            <p className="workflow-description">{draft.template.description}</p>
+          </details>
           <label>
             当前阶段
             <select

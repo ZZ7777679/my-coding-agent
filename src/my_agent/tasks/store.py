@@ -35,6 +35,8 @@ from my_agent.workflow.types import (
     SourcedDecision,
     SourcedWorkItem,
     TaskWork,
+    WorkAssignment,
+    WorkItem,
     WorkReport,
 )
 
@@ -238,6 +240,38 @@ class TaskStore:
             ]
         )
 
+    def bind_work_stage(
+        self, task_id: str, session_id: str, stage_id: str | None, operation_id: str
+    ) -> None:
+        """在单写者内刷新会话阶段，避免并行报告造成旧修订冲突。
+
+        Refresh the session stage atomically within the writer against concurrent reports.
+        """
+        task = self.get(task_id)
+        workflow = task.workflow
+        if (
+            workflow is None
+            or stage_id is None
+            or stage_id not in {stage.stage_id for stage in workflow.template.stages}
+            or workflow.session_stages.get(session_id) == stage_id
+        ):
+            return
+        self.update_workflow(
+            UpdateTaskWorkflowParams(
+                task_id=task_id,
+                operation_id=operation_id,
+                expected_revision=task.revision,
+                workflow=workflow.model_copy(
+                    update={
+                        "session_stages": {
+                            **workflow.session_stages,
+                            session_id: stage_id,
+                        }
+                    }
+                ),
+            )
+        )
+
     def record_report(self, session_id: str, result_seq: int) -> TaskView | None:
         """按已保存来源幂等同步报告；不执行原工作，不覆盖用户共同字段。
 
@@ -305,13 +339,15 @@ class TaskStore:
         for item in report.work_items:
             # 模型进度采用最新报告，完整旧版本仍在日志中；不覆盖用户维护的任务字段。
             # Latest progress wins; journals retain history and user task fields stay intact.
-            merged[item.work_id] = SourcedWorkItem(item=item, source=source)
+            merged[item.work_id] = SourcedWorkItem(item=item, source=source, updated_at=utc_now())
         view = current.model_copy(
             update={
                 "revision": current.revision + 1,
                 "updated_at": utc_now(),
                 "source": "run_report",
                 "work": TaskWork(
+                    planned_items=current.work.planned_items,
+                    removed_work_ids=current.work.removed_work_ids,
                     items=list(merged.values()),
                     last_report=report if reported else current.work.last_report,
                     source=source if reported else current.work.source,
@@ -328,7 +364,144 @@ class TaskStore:
                             for item in report.decisions
                         ],
                     ],
+                    assignments=current.work.assignments,
                 ),
+            }
+        )
+        return self._save(
+            [
+                *facts,
+                TaskFact(operation_id=operation_id, expected_revision=current.revision, view=view),
+            ]
+        )
+
+    def save_work_plan(
+        self,
+        task_id: str,
+        operation_id: str,
+        expected_revision: int,
+        items: list[WorkItem],
+        removed_ids: list[str] | None = None,
+        owner_changes: dict[str, str | None] | None = None,
+    ) -> TaskView:
+        """保存用户工作定义，保留报告与执行历史。
+
+        Save user definitions without replacing progress.
+        """
+        facts = self.history(task_id)
+        current = facts[-1].view
+        prior = next((fact for fact in facts if fact.operation_id == operation_id), None)
+        if prior is not None:
+            saved_owners = {a.work_id: a.owner_member_id for a in prior.view.work.assignments}
+            if prior.view.work.planned_items != items or any(
+                saved_owners.get(key) != owner for key, owner in (owner_changes or {}).items()
+            ):
+                raise AgentError("OPERATION_CONFLICT", "操作标识已用于其他工作图。")
+            return current
+        baseline = next(
+            (fact.view for fact in facts if fact.view.revision == expected_revision), None
+        )
+        # 执行进度变化不使图草稿失效，只比较用户编辑的定义。
+        # Unrelated progress does not invalidate graph drafts; compare edited definitions only.
+        if baseline is None or baseline.work.planned_items != current.work.planned_items:
+            raise AgentError("TASK_CONFLICT", "工作定义已变化，请刷新后重新编辑；当前草稿仍保留。")
+        if len({item.work_id for item in items}) != len(items):
+            raise AgentError("INVALID_TOOL_ARGUMENTS", "工作标识重复，请为不同工作使用不同标识。")
+        identities = {item.work_id for item in items}
+        owners = owner_changes or {}
+        if owners.keys() - identities:
+            raise AgentError("INVALID_TOOL_ARGUMENTS", "负责人变更需要对应当前节点。")
+        assignments = {entry.work_id: entry for entry in current.work.assignments}
+        previous_owners = {
+            entry.work_id: entry.owner_member_id for entry in baseline.work.assignments
+        }
+        for identity, owner in owners.items():
+            old = assignments.get(identity)
+            if (old.owner_member_id if old else None) not in {previous_owners.get(identity), owner}:
+                raise AgentError("TASK_CONFLICT", "节点负责人已由其他操作修改，请刷新后再保存。")
+            updates = {
+                "owner_member_id": owner,
+                "claim_status": "assigned" if owner else "released",
+                "updated_at": utc_now(),
+            }
+            assignments[identity] = (
+                old.model_copy(update=updates)
+                if old
+                else WorkAssignment(
+                    work_id=identity,
+                    owner_member_id=owner,
+                    claim_status="assigned" if owner else "released",
+                    updated_at=utc_now(),
+                )
+            )
+        # 删除只改变当前图，不丢历史；迟到报告不能将节点自动复活。
+        # Removing a node preserves history; late reports cannot resurrect it.
+        removed = (set(current.work.removed_work_ids) | set(removed_ids or [])) - identities
+        view = current.model_copy(
+            update={
+                "revision": current.revision + 1,
+                "updated_at": utc_now(),
+                "source": "user",
+                "work": current.work.model_copy(
+                    update={
+                        "planned_items": items,
+                        "removed_work_ids": sorted(removed),
+                        "assignments": list(assignments.values()),
+                    }
+                ),
+            }
+        )
+        return self._save(
+            [
+                *facts,
+                TaskFact(operation_id=operation_id, expected_revision=current.revision, view=view),
+            ]
+        )
+
+    def assign_work(self, task_id: str, operation_id: str, assignment: WorkAssignment) -> TaskView:
+        """单写者更新工作承接并保留历史，不干涉 Goal 接纳。
+
+        Version work assignments under the single writer without affecting goal admission.
+        """
+        facts = self.history(task_id)
+        current = facts[-1].view
+        prior = next((fact for fact in facts if fact.operation_id == operation_id), None)
+        if prior is not None:
+            saved = next(
+                (
+                    item
+                    for item in prior.view.work.assignments
+                    if item.work_id == assignment.work_id
+                ),
+                None,
+            )
+            if saved is None or saved.model_dump(
+                exclude={"updated_at", "progress_updated_at"}
+            ) != assignment.model_dump(exclude={"updated_at", "progress_updated_at"}):
+                raise AgentError("OPERATION_CONFLICT", "该操作标识已用于其他工作分配。")
+            return current
+        existing = next(
+            (item for item in current.work.assignments if item.work_id == assignment.work_id), None
+        )
+        if (
+            existing
+            and existing.claim_status == "claimed"
+            and assignment.claim_status == "claimed"
+            and existing.owner_member_id != assignment.owner_member_id
+        ):
+            raise AgentError("SPACE_WORK_CLAIMED", "该工作项已由另一成员承接，请先重新分配或释放。")
+        assignments = [
+            assignment if item.work_id == assignment.work_id else item
+            for item in current.work.assignments
+        ]
+        if existing is None:
+            assignments.append(assignment)
+        view = current.model_copy(
+            update={
+                "revision": current.revision + 1,
+                "updated_at": utc_now(),
+                "source": "user",
+                "work": current.work.model_copy(update={"assignments": assignments}),
             }
         )
         return self._save(

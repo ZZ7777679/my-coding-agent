@@ -7,7 +7,8 @@ import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
 import childProcess from 'node:child_process'
 import { createRequire } from 'node:module'
-import { mkdir, mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile, stat, rm } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { requireDesktop, root, artifacts as artifactRoot } from '../support/runtime.mjs'
@@ -28,6 +29,141 @@ const realSpawn = childProcess.spawn
 after(() => {
   childProcess.spawn = realSpawn
 })
+
+/** 长查询与元数据移动使用真实 Python / RPC，只有耗时为夹具注入。
+ * Real Python/RPC for long queries and moves; only delays are injected.
+ */
+test(
+  'search and Git waits leave controls responsive and moves survive normal exit',
+  { timeout: 35000 },
+  async () => {
+    const isolated = await mkdtemp(path.join(artifacts, 'search-git-'))
+    const project = path.join(isolated, 'project')
+    await mkdir(path.join(project, '.git'), { recursive: true })
+    await writeFile(path.join(project, '.git/HEAD'), 'ref: refs/heads/main\n')
+    await writeFile(path.join(project, 'main.py'), 'def hello():\n    pass\n')
+    const peers = []
+    childProcess.spawn = (command, args, options) => {
+      if (path.basename(command).toLowerCase() === 'taskkill.exe')
+        return realSpawn(command, args, options)
+      const peer = realSpawn(
+        command,
+        args.map((value) => (value === 'my_agent' ? 'tests.support.search_git_backend' : value)),
+        options
+      )
+      peers.push(peer)
+      return peer
+    }
+    /** 等待夹具边界，不靠固定延迟猜测是否开始。 Observe fixture boundaries instead of guessing. */
+    async function entered(name) {
+      const end = performance.now() + 5000
+      while (performance.now() < end) {
+        if (
+          await stat(path.join(project, name)).then(
+            () => true,
+            () => false
+          )
+        )
+          return
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      }
+      assert.fail(`Fixture did not enter ${name}`)
+    }
+    const backend = new Backend(root, path.join(isolated, 'data'), '0.0.0', () => {})
+    try {
+      await backend.start()
+      const opened = await backend.call('projects.open', { path: project }, 'ProjectsView')
+      const project_id = opened.active_project.project_id
+      const created = await backend.call(
+        'tasks.create',
+        {
+          operation_id: randomUUID(),
+          project_id,
+          model_id: 'glm-5.3-flash',
+          fields: { title: 'Lifecycle fixture', goal: 'No model calls' }
+        },
+        'CreateTaskResult'
+      )
+      const session_id = created.session.session_id
+      const slow = () =>
+        backend.call(
+          'documents.search',
+          { session_id, query: '__slow_fixture__' },
+          'DocumentSearchResult',
+          null
+        )
+      const superseded = assert.rejects(slow(), (error) => error.detail.code === 'CANCELLED')
+      await entered('search-entered')
+      const ordinary = await backend.call('projects.list', {}, 'ProjectsView', 2000)
+      assert.equal(ordinary.active_project.project_id, project_id)
+      const result = await backend.call(
+        'documents.search',
+        { session_id, query: '^def', regex: true },
+        'DocumentSearchResult',
+        null
+      )
+      assert.equal(result.matches[0].path, 'main.py')
+      await superseded
+      await rm(path.join(project, 'search-entered'))
+      const cancelledAtExit = assert.rejects(slow(), (error) =>
+        ['BACKEND_EXITED', 'CANCELLED'].includes(error.detail.code)
+      )
+      await entered('search-entered')
+      const move = backend.call(
+        'git.configure',
+        { project_id, enabled: false },
+        'GitSettings',
+        null
+      )
+      await entered('move-entered')
+      const status = backend.call('git.status', { project_id }, 'GitStatus', null)
+      assert.equal(
+        (await backend.call('projects.list', {}, 'ProjectsView', 2000)).active_project.project_id,
+        project_id
+      )
+      const stopped = backend.stop()
+      const saved = await move
+      assert.equal(saved.enabled, false)
+      assert.equal((await status).code, 'GIT_DISABLED')
+      await Promise.all([stopped, cancelledAtExit])
+      assert.equal(peers[0].exitCode, 0)
+      assert.equal(
+        await readFile(path.join(saved.backup_path, 'HEAD'), 'utf8'),
+        'ref: refs/heads/main\n'
+      )
+      assert.equal(
+        await stat(path.join(project, '.git')).then(
+          () => true,
+          () => false
+        ),
+        false
+      )
+      assert.equal(
+        (await readFile(path.join(project, 'search-cleaned'), 'utf8')).trim().split('\n').length,
+        2
+      )
+      const reopened = new Backend(root, path.join(isolated, 'data'), '0.0.0', () => {})
+      try {
+        await reopened.start()
+        const restored = await reopened.call(
+          'git.configure',
+          { project_id, enabled: true },
+          'GitSettings',
+          null
+        )
+        assert.equal(restored.enabled, true)
+        assert.equal(
+          await readFile(path.join(project, '.git/HEAD'), 'utf8'),
+          'ref: refs/heads/main\n'
+        )
+      } finally {
+        await reopened.stop()
+      }
+    } finally {
+      await backend.stop()
+    }
+  }
+)
 
 /**
  * 通过不同故障 peer 检查稳定错误码和自有进程退出。

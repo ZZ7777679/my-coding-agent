@@ -1,7 +1,7 @@
 {
   "app_name": "My Coding Agent",
-  "stage": "M4",
-  "protocol_version": 6,
+  "stage": "M5",
+  "protocol_version": 10,
   "data_schema_version": 1,
   "data_dir": "E:\\MyCodingAgentData",
   "data_dir_env": "MY_AGENT_DATA_DIR",
@@ -56,6 +56,9 @@
     "probe_timeout_seconds": 15,
     "max_output_bytes": 262144
   },
+  "intelligence": {
+    "timeout_seconds": 30
+  },
   "run": {
     "max_requests": 25,
     "max_tools": 60,
@@ -73,10 +76,15 @@
   },
   "model": {
     "provider": "opencode-go",
-    "base_url": "https://opencode.ai/zen/go/v1",
+    "base_url": "https://opencode.ai/inference/go/openai/v1",
     "api": "chat_completions",
     "model_id": "glm-5.3-flash",
     "allowed_models": ["glm-5.3-flash", "deepseek-v4.1-flash"],
     "api_key_env": "OPENCODE_API_KEY"
+  },
+  "go_endpoints": {
+    "legacy_base_url": "https://opencode.ai/zen/go/v1",
+    "messages_url": "https://opencode.ai/inference/go/anthropic/v1/messages",
+    "models_url": "https://opencode.ai/inference/go/v1/models"
   }
 }

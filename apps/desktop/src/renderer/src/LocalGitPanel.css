@@ -1,0 +1,88 @@
+.local-git-panel {
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--border, #344256);
+  padding: 10px;
+  border-radius: 8px;
+  margin: 10px 0;
+}
+.local-git-panel > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding-right: 90px;
+}
+.local-git-hide {
+  position: absolute;
+  right: 10px;
+  top: 7px;
+}
+.local-git-tabs,
+.local-git-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+}
+.local-git-tabs button[aria-selected='true'] {
+  border-color: #60a5fa;
+  background: #203852;
+}
+.local-git-files {
+  list-style: none;
+  padding: 0;
+  max-height: 200px;
+  overflow: auto;
+}
+.local-git-files li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 0;
+}
+.local-git-files li input {
+  flex: none;
+  width: auto;
+}
+.local-git-files li code {
+  white-space: pre;
+  min-width: 2ch;
+}
+.local-git-path {
+  text-align: left;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.local-git-diff pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 290px;
+  overflow: auto;
+  background: #111721;
+  border-radius: 5px;
+  padding: 10px;
+}
+.local-git-commit {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.local-git-commit label {
+  display: flex;
+  flex: 1;
+  min-width: 180px;
+  flex-direction: column;
+  gap: 5px;
+}
+.local-git-history {
+  margin-top: 12px;
+  max-height: 240px;
+  overflow: auto;
+}
+.local-git-history small {
+  display: block;
+  color: #9ca3af;
+  margin-left: 11ch;
+}

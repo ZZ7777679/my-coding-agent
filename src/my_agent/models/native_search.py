@@ -5,7 +5,7 @@ import json
 
 import httpx
 
-from my_agent.errors import AgentError, http_error_code
+from my_agent.errors import AgentError
 from my_agent.models.failures import request_failure
 from my_agent.models.go import GoClient
 from my_agent.models.timing import RequestTiming
@@ -127,6 +127,7 @@ class NativeSearchClient:
         body: JsonObject = {
             "model": self.model_id,
             "max_tokens": limits.max_output_tokens,
+            "stream": False,
             "messages": [
                 {
                     "role": "user",
@@ -151,7 +152,7 @@ class NativeSearchClient:
             ):
                 async with client.stream(
                     "POST",
-                    self.go.base_url + "/messages",
+                    self.go.messages_url,
                     headers=headers,
                     json=body,
                     timeout=limits.request_timeout_seconds,
@@ -160,20 +161,14 @@ class NativeSearchClient:
                     status = response.status_code
                     await timing.headers()
                     if status != 200:
-                        kind = await self.go._error_kind(response)
-                        raise AgentError(
-                            http_error_code(status, kind), f"搜索请求失败（HTTP {status}）。"
-                        )
+                        raise await self.go.http_failure(response, "搜索请求")
                     data = bytearray()
                     async for chunk in response.aiter_bytes():
                         await timing.received(len(chunk))
-                        # 原生来源含不透明续接字段，不能套用可见主对话文本容量。
-                        # Native source envelopes include opaque fields, not just visible chat text.
-                        if len(data) + len(chunk) > limits.max_file_bytes:
-                            raise AgentError(
-                                "WEB_RESPONSE_LIMIT",
-                                "搜索原始响应超过本次读取容量，可调整文件读取预算。",
-                            )
+                        # 原生来源包含较大的不透明字段，不属于项目文件读取预算；
+                        # 解析后只交付来源 / 摘要，工具结果仍按其自己的预算裁剪。
+                        # Provider envelopes are not project files. Only extracted sources/text
+                        # reach the tool-result budget; opaque fields never enter model context.
                         data.extend(chunk)
                     timing.progress = timing.progress.model_copy(update={"response_complete": True})
                     # 凭据永不进入工具正文，即使远端异常回显请求头。

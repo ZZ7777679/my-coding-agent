@@ -11,8 +11,9 @@ from my_agent.changes.types import ChangePage
 from my_agent.goals.types import GoalView
 from my_agent.models.types import ModelData
 from my_agent.runtime.modes import RunMode
-from my_agent.sessions.types import RunView, SessionId
+from my_agent.sessions.types import RunView, SessionId, SessionSummary
 from my_agent.tasks.types import TaskView
+from my_agent.workflow.types import WorkObjective
 
 ScopeText = Annotated[str, Field(min_length=1, max_length=8000, pattern=r"\S")]
 
@@ -49,9 +50,9 @@ class CollaborationRequestParams(ModelData):
     operation_id: SessionId
     source_session_id: SessionId
     target_session_id: SessionId
-    objective: ScopeText
-    inputs: Annotated[str, Field(max_length=8000)] = ""
-    expected_result: Annotated[str, Field(max_length=8000)] = ""
+    objective: WorkObjective
+    inputs: str = ""
+    expected_result: str = ""
     mode: RunMode = "plan"
 
 
@@ -118,6 +119,8 @@ class CollaborationRequest(ModelData):
     target_run_id: SessionId | None = None
     result_seq: int | None = None
     result: str = ""
+    outcome: Literal["continue", "complete", "wait", "return"] | None = None
+    next_action: str = ""
     created_at: str
     updated_at: str
     arrangement: ArrangeSessionWorkParams | None = None
@@ -132,6 +135,7 @@ class CollaborationPageParams(ModelData):
 
     session_id: SessionId
     cursor: SessionId | None = None
+    peer_cursor: SessionId | None = None
     limit: Annotated[int, Field(ge=1, le=50)] = 20
 
 
@@ -145,6 +149,14 @@ class CollaborationPage(ModelData):
     requests: list[CollaborationRequest]
     next_cursor: SessionId | None
     error: str | None = None
+    task_id: SessionId | None = None
+    reason: Literal["no_task", "no_agreements_configured", "ready"] = "no_task"
+    next_step: str = ""
+    candidates: list[SessionSummary] = Field(default_factory=list)
+    next_peer_cursor: SessionId | None = None
+    unavailable_peers: int = 0
+    worker_enabled: bool = False
+    worker_reason: str = ""
 
 
 class CollaborationHistoryParams(ModelData):

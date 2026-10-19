@@ -11,6 +11,7 @@ import pytest
 
 from my_agent.collaboration.types import CollaborationRequestParams
 from my_agent.errors import AgentError
+from my_agent.memory.types import MemorySettings
 from my_agent.sessions.types import RunAccepted
 from tests.python.test_goal_controller import (
     app_at,
@@ -103,6 +104,7 @@ async def pair(app, project):
             "scope": "Confirm startup instructions",
         },
     )
+    await app.sessions.memory.configure(peer.session_id, MemorySettings(automatic=False))
     return task.session.session_id, peer.session_id
 
 
@@ -303,7 +305,7 @@ def test_user_handoff_and_readonly_review(tmp_path):
                             call("create_file", path="forbidden.txt", content="not allowed")
                         )
                 else:
-                    assert "接续与交接" in messages[0]["content"]
+                    assert "工作交接 / Handoff" in messages[0]["content"]
                     assert "User notes: Preserve all other work" in prompt
                 stages[kind] += 1
                 step = stages[kind]

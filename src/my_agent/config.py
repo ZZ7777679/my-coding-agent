@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from my_agent.errors import AgentError, DataSource
 from my_agent.models.connections import ConnectionSettings
+from my_agent.models.endpoints import GO_BASE_URL, current_base_url
 from my_agent.rpc.dto import CredentialInfo, ModelId, PublicConfig
 from my_agent.runtime.settings import RunLimits
 
@@ -34,11 +35,23 @@ class ModelConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
     provider: Literal["opencode-go"]
-    base_url: Literal["https://opencode.ai/zen/go/v1"]
+    base_url: str
     api: Literal["chat_completions"]
     model_id: ModelId
     allowed_models: list[ModelId]
     api_key_env: Literal["OPENCODE_API_KEY"]
+
+    @field_validator("base_url")
+    @classmethod
+    def go_base_url(cls, value: str) -> str:
+        """读取旧配置时采用当前 Go 地址，下次显式保存再写回文件。
+
+        Adopt the current Go address on load and persist it on the next explicit save.
+        """
+        result = current_base_url(value)
+        if result != GO_BASE_URL:
+            raise ValueError("Unsupported Go endpoint")
+        return result
 
     @field_validator("allowed_models")
     @classmethod

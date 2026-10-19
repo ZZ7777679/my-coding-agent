@@ -88,6 +88,7 @@ from my_agent.models.connections import (
     ModelConnectionProbeParams,
 )
 from my_agent.models.types import ModelId as ModelId
+from my_agent.rpc.m5_types import M5_TYPES
 from my_agent.runtime.modes import RunMode
 from my_agent.runtime.settings import RunLimits
 from my_agent.sessions.trace import TraceDetail, TraceDetailParams, TracePage, TraceParams
@@ -121,6 +122,14 @@ from my_agent.skills.types import (
     SkillDocument,
     SkillParams,
     SkillReadParams,
+)
+from my_agent.spaces.types import (
+    BindSpaceMemberParams,
+    SaveSpaceLayoutParams,
+    SaveSpaceParams,
+    SpaceParams,
+    SpaceResult,
+    SpaceStartParams,
 )
 from my_agent.tasks.types import (
     AssignSessionParams,
@@ -194,7 +203,7 @@ class PublicConfig(DTO):
     """
 
     provider: Literal["opencode-go"]
-    base_url: Literal["https://opencode.ai/zen/go/v1"]
+    base_url: str
     api: Literal["chat_completions"]
     model_id: ModelId
     allowed_models: list[ModelId]
@@ -289,8 +298,8 @@ class AppInfo(DTO):
 
     name: Text
     app_version: Text
-    protocol_version: Literal[6]
-    stage: Literal["M4"]
+    protocol_version: Literal[10]
+    stage: Literal["M5"]
 
 
 class StorageInfo(DTO):
@@ -370,7 +379,7 @@ class InitializeParams(DTO):
     """
 
     app_version: Text
-    protocol_version: Literal[6]
+    protocol_version: Literal[10]
     data_schema_version: Literal[1]
 
 
@@ -386,6 +395,58 @@ class InitializeResult(DTO):
     projects: ProjectsView
     capabilities: list[
         Literal[
+            "spaces.work",
+            "spaces.work_graph",
+            "spaces.work_graph_save",
+            "spaces.work_graph_start",
+            "spaces.generate",
+            "spaces.chat_view",
+            "spaces.chat",
+            "spaces.start_round",
+            "spaces.stop",
+            "spaces.templates",
+            "spaces.template_save",
+            "spaces.template_copy",
+            "spaces.template_import",
+            "spaces.template_export",
+            "documents.list",
+            "documents.read",
+            "documents.search",
+            "documents.save",
+            "documents.drafts",
+            "documents.draft",
+            "documents.operate",
+            "documents.patch",
+            "documents.diff",
+            "documents.restore",
+            "terminals.list",
+            "terminals.open",
+            "terminals.read",
+            "terminals.write",
+            "terminals.resize",
+            "terminals.control",
+            "terminals.interrupt",
+            "terminals.stop",
+            "git.status",
+        "git.settings",
+        "git.configure",
+            "git.diff",
+            "git.stage",
+            "git.unstage",
+            "git.init",
+            "git.commit",
+            "git.history",
+            "intelligence.list",
+            "intelligence.configure",
+            "intelligence.query",
+            "attachments.import",
+            "attachments.chunk",
+            "attachments.read",
+            "spaces.get",
+            "spaces.save",
+            "spaces.start",
+            "spaces.bind",
+            "spaces.layout",
             "workflows.parse",
             "workflows.list",
             "workflows.save",
@@ -673,6 +734,7 @@ class StartRunParams(SessionParams):
 
     operation_id: SessionId
     prompt: Annotated[str, Field(min_length=1, max_length=64000)]
+    attachment_ids: list[SessionId] = Field(default_factory=list)
     limits: RunLimits | None
     mode: RunMode = "plan"
     plan_document: Annotated[str, Field(min_length=1, max_length=4096)] | None = None
@@ -710,6 +772,13 @@ class SessionEventNotification(DTO):
 PUBLIC_TYPES: dict[str, type[BaseModel]] = {
     model.__name__: model
     for model in (
+        *M5_TYPES,
+        SpaceParams,
+        SaveSpaceParams,
+        SaveSpaceLayoutParams,
+        SpaceStartParams,
+        BindSpaceMemberParams,
+        SpaceResult,
         McpParams,
         SaveMcpParams,
         McpControlParams,

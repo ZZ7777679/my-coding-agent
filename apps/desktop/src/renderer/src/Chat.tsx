@@ -1,6 +1,13 @@
 /** 项目对话：模式、快照、流式预览与工具证据。 Project chat with modes, snapshots and tool evidence. */
 import { useEffect, useRef, useState } from 'react'
 import { ContextMemory, type KnowledgeUi } from './ContextMemory'
+import { Markdown } from './Markdown'
+import {
+  InputAttachments,
+  attachmentSelection,
+  type InputAttachmentHandle
+} from './InputAttachments'
+import type { Attachment } from '../../generated/protocol'
 import type { QuestionMaterial } from './KnowledgeDetails'
 import { Workers } from './Workers'
 import type {
@@ -123,7 +130,7 @@ function HistoryEntry({
         onToggle={onReasoningToggle}
         streaming={false}
       />
-      {entry.text && <pre>{entry.text}</pre>}
+      {entry.text && <Markdown text={entry.text} />}
     </article>
   )
 }
@@ -145,6 +152,17 @@ export function Chat({
   const [older, setOlder] = useState<ChatEntry[]>([])
   const [olderCursor, setOlderCursor] = useState<number | null>(null)
   const [prompt, setPrompt] = useState('')
+  const attachmentInput = useRef<InputAttachmentHandle>(null)
+  const [attachments, setAttachments] = useState<Attachment[]>(() =>
+    selected ? (attachmentSelection.get(selected) ?? []) : []
+  )
+  useEffect(() => {
+    const refreshAttachments = () =>
+      setAttachments(selected ? (attachmentSelection.get(selected) ?? []) : [])
+    refreshAttachments()
+    window.addEventListener('agent:attachment-selected', refreshAttachments)
+    return () => window.removeEventListener('agent:attachment-selected', refreshAttachments)
+  }, [selected])
   const [questionMaterials, setQuestionMaterials] = useState<Record<string, QuestionMaterial[]>>(
     () => Object.fromEntries(materialCache)
   )
@@ -346,6 +364,7 @@ export function Chat({
     )
       return
     const sessionId = selected
+    const submittedAttachments = [...attachments]
     const submittedMaterials = questionMaterials[sessionId] ?? []
     // 选中的公开片段作为明确标记的参考输入保存，重启后可从普通历史回读。
     // Persist selected public excerpts as labeled reference input in ordinary history.
@@ -362,6 +381,11 @@ export function Chat({
     /** 只移除实际发送的快照，保留等待期间新选或更新的材料。
      * Remove only submitted snapshots, keeping materials added or changed during admission. */
     const clearSubmittedMaterials = () => {
+      const remainingAttachments = (attachmentSelection.get(sessionId) ?? []).filter(
+        (item) => !submittedAttachments.some((sent) => sent.attachment_id === item.attachment_id)
+      )
+      attachmentSelection.set(sessionId, remainingAttachments)
+      if (currentSelection.current === sessionId) setAttachments(remainingAttachments)
       const remaining = (materialCache.get(sessionId) ?? []).filter(
         (item) => !submittedMaterials.includes(item)
       )
@@ -376,6 +400,24 @@ export function Chat({
           setError('此会话已有未结束 Goal，请先接续或取消它。')
           return
         }
+      }
+      // 文件在发送时固定版本；已选草稿与粘贴图片保持用户选择的内容。
+      // Freeze files at send time; retain explicitly selected drafts and pasted images.
+      const sentAttachmentIds: string[] = []
+      for (const item of submittedAttachments) {
+        if (item.source_path && (item.origin ?? 'file') === 'file') {
+          const refreshed = await window.agent.importAttachment({
+            session_id: sessionId, path: item.source_path,
+            start_line: item.start_line, end_line: item.end_line, purpose: item.purpose
+          })
+          if (!refreshed.ok) {
+            if (currentSelection.current === sessionId) setError(refreshed.error.message)
+            return
+          }
+          sentAttachmentIds.push(refreshed.data.attachment_id)
+        } else sentAttachmentIds.push(item.attachment_id)
+      }
+      if (mode === 'goal') {
         const descriptions = criteria
           .split('\n')
           .map((line) => line.trim())
@@ -385,6 +427,7 @@ export function Chat({
           session_id: sessionId,
           goal_id: crypto.randomUUID(),
           objective: submittedPrompt,
+          attachment_ids: sentAttachmentIds,
           criteria: [
             { criterion_id: 'criterion-1', description: first },
             ...descriptions.map((description, index) => ({
@@ -413,6 +456,7 @@ export function Chat({
         session_id: sessionId,
         operation_id: crypto.randomUUID(),
         prompt: submittedPrompt,
+        attachment_ids: sentAttachmentIds,
         limits: null,
         mode,
         plan_document: mode === 'plan' && planDocument.trim() ? planDocument.trim() : null
@@ -661,7 +705,7 @@ export function Chat({
                 onToggle={(open) => toggleReasoning(snapshot.stream_message_id ?? 'live', open)}
                 streaming={snapshot.model_progress?.phase === 'reasoning'}
               />
-              {snapshot.stream_text && <pre>{snapshot.stream_text}</pre>}
+              {snapshot.stream_text && <Markdown text={snapshot.stream_text} />}
             </article>
           )}
         </div>
@@ -796,6 +840,21 @@ export function Chat({
           )}
           <div
             className="chat-composer"
+            onPaste={(event) => {
+              if (event.clipboardData.files.length) {
+                event.preventDefault()
+                void attachmentInput.current?.addFiles(event.clipboardData.files)
+              }
+            }}
+            onDragOver={(event) => {
+              if (event.dataTransfer.types.includes('Files')) event.preventDefault()
+            }}
+            onDrop={(event) => {
+              if (event.dataTransfer.files.length) {
+                event.preventDefault()
+                void attachmentInput.current?.addFiles(event.dataTransfer.files)
+              }
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
                 event.preventDefault()
@@ -839,6 +898,18 @@ export function Chat({
                   </button>
                 ))}
               </div>
+            )}
+            {selected && (
+              <InputAttachments
+                key={selected}
+                ref={attachmentInput}
+                sessionId={selected}
+                items={attachments}
+                onChange={(items) => {
+                  attachmentSelection.set(selected, items)
+                  if (currentSelection.current === selected) setAttachments(items)
+                }}
+              />
             )}
             <textarea
               aria-label="输入问题"

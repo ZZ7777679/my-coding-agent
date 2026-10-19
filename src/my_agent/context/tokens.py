@@ -13,11 +13,30 @@ def estimate_tokens(value: object) -> int:
 
     Estimate mixed text including JSON arguments, tools and native continuation fields.
     """
-    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+    text = (
+        value
+        if isinstance(value, str)
+        else json.dumps(without_image_bytes(value), ensure_ascii=False)
+    )
     # ASCII 与非 ASCII 分开计量；CJK 并不等同英文四字符一 token。
     # Price ASCII and non-ASCII separately; CJK is not English at four characters per token.
     ascii_chars = sum(len(match[0]) for match in re.finditer(r"[\x00-\x7f]+", text))
     return math.ceil(ascii_chars / 4 + (len(text) - ascii_chars) * 1.5)
+
+
+def without_image_bytes(value: object) -> object:
+    """
+    图片传输字节不计为正文 token；实际用量由服务返回。
+    Exclude transport image bytes from text tokens; actual usage comes
+    from the provider.
+    """
+    if isinstance(value, str) and value.startswith("data:image/"):
+        return "[image: token usage unknown]"
+    if isinstance(value, dict):
+        return {key: without_image_bytes(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [without_image_bytes(item) for item in value]
+    return value
 
 
 def head_tail(text: str, budget: int) -> str:

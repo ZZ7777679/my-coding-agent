@@ -134,7 +134,12 @@ class SessionLog:
                     if data.goal_id in ended and data.goal_role == "work"
                     else ""
                 )
-                messages.append({"role": "user", "content": prefix + data.prompt})
+                references = (
+                    "\nSaved attachment references (read_attachment to reread originals): "
+                    + ", ".join(data.attachment_ids)
+                    if data.attachment_ids else ""
+                )
+                messages.append({"role": "user", "content": prefix + data.prompt + references})
             elif isinstance(data, AssistantCommitted):
                 if pending:
                     return messages, False

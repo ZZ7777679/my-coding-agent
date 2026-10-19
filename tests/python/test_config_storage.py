@@ -19,6 +19,35 @@ from my_agent.storage import Storage, atomic_write
 runner = CliRunner()
 
 
+def test_legacy_go_endpoint_is_adopted_without_rewriting_on_read(tmp_path):
+    """兼容旧 Go 配置并保留模型、预算；只在显式保存时写回新地址。
+
+    Migrate legacy Go settings in memory, preserving model/budget until an explicit save.
+    """
+    from my_agent.models.endpoints import GO_BASE_URL, GO_MESSAGES_URL, messages_url
+
+    root = tmp_path / "data"
+    root.mkdir()
+    config_file = root / "config.toml"
+    previous = (
+        '[model]\nbase_url="https://opencode.ai/zen/go/v1"\n'
+        'model_id="deepseek-v4.1-flash"\n[run]\nmax_requests=37\n'
+    )
+    config_file.write_text(previous, encoding="utf-8")
+    location = resolve_data_dir(str(root))
+    config = load_config(location)
+    assert config.model.base_url == GO_BASE_URL
+    assert config.run.max_requests == 37
+    assert config_file.read_text(encoding="utf-8") == previous
+    assert messages_url(config.model.base_url) == GO_MESSAGES_URL
+    assert messages_url("https://api.deepseek.com") == "https://api.deepseek.com/messages"
+    storage = Storage(location)
+    with storage.writer():
+        storage.save_model("deepseek-v4.1-flash")
+    assert GO_BASE_URL in config_file.read_text(encoding="utf-8")
+    assert load_config(location).run.max_requests == 37
+
+
 def test_config_priority_and_redaction(tmp_path):
     """验证参数优先级、模型覆盖，以及非法配置错误不会泄露输入。
 

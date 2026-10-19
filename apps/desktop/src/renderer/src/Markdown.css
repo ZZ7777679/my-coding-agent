@@ -1,0 +1,10 @@
+.markdown-content { overflow-wrap: anywhere; line-height: 1.65; }
+.markdown-content > :first-child { margin-top: 0; }
+.markdown-content > :last-child { margin-bottom: 0; }
+.markdown-content table { border-collapse: collapse; display: block; overflow-x: auto; }
+.markdown-content th, .markdown-content td { border: 1px solid #3b4c46; padding: .35rem .65rem; }
+.markdown-content pre { overflow-x: auto; white-space: pre; padding: .65rem; background: #101515; }
+.markdown-content :not(pre) > code { background: #27322e; border-radius: 3px; padding: .1em .25em; }
+.markdown-code { position: relative; }
+.markdown-code > button { position: absolute; right: .3rem; top: .3rem; font-size: .75rem; opacity: .6; }
+.markdown-code:hover > button { opacity: 1; }

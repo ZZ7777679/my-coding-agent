@@ -3,7 +3,13 @@
  * Define the restricted preload interface, using generated protocol data types.
  */
 
+import type { M5DesktopAPI } from './m5-api'
 import type {
+  BindSpaceMemberParams,
+  SaveSpaceParams,
+  SaveSpaceLayoutParams,
+  SpaceResult,
+  SpaceStartParams,
   ParseWorkflowParams,
   WorkflowTemplate,
   WorkflowCatalog,
@@ -136,7 +142,17 @@ export type Result<T> = { ok: true; data: T } | { ok: false; error: OperationErr
  * renderer 唯一受信入口；不暴露文件系统、密钥或任意命令。
  * The renderer's trusted entry point, without filesystem, secret or arbitrary-command access.
  */
-export interface DesktopAPI {
+export interface DesktopAPI extends M5DesktopAPI {
+  /** 读取任务空间，旧任务返回未创建状态。 Read a task space, absent for legacy tasks. */
+  getSpace(taskId: string): Promise<Result<SpaceResult>>
+  /** 保存团队与图草稿，不开始执行。 Save a team and graph draft without execution. */
+  saveSpace(params: SaveSpaceParams): Promise<Result<SpaceResult>>
+  /** 显式组建草稿内的成员会话。 Explicitly assemble the draft's member sessions. */
+  startSpace(params: SpaceStartParams): Promise<Result<SpaceResult>>
+  /** 给稳定成员绑定已有或新会话。 Bind an existing or new session to a stable member. */
+  bindSpaceMember(params: BindSpaceMemberParams): Promise<Result<SpaceResult>>
+  /** 独立保存图展示状态，不保存团队编辑草稿。 Save graph presentation without committing team drafts. */
+  saveSpaceLayout(params: SaveSpaceLayoutParams): Promise<Result<SpaceResult>>
   parseWorkflow: (params: ParseWorkflowParams) => Promise<Result<WorkflowTemplate>>
   listWorkflows: (params: EmptyParams) => Promise<Result<WorkflowCatalog>>
   saveWorkflow: (params: SaveWorkflowParams) => Promise<Result<WorkflowCatalog>>

@@ -1,0 +1,201 @@
+[
+  {
+    "template_id": "builtin:openspec",
+    "name": "OpenSpec · 变更驱动（适配版）",
+    "description": "适合已有项目中的功能迭代。探索 → 提案 → 规范与设计 → 任务 → 实施 → 核对 → 归档。使用一份变更目录连接需求与代码。来源：Fission-AI/OpenSpec，MIT，参考 c794978f4f8845ce59693373c9dd882ee776588c（2026-10-19 核对）。本应用以阶段 Skill 适配，不安装 OpenSpec CLI，不执行原生斜杠命令；允许跳过和返回阶段，文件不是执行门槛。详细来源见 workflow-openspec 的 SOURCE.md。",
+    "stages": [
+      {
+        "stage_id": "explore",
+        "name": "探索需求",
+        "goal": "结合现有代码明确本次行为变化、范围和未知项；已有结论直接复用。",
+        "skills": ["builtin:workflow-openspec", "builtin:discuss"],
+        "suggested_role": "需求分析"
+      },
+      {
+        "stage_id": "propose",
+        "name": "变更提案",
+        "goal": "说明为什么改、改什么、影响哪里，保留用户已确认的决定。",
+        "skills": ["builtin:workflow-openspec", "builtin:plan"],
+        "artifacts": "同一变更目录中的 proposal.md；已有约定路径优先。",
+        "depends_on": ["explore"],
+        "suggested_role": "方案负责人"
+      },
+      {
+        "stage_id": "specify",
+        "name": "规范与设计",
+        "goal": "用增量规范表达新增、修改和删除的行为及具体场景；技术取舍写入设计，简单变更可省略独立设计。",
+        "skills": ["builtin:workflow-openspec", "builtin:plan"],
+        "artifacts": "specs/<capability>/spec.md；需要解释取舍时写 design.md。",
+        "depends_on": ["propose"],
+        "suggested_role": "方案负责人"
+      },
+      {
+        "stage_id": "tasks",
+        "name": "拆分任务",
+        "goal": "把当前规范和设计拆成可交付单元，指明涉及位置、依赖和最小验证；只维护一份清单。",
+        "skills": ["builtin:workflow-openspec", "builtin:plan"],
+        "artifacts": "变更目录内 tasks.md。",
+        "depends_on": ["specify"],
+        "suggested_role": "实现负责人"
+      },
+      {
+        "stage_id": "implement",
+        "name": "实施变更",
+        "goal": "按任务完成代码，更新真实进度；需求变化时同步对应规范，保留其他会话修改。",
+        "skills": ["builtin:workflow-openspec", "builtin:implement"],
+        "artifacts": "代码改动与同一 tasks.md 的实际状态。",
+        "depends_on": ["tasks"],
+        "feedback_to": ["specify"],
+        "suggested_role": "开发"
+      },
+      {
+        "stage_id": "verify",
+        "name": "核对结果",
+        "goal": "核对实现与需求场景、任务的差异，报告真实检查结果和未验证部分；修复遵循当前授权。",
+        "skills": ["builtin:workflow-openspec", "builtin:review"],
+        "depends_on": ["implement"],
+        "feedback_to": ["implement"],
+        "suggested_role": "审查"
+      },
+      {
+        "stage_id": "archive",
+        "name": "归档与接续",
+        "goal": "在用户要求收尾时将确认的增量合入长期规范并归档本次变更；未完成时只记录下一步。",
+        "skills": ["builtin:workflow-openspec", "builtin:handoff"],
+        "artifacts": "更新后的长期规范与历史变更；没有收尾授权则保留当前目录。",
+        "depends_on": ["verify"],
+        "suggested_role": "任务负责人"
+      }
+    ]
+  },
+  {
+    "template_id": "builtin:superpowers",
+    "name": "Superpowers · 分步开发（适配版）",
+    "description": "适合日常功能开发与调试。讨论 → 计划 → 实施 → 调试与验证 → 审查 → 交接。复用本应用已有的 Superpowers 方法资源。流程参考 obra/superpowers，MIT，bb92a77741419a4ab5f06e711a283343f1ada0c3（2026-10-19 核对）；既有方法各自的来源版本保留。本适配版按需验证，严格 TDD 由用户选择；工作副本、子 Agent、Review 和 Git 操作沿当前设置与授权，不自动启用。详细差异见 workflow-superpowers 的 SOURCE.md。",
+    "stages": [
+      {
+        "stage_id": "discuss",
+        "name": "讨论与设计",
+        "goal": "澄清非显然的需求和取舍，明确验收行为；已清楚的小改动可直接实施。",
+        "skills": ["builtin:workflow-superpowers", "builtin:discuss"],
+        "suggested_role": "方案负责人"
+      },
+      {
+        "stage_id": "plan",
+        "name": "制定计划",
+        "goal": "按完整结果拆分步骤，写明真实文件、接口及验证方式，避免固定工期和重复清单。",
+        "skills": ["builtin:workflow-superpowers", "builtin:plan"],
+        "artifacts": "沿项目已有位置保存一份实施计划。",
+        "depends_on": ["discuss"],
+        "suggested_role": "实现负责人"
+      },
+      {
+        "stage_id": "implement",
+        "name": "逐项实施",
+        "goal": "交付当前授权单元并记录偏差；需要并行时按已有角色或子 Agent 开关安排。",
+        "skills": ["builtin:workflow-superpowers", "builtin:implement"],
+        "artifacts": "代码与计划进度。",
+        "depends_on": ["plan"],
+        "suggested_role": "开发"
+      },
+      {
+        "stage_id": "diagnose",
+        "name": "调试与验证",
+        "goal": "出现缺陷先复现和定位根因，再按授权修复并做定向验证；正常测试失败先报告事实。",
+        "skills": ["builtin:workflow-superpowers", "builtin:diagnose"],
+        "depends_on": ["implement"],
+        "feedback_to": ["implement"],
+        "suggested_role": "开发"
+      },
+      {
+        "stage_id": "review",
+        "name": "代码审查",
+        "goal": "用户选择审查后，基于实际差异检查行为与设计，返回可行动问题；不为完成清单制造问题。",
+        "skills": ["builtin:workflow-superpowers", "builtin:review"],
+        "depends_on": ["implement"],
+        "feedback_to": ["implement"],
+        "suggested_role": "审查"
+      },
+      {
+        "stage_id": "handoff",
+        "name": "交付与接续",
+        "goal": "说明实际改动、验证、剩余事项和下一步；保留本地成果，Git 提交或发布按用户要求。",
+        "skills": ["builtin:workflow-superpowers", "builtin:handoff"],
+        "depends_on": ["implement"],
+        "suggested_role": "任务负责人"
+      }
+    ]
+  },
+  {
+    "template_id": "builtin:spec-kit",
+    "name": "Spec Kit · 规范驱动（适配版）",
+    "description": "适合新功能或范围较大的开发。项目原则 → 需求规范 → 澄清 → 技术计划 → 任务 → 实施 → 收敛。来源：github/spec-kit，MIT，参考 c6a4c18f1d01a8bec241c618eb6dfea952508744（2026-10-19 核对）。以 Skill 和 Markdown 适配，不安装 specify CLI / 扩展；沿已有项目规范和工具工作，不机械重走所有阶段，不自动建立分支或推送。详细来源见 workflow-spec-kit 的 SOURCE.md。",
+    "stages": [
+      {
+        "stage_id": "principles",
+        "name": "复用项目原则",
+        "goal": "读取项目已有规范，明确本次相关约束；只在项目确有需要且用户要求时补项目原则，不与 AGENTS.md 重复。",
+        "skills": ["builtin:workflow-spec-kit", "builtin:discuss"],
+        "artifacts": "现有项目规范，或明确需要的新原则文档。",
+        "suggested_role": "方案负责人"
+      },
+      {
+        "stage_id": "specify",
+        "name": "需求规范",
+        "goal": "描述用户需求、可观察行为、范围外事项及验收场景，先区分需求与技术实现。",
+        "skills": ["builtin:workflow-spec-kit", "builtin:discuss"],
+        "artifacts": "本次功能目录内 spec.md。",
+        "depends_on": ["principles"],
+        "suggested_role": "需求分析"
+      },
+      {
+        "stage_id": "clarify",
+        "name": "澄清未决项",
+        "goal": "只询问真正影响结果的缺失信息；已确认决定直接引用，没有未决项即可进入计划。",
+        "skills": ["builtin:workflow-spec-kit", "builtin:discuss"],
+        "artifacts": "更新同一 spec.md 的已确认决定与未决项。",
+        "depends_on": ["specify"],
+        "feedback_to": ["specify"],
+        "suggested_role": "需求分析"
+      },
+      {
+        "stage_id": "plan",
+        "name": "技术计划",
+        "goal": "基于真实源码与环境明确模块、接口和实现顺序，按需要补研究或数据设计。",
+        "skills": ["builtin:workflow-spec-kit", "builtin:plan"],
+        "artifacts": "同一功能目录内 plan.md；可选 research.md / 接口说明。",
+        "depends_on": ["specify"],
+        "suggested_role": "方案负责人"
+      },
+      {
+        "stage_id": "tasks",
+        "name": "生成实现任务",
+        "goal": "将计划拆成可交付任务并对应需求场景，明确依赖和可以并行的范围。",
+        "skills": ["builtin:workflow-spec-kit", "builtin:plan"],
+        "artifacts": "同一功能目录内 tasks.md。",
+        "depends_on": ["plan"],
+        "suggested_role": "实现负责人"
+      },
+      {
+        "stage_id": "implement",
+        "name": "实施功能",
+        "goal": "完成授权范围内的任务、代码和必要文档，按真实执行更新清单。",
+        "skills": ["builtin:workflow-spec-kit", "builtin:implement"],
+        "artifacts": "代码与对应任务进度。",
+        "depends_on": ["tasks"],
+        "feedback_to": ["plan"],
+        "suggested_role": "开发"
+      },
+      {
+        "stage_id": "converge",
+        "name": "核对与收敛",
+        "goal": "对照规范检查实现和验证结果，列出差距；当前请求包含修复时继续处理，否则报告待办。",
+        "skills": ["builtin:workflow-spec-kit", "builtin:review"],
+        "artifacts": "需求场景的实际结果、未验证项和接续说明。",
+        "depends_on": ["implement"],
+        "feedback_to": ["implement", "specify"],
+        "suggested_role": "审查"
+      }
+    ]
+  }
+]

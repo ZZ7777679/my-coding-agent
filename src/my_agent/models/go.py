@@ -10,6 +10,7 @@ from pydantic import JsonValue, TypeAdapter, ValidationError
 
 from my_agent.credentials import ResolvedCredential
 from my_agent.errors import AgentError, http_error_code
+from my_agent.models.endpoints import current_base_url, messages_url
 from my_agent.models.failures import ModelResponseError, request_failure
 from my_agent.models.http import ModelHttpPool, public_request_headers
 from my_agent.models.timing import RequestTiming
@@ -245,11 +246,17 @@ class GoClient:
         credential: ResolvedCredential,
         base_url: str,
         http: ModelHttpPool,
+        *,
+        request_model_id: str | None = None,
     ) -> None:
         """借用后端连接池，逐请求构造敏感头。 Borrow a pool; build sensitive headers per call."""
         self.credential = credential
-        self.base_url = base_url
+        self.base_url = current_base_url(base_url)
+        self.messages_url = messages_url(self.base_url)
         self.http = http
+        # 显式适配同一模型在直连接口中的名称；应用身份和历史记录保持不变。
+        # Map the explicitly selected upstream name while preserving application identity/history.
+        self.request_model_id = request_model_id
 
     def check_available(self) -> None:
         """凭据失败不计为真实请求。 Credential failures do not count as actual requests."""
@@ -293,13 +300,16 @@ class GoClient:
         timing = RequestTiming(on_progress)
         headers = self.request_headers(session_id)
         body = {
-            "model": model_id,
+            "model": self.request_model_id or model_id,
             "messages": messages,
-            "tools": tools,
             "stream": True,
             "stream_options": {"include_usage": True},
             "max_tokens": limits.max_output_tokens,
         }
+        # Go 的 DeepSeek 路由会挂起空 tools 数组；无工具时省略可选字段。
+        # Go's DeepSeek route stalls on an empty tools array; omit the optional field when unused.
+        if tools:
+            body["tools"] = tools
 
         async def deliver_text(delta: str) -> None:
             """先记真实首字再交付，不等响应结束。 Time text before immediate delivery."""
@@ -337,13 +347,9 @@ class GoClient:
                     http_status = response.status_code
                     await timing.headers()
                     if response.status_code != 200:
-                        kind = await self._error_kind(response)
-                        code = http_error_code(response.status_code, kind)
-                        raise AgentError(
-                            code,
-                            f"模型请求失败（HTTP {response.status_code}）。",
-                            "检查认证、Go 额度或网络后显式重试。",
-                        )
+                        failure = await self.http_failure(response, "模型请求")
+                        code = failure.code
+                        raise failure
                     turn = await self._stream(
                         response, limits, deliver_text, timing, deliver_reasoning, buffered_turn
                     )
@@ -373,6 +379,25 @@ class GoClient:
             finally:
                 self.http.record(timing.progress, code, http_status=http_status, model_id=model_id)
 
+    async def http_failure(self, response: httpx.Response, operation: str) -> AgentError:
+        """将已识别的认证失败转为可操作说明，不公开原始响应。
+
+        Explain recognized authentication failures without exposing the raw response.
+        """
+        kind = await self._error_kind(response)
+        code = http_error_code(response.status_code, kind)
+        if kind == "api_key_expired" and response.status_code == 401:
+            return AgentError(
+                code,
+                "当前 API key 已过期；续费或重新登录不会续期旧 key。",
+                "请在 OpenCode Console 新建 API key，更新应用使用的凭据后重试。",
+            )
+        return AgentError(
+            code,
+            f"{operation}失败（HTTP {response.status_code}）。",
+            "检查认证、Go 额度或网络后显式重试。",
+        )
+
     @staticmethod
     async def _error_kind(response: httpx.Response) -> str | None:
         """只提取有界错误类别，原始响应不公开。 Extract a bounded error category, never its body."""
@@ -384,6 +409,12 @@ class GoClient:
         try:
             value = json.loads(raw)
             error = value.get("error") if isinstance(value, dict) else None
+            if isinstance(error, dict) and response.status_code == 401:
+                message = error.get("message")
+                # 仅识别已观察到的过期说明，不把服务商响应原文带入 UI。
+                # Recognize the observed expiry notice without forwarding provider text to the UI.
+                if isinstance(message, str) and message.startswith("This API key has expired."):
+                    return "api_key_expired"
             kind = error.get("type", error.get("code")) if isinstance(error, dict) else None
             return kind if isinstance(kind, str) else None
         except ValueError:

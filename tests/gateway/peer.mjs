@@ -10,8 +10,14 @@ const fixtures = JSON.parse(
 )
 const ready = fixtures.find((sample) => sample.name === 'ready-state').data
 const diagnostic = fixtures.find((sample) => sample.name === 'diagnostic-report').data
+const defaults = JSON.parse(
+  readFileSync(new URL('../../src/my_agent/defaults.json', import.meta.url), 'utf8')
+)
 const mode = process.argv[2]
 const input = createInterface({ input: process.stdin })
+// EOF 表示取消尚未完成的模拟诊断，不让测试计时器拖住退出。
+// EOF cancels simulated diagnostics instead of letting fixture timers delay exit.
+input.on('close', () => process.exit(0))
 let first = true
 /**
  * 跳过私有引导帧后按模式响应，保持请求关联用于网关边界验证。
@@ -38,6 +44,21 @@ input.on('line', (line) => {
   if (request.method === 'diagnostics.get') {
     const reply = JSON.stringify({ jsonrpc: '2.0', id: request.id, result: diagnostic }) + '\n'
     setTimeout(() => process.stdout.write(reply), mode === 'slow-diagnostic' ? 9000 : 0)
+    return
+  }
+  if (request.method === 'environments.list') {
+    process.stdout.write(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: request.id,
+        result: {
+          revision: 0,
+          environments: [],
+          binding: null,
+          settings: defaults.execution
+        }
+      }) + '\n'
+    )
     return
   }
   const reply = {

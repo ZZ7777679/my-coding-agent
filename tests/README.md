@@ -1,5 +1,17 @@
 # 测试与回归
 
+2026-10-19 M5 收尾搜索 / Git：`.venv/Scripts/python.exe -X utf8 -m pytest tests/python/test_search_git_tools.py -q` 覆盖真实 rg 正则 / 上下文 / 路径筛选、201 文件批处理、无效模式在真实 Run 中纠正接续、字面后备、有界输出，以及模型 Git 初始化 / 双区差异 / 暂存 / 提交 / 历史、Plan、归档、关闭 / 重建服务 / 恢复、上层仓库保留和备份冲突。使用隔离项目、测试仓库本地身份和 Git ceiling；无远端、无真实模型。桌面构建后 `npm.cmd --prefix apps/desktop run test:desktop -- search-git.spec.ts` 验证 201 文件搜索、普通请求继续可用、Git 开关及退出重启恢复；时序、截图与数据归 `.artifacts/tests/desktop-search-git-*/`。按本批变更选用，不加入每次开发必跑清单。
+
+`node --test --test-name-pattern="search and Git waits" tests/gateway/backend.test.mjs` 使用真实 Python / RPC / 文件移动，仅通过 `support/search_git_backend.py` 注入慢查询与 17 秒移动延迟；验证新查询停止旧查询、Git 锁等待不阻塞普通控制、正常退出等待迁移、搜索进程清理和重启恢复。数据归 `.artifacts/tests/gateway-*/search-git-*/`，不打开窗口或访问网络，不在产品入口加入测试开关。
+
+2026-10-19 协作修复定向验证：`pytest tests/python/test_collaboration_fixes.py -q` 覆盖接纳反馈、只读 Goal 接续、候选 / worker 状态、等待到期、精确取消、跨会话成果、图删除与迟到报告、长输入、增长历史和旧快照兼容。复用真实服务、离线模型和隔离目录；按相关改动选择运行。桌面 `work-graph.spec.ts` 补连线 / Delete、拖动位置、删除节点、分配统一保存及重启，`spaces.spec.ts` 检查团队图与各折叠区；结果和限制见 [M5 进度](../docs/progress/m5.md)。
+
+2026-10-19 协作可落地性审查观察器：`.venv/Scripts/python.exe -X utf8 -m tests.maintenance.collaboration_audit`。复用既有模型替身与真实 RPC / 工具 / Goal，观察未安排协作的失败传播、生成节点删除、Review 接续模式、长输入与累计历史容量；输出位于独立 `.artifacts/tests/collaboration-audit-*/report.json`。退出码 0 只表示观测完成，不把已知缺陷编码为健康验收；不加入日常必跑检查、不访问外网或个人数据。结论见 [审查报告](../docs/research/reports/collaboration-usability-audit-2026-10-19.md)。
+
+任务工作图：`pytest tests/python/test_work_graph.py -q` 用模型替身驱动真实 RPC、工具与 Goal，覆盖模板骨架、用户定义 / 报告分离、阶段 Skill、单次 / 连续执行、失败停止和重启恢复。桌面构建后运行 `npm.cmd --prefix apps/desktop run test:desktop -- work-graph.spec.ts`，验证首会话接入、图编辑、分配 / 反馈、折叠和宽窄窗口。均零真实模型请求；产物归 `.artifacts/tests/`，按本批影响选择执行。
+
+M5 A–F 首版的服务、工作台与联合验收入口见下方 [M5 定向入口](#m5-定向入口)。离线模型决策、真实 ConPTY / Git / LSP、原生 Electron 窗口和显式真实模型分别标注；不把模拟通过记为真实模型成功。
+
 M4 后续定向入口：`python/test_file_changes.py -k read_argument_feedback` 复现原 `limit` 错误并检查具体字段反馈；`python/test_agent_core.py -k read_field_correction` 检查同一 Run 修正字段 / 类型后完成；`python/test_go.py -k 'reasoning_stream_does_not or failure_cause_is_separate'` 检查思考即时输出、状态节流与真实失败分类。均离线。`python -m tests.models.persona_coding_live --enable-real-models --diagnostics` 使用原双模型加法器，最多 12 次请求 / 10 分钟，记录思考 / 正文 / 工具片段和生产回调耗时，仅在显式运行时联网；不更改产品默认模型参数，产物位于 `.artifacts/tests/persona-coding-live-*/`。
 
 同入口 `--resume-report <report.json> --diagnostics --followup` 明确追加一个 `--abs` 小修改，保存原报告快照，另有最多 12 次请求 / 5 分钟、每模型 6 请求的验收保护；不是自动继续原失败或产品默认限制。`--finish-report` 与 `--followup` 互斥，只明确请求报告已完成结果，另最多 2 次 / 2 分钟、每模型 1 请求，提示不再调用工具；真实工具事实仍保留，不能把预算失败改写成成功。9 月 30 日追加样本原配置只有每模型 4 请求，已执行修改 / 两次运行却缺最终回答，两个预算终态保留；随后明确收尾 2 请求通过。修正的是后续实验默认保护，不回写旧证据。该观察器串行包裹原模型解析 / 回调，计时不改变模型参数，不保存第二份流原文；回调耗时属于后端，不能代表完整 Electron 渲染。
@@ -8,7 +20,7 @@ M4 后续定向入口：`python/test_file_changes.py -k read_argument_feedback` 
 
 本轮补核：`python/test_go.py -k reported_usage_survives` 用合成断流 / 无效 JSON 验证已报告计量不丢失；`python/test_mcp_arguments.py` 使用真实 SDK 内存服务验证参数错误零派发、可修正及真实执行失败仍停止，另核对本地 / 外部 schema 引用边界，均不访问网络或模型。`models/ticket_experiment.py --variant <baseline|implement_only|tools_subset|brief|examples|batch> --only-phase <implementation|followup>` 在独立根进行单变量真实对照；真实请求必须显式 `--enable-real-models`，同限额用 `--output-tokens` / `--request-timeout`，已有结果不自动重放。`--seed-project` 仅复制 Agent 已完成答案用于后续编辑对照，manifest 保存种子指纹；`--probe-reference` 引用旧探测，不计作新增请求。
 
-2026-09-30 实验反馈增量：`python/test_trace.py` 覆盖失败请求关联、usage 保存 / 未知及重启；`python/test_go.py` 覆盖尾部真实缓存字段；`python/test_ticket_manifest.py` 覆盖源码指纹、补丁不落盘与阶段配置保留。共享 `v6-*` 正反样本覆盖真实缓存 / 未知 / 非法计量与旧协议拒绝，公开协议现为 v6。`models/ticket_manifest.py` 为既有 ticket 实验保存独立阶段快照，不采集凭据或项目外文件；格式 / 类型和相关隔离检查按改动选择，真实对照另显式启用，保留原实验记录。
+2026-09-30 实验反馈增量：`python/test_trace.py` 覆盖失败请求关联、usage 保存 / 未知及重启；`python/test_go.py` 覆盖尾部真实缓存字段；`python/test_ticket_manifest.py` 覆盖源码指纹、补丁不落盘与阶段配置保留。共享 `v6-*` 正反样本覆盖真实缓存 / 未知 / 非法计量与旧协议拒绝；该轮协议为 v6，M5 当前协议为 v7。`models/ticket_manifest.py` 为既有 ticket 实验保存独立阶段快照，不采集凭据或项目外文件；格式 / 类型和相关隔离检查按改动选择，真实对照另显式启用，保留原实验记录。
 
 本目录集中管理正式用例、回归脚本、辅助代码和测试专用样本。新增测试按职责归组并更新本清单；规则见 [AGENTS.md](../AGENTS.md)，实际运行结果见 [进度总览](../docs/progress/README.md) 与对应阶段记录。
 
@@ -52,6 +64,71 @@ OAuth 定向验证：`pytest tests/python/test_mcp_oauth.py -q` 使用 `support/
 | `support/` | Node 入口定位、共用依赖解析与测试专用模型装配 | 由各测试组引用 | 不单独执行 |
 | `models/` | 显式启用的 Go 双模型真实工具回合 | `.venv\Scripts\python.exe tests/models/go_roundtrip.py --enable-real-models` | 联网、使用现有 Go 凭据；每模型最多 3 请求 / 3 分钟，默认 CI 不运行 |
 
+## M5 定向入口
+
+2026-10-19 Go / 合作空间修复：`test_config_storage.py::test_legacy_go_endpoint_is_adopted_without_rewriting_on_read` 检查旧地址采用新协议路由但不在读取时改写配置；`test_go.py -k 'fragmented_tools_headers or auth_failure'` 检查路由、完整工具参数与过期凭据说明；`test_web_tools.py::test_search_in_real_run_and_goal` 包含超过文件读取容量的原生搜索响应、不透明数据不入会话。`test_space_team.py::test_three_organisations_routes_busy_queue_and_goal_stop` 检查消息 / 轮次归属，`node --test-isolation=none --test tests/contracts/space-stream.test.mjs` 检查流文本与等待元数据独立更新。
+
+`npm.cmd --prefix apps/desktop run test:desktop -- spaces.spec.ts` 真实窗口验证手动组队、自动排布、拖动、保存 / 重启和 1440 / 1000 宽度下六处折叠区域，无模型请求。`tests.models.connection_checks --enable-real-models` 各测试一次双模型；`tests.models.go_roundtrip --enable-real-models` 每模型最多三次只读代码请求；`tests.models.go_native_search --enable-real-models` 一次公开查询（`--max-response-bytes` 仅约束原始协议诊断，不是产品限额）。上述 Python 模块使用 `.venv/Scripts/python.exe -X utf8 -m` 启动。`tests.models.go_routes --enable-real-models` 比较新旧 Chat 路由，首包即结束；`--compare-payloads` 则在当前路由用四个短请求比较可选字段及输出预算，仅保存时序和类别，不把首包到达当作完整模型回合通过。
+
+以下命令在仓库根目录运行，只选择当前改动涉及的文件 / 节点。所有项目、数据和报告归 `.artifacts/tests/` 独立目录，不使用个人数据根。服务用例默认不调用真实模型；其中真实本机工具不是模型替身。安装锁定 Python / 桌面依赖后运行，语言服务用例使用实际 Pyright / TypeScript 服务；可选服务缺失只影响对应能力。
+
+`go_native_search` 加 `--production-client` 使用应用真实搜索适配器，验证大封装的实际提取，不使用原始协议探测的容量参数；仍只有一次请求。`go_routes --with-tool` 则以一个简单非空工具定义比较新旧路径，同样只测首包，不执行返回工具。`--compare-payloads` 中的 `production` 是修复前包含空 tools 的复现样本，不是当前生产请求格式。
+
+| 用例 | 直接覆盖范围 | 运行条件 / 产物 |
+| --- | --- | --- |
+| `python/test_spaces.py` | 旧任务不自动迁移、草稿不建会话、有向循环图 / 布局恢复、组建部分失败显式接续 / 幂等、换绑历史与最新成员简报 | 生产服务 / 隔离存储；离线模型决策，无窗口 / 外网；`python-*` |
+| `python/test_space_team.py` | 真实 Run 装配下的团队草稿、模板保存 / 复制 / 导入导出、claim 与重启、三种组织路由、成员忙时排队和 Goal 停止 | 模型决策为替身；真实控制器 / 服务，无窗口 / 外网；`python-*` |
+| `python/test_documents.py` | 草稿 / 手动保存、Agent 冲突、BOM / CRLF、批量 patch 部分结果、选定恢复、创建 / 移动 / 删除和可修正反馈 | 实际隔离文件与共享 writer，无窗口 / 外网；`python-*` |
+| `python/test_m5_terminals_git.py` | ConPTY Unicode / 长行、成员控制移交、Ctrl+C 子进程、CMD 退出；无 remote 的 Git 暂存 / 差异 / 本地提交 / 历史与上层仓库范围 | Windows、pywinpty、本机 Git / Shell；不配置全局身份，不调用模型；`python-*` |
+| `python/test_m5_intelligence.py` | 真实 Pyright / TypeScript 的定义、引用、hover、补全、符号、诊断、两种 rename 编辑；草稿并发、捕获基线 / 过期拒绝、取消初始化清理、可选缺失可修正且文件工具可用 | 本机 Node 与锁定语言服务依赖；无窗口 / 模型请求；`python-*` |
+| `python/test_attachments.py` | 超过单页限额的文本 / 图片完整分页拼接、无效图片分块的上传清理 | 生产附件服务 / 隔离存储，无窗口 / 外网；`python-*` |
+| `python/test_m5_joint.py` | 同一计数器场景贯通团队、文件 / patch / 选定恢复、报告、成员独立停止、附件材料、实际命令与重启不重放 | 模型决策为替身，命令 / 文件 / 服务实际执行；不证明浏览器像素理解；`python-*` |
+| `python/test_m5_shared_bootstrap.py` | CLI / RPC 共用 M5 服务及工具装配；单个资源清理失败不跳过其余资源 | 仅装配 / 清理，不启动可选进程或请求模型；`python-*` |
+| `contracts/space-stream.test.mjs` | 群聊快照与迟到 delta 不重复、不同 message 的流式水位隔离 | 无窗口 / 外网 / 模型请求 |
+| `desktop/spaces.spec.ts` | 手动编辑团队图、保存草稿、显式组建 / 打开成员会话、重启布局与折叠恢复 | 实际 Electron / RPC / Python；仅目录选择替身，零模型请求；`desktop-spaces-*` |
+| `desktop/workbench.spec.ts` | 文件编辑 / 保存、BOM / CRLF、Agent 冲突、选区引用、Markdown 与重启；第二条实际 Monaco / Pyright 诊断、引用、emoji 重命名预览及明确保存 | 原生 Electron 窗口；文件场景模型为替身，LSP 场景零模型请求；`desktop-workbench-*` / `desktop-language-*` |
+| `desktop/workbench-runtime.spec.ts` | 默认 PowerShell / PSReadLine 的实际 xterm 输入、长命令、resize、Ctrl+C / 关闭；明确独立 Git 初始化、两文件 stage / unstage / index diff | 原生 Electron + 生产 Python，无模型替身输入 / 请求；本机 Shell / Git，无 remote；`desktop-runtime-*` |
+
+Python 的最小入口是单个文件或节点，例如：
+
+```powershell
+.venv/Scripts/python.exe -X utf8 -m pytest tests/python/test_spaces.py -q -p no:cacheprovider
+.venv/Scripts/python.exe -X utf8 -m pytest tests/python/test_space_team.py -q -p no:cacheprovider
+.venv/Scripts/python.exe -X utf8 -m pytest tests/python/test_documents.py -q -p no:cacheprovider
+.venv/Scripts/python.exe -X utf8 -m pytest tests/python/test_m5_terminals_git.py -q -p no:cacheprovider
+.venv/Scripts/python.exe -X utf8 -m pytest tests/python/test_m5_intelligence.py -q -p no:cacheprovider
+.venv/Scripts/python.exe -X utf8 -m pytest tests/python/test_attachments.py -q -p no:cacheprovider
+.venv/Scripts/python.exe -X utf8 -m pytest tests/python/test_m5_joint.py -q -p no:cacheprovider
+.venv/Scripts/python.exe -X utf8 -m pytest tests/python/test_m5_shared_bootstrap.py -q -p no:cacheprovider
+node --test-isolation=none --test tests/contracts/space-stream.test.mjs
+```
+
+原生窗口测试先构建最新资源；以下入口串行运行，避免窗口互相干扰。需要只复核 LSP 时，可选择第二条用例的名称。
+
+```powershell
+npm.cmd --prefix apps/desktop run build
+npm.cmd --prefix apps/desktop run test:desktop -- spaces.spec.ts
+npm.cmd --prefix apps/desktop run test:desktop -- workbench.spec.ts
+npm.cmd --prefix apps/desktop run test:desktop -- workbench.spec.ts --grep "real LSP"
+npm.cmd --prefix apps/desktop run test:desktop -- workbench-runtime.spec.ts
+```
+
+最后一条原生窗口复验通过：真实长命令 READY 输出为 46 ms，默认 PSReadLine 保留，15 秒等待保护未放宽。截图 / 报告在 `.artifacts/tests/desktop-runtime-PeqrNO/`；LSP 窗口证据在 `.artifacts/tests/desktop-language-1hR4u0/`。这属于已执行证据，不要求每次重复。
+
+`models/m5_images.py` 在生产模型客户端发送独立图片，分别核对 GLM / DeepSeek 的实际像素回答和后续不重放图片。`models/m5_joint.py` 使用实际团队生成、代码工具、终端预览、Playwright MCP 浏览器、只读 Review、明确修改、截图读取 / 下一请求视觉理解以及重启不重放；需要兼容浏览器运行包或通过 `MY_AGENT_TEST_BROWSER` 指定已有浏览器程序，会打开实际浏览器窗口。二者只在明确启用时使用现有 Go 凭据和额度，不进入普通 CI；验收请求 / 时间保护不是产品默认门槛。
+
+```powershell
+.venv/Scripts/python.exe -X utf8 -m tests.models.m5_images --enable-real-models --request-limit 4 --time-limit-seconds 480
+.venv/Scripts/python.exe -X utf8 -m tests.models.m5_joint --enable-real-models --implementation-model deepseek-v4.1-flash --request-limit 20 --time-limit-seconds 1200
+
+# 仅明确接续已有视觉步骤；保留原报告，不重放已验证的代码 / Review
+.venv/Scripts/python.exe -X utf8 -m tests.models.m5_joint --enable-real-models --resume-vision-report '.artifacts/tests/m5-joint-<id>/report.json' --request-limit 24 --time-limit-seconds 360
+```
+
+联合入口默认实现模型为 GLM；上述命令显式选择已通过的 DeepSeek，实现模型可选范围仍只有两个约定模型。`--probe-only` 只做短诊断，不代表联合业务通过；`--verify-saved-only --resume-vision-report <report.json>` 仅读取保存的验证事实，不发新增模型请求，入口仍要求显式 `--enable-real-models` 标记。产物分别为 `.artifacts/tests/m5-images-*/` 与 `m5-joint-*/`，保存请求计量、终态、报告和浏览器产物；接续累计原请求数，预算截止与失败不改写为成功。
+
+2026-09-30 真实验收总计 29 次请求：双模型图片 2 项通过；DeepSeek 计数器 / Review / 截图链路累计 21 次请求通过，包含一次验收预算截止后的明确接续。GLM 长业务超时 / 传输失败未通过，短诊断截断，因此没有双模型长链路成功结论。具体失败、接续和保存证据见 [M5 进度](../docs/progress/m5.md)。附件 / 可选 LSP 反馈最终定向复验产物在 `.artifacts/tests/m5-attachment-feedback-final/`；完整阶段验收以进度记录为准。
+
 ## M4 定向入口
 
 - `models/ticket_experiment.py` / `ticket_browser.mjs`：合成工单 CSV → 标准库清洗 / 统计 / 离线 HTML，追加搜索及负责人统计并验证真实后端重启接续。`.venv/Scripts/python.exe -X utf8 -B -m tests.models.ticket_experiment --root .artifacts/tests/<独立实验目录>` 默认仅准备合成输入；加 `--enable-real-models` 后才经生产 RpcApplication 使用指定模型运行，要求该目录已有真实 `probe.json` 成功证据且尚无运行报告，不自动重放。失败报告检查后，仅明确授权的 `--resume` 可接续原会话，备份原报告并跳过已通过阶段；当前输出截断接续使用单次 16384 输出 / 300 秒等待，不改产品默认值。实验保护最多 50 个编码请求 / 1200 秒，含接续；两轮间关闭并重开后端。Python oracle 和已安装 Edge（经 Playwright）独立验证固定 / 留出样本及实际筛选，0 新依赖；默认 CI 不运行，公开模型调用需用户授权，无个人项目 / MCP / OAuth。
@@ -62,7 +139,8 @@ OAuth 定向验证：`pytest tests/python/test_mcp_oauth.py -q` 使用 `support/
 
 - `python/test_trace.py`：事件配对、分页、迟到结果、参数 / 结果详情及原生状态排除。
 - `python/test_skills.py`：来源覆盖、会话引用、版本归档、坏配置局部降级、资源库及项目导入（含附属文件）。
-- `python/test_workflow_templates.py`：模板快照、任务修改、报告保留及旧任务兼容。
+- `python/test_workflow_templates.py`：模板快照、任务修改、报告保留及旧任务兼容；三个开源适配流程的阶段 Skill 实际装配、内置模板复制约定、零项目写入与重启恢复。
+- `desktop/workflow-presets.spec.ts`：真实 Electron 中查看 / 复制三个流程、新建任务选择、切换阶段和重启恢复；零模型 / 外网请求，截图与报告在 `.artifacts/tests/desktop-workflows-*`。运行 `npm.cmd --prefix apps/desktop run test:desktop -- workflow-presets.spec.ts`（先构建桌面）。
 - `python/test_mcp_http.py`：真实本地 Streamable HTTP，工具 / 资源、全局测试与项目启用范围、慢目录及多会话清理，无外网或模型。
 - `python/test_mcp.py`：仅在 `MY_AGENT_TEST_MCP=1` 下启动锁定的 Playwright MCP；`MY_AGENT_TEST_BROWSER` 可指定已有兼容浏览器。实际导航、点击、截图、两会话隔离、取消与清理。仅本机页面；可选 `MY_AGENT_TEST_INSTALL_BROWSER=1` 会联网下载安装配套运行包，不在普通 CI 默认运行。
 - `python/test_m4_journey.py`：同一 MCP 开关下运行真实文件 / 命令 / 浏览器的空白计数器场景，仅替换模型；覆盖 Goal 中阶段切换、Skill、浏览器动作、既有 Review 会话、显式修改及重启恢复。
@@ -185,3 +263,7 @@ M2 收尾复用该文件中的三条定向检查：`::test_bidirectional_deliver
 - `examples/timeout-config/` 是故意保留缺陷的被测项目，它自带的测试可以留在示例中；执行统一由聚合入口在副本中完成。生产 schema 和生成类型继续放在 `schemas/` 与桌面生成目录。
 
 历史 `.artifacts/` 根下的调试脚本与截图作为已有验收历史保留。新的可复用测试源码必须进入本目录，不能继续在产物目录增加脚本。手工原生窗口验收如需保留自动化步骤，也按职责整理到本目录并增加清单，人工结果写入阶段进度。
+
+`python -X utf8 -m tests.models.m5_space_demo` 使用项目 `.venv` 准备隔离的两成员计数器演示；脚本本身不调用模型。输出的 `demo.json` 记录数据根，桌面以该根启动后可实际发送合作请求。演示过程与真实请求结果另记于 M5 进度。
+
+用户明确选择官方直连时，关闭占用此演示数据根的桌面后，用 `.venv/Scripts/python.exe -X utf8 -m tests.models.m5_space_direct --root <演示根绝对路径> --enable-real-models` 运行。只读取 `DEEPSEEK_API_KEY`，请求官方 `deepseek-flash`，复用真实文件、群聊与协作服务；默认最多 24 请求 / 600 秒，可通过参数调整。报告 `direct-report.json` 标注实际 provider 与 API 模型名；不修改产品默认 Go 配置。结束后桌面可查看持久历史，桌面新请求仍沿用 Go，并非增加了完整 provider 设置。已有报告不会自动重放。

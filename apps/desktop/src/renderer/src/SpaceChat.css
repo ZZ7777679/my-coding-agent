@@ -1,0 +1,197 @@
+/* 仅消息历史滚动，折叠区按内容占位。 Only message history scrolls; disclosures keep their natural height. */
+.space-chat {
+  min-width: 0;
+  margin: 16px 0;
+}
+.space-chat-body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding-bottom: 12px;
+}
+.space-chat header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.space-chat h3,
+.space-chat p {
+  margin: 0;
+}
+.space-chat-toolbar {
+  justify-content: space-between;
+}
+.space-chat-history {
+  overflow: auto;
+  min-height: 84px;
+  max-height: min(52vh, 560px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  scrollbar-gutter: stable;
+}
+.space-chat-history > article {
+  flex: 0 0 auto;
+  padding: 14px;
+  border: 1px solid #34453c;
+  border-radius: 10px;
+  background: #131b17;
+  min-width: 0;
+}
+.space-chat-history article p {
+  overflow-wrap: anywhere;
+  margin-top: 8px;
+}
+.space-chat .space-user-message {
+  white-space: pre-wrap;
+  color: #e0e8e3;
+  padding-bottom: 8px;
+}
+.space-exchange > header {
+  color: #a7d8c0;
+  font-size: 12px;
+}
+.space-exchange time {
+  margin-left: auto;
+  color: #8d9b94;
+  font-size: 11px;
+}
+.space-chat .space-round {
+  border-color: #526a83;
+}
+.space-chat .space-output {
+  border-left: 2px solid #40584b;
+  padding-left: 12px;
+}
+.space-chat .space-output.is-active {
+  border-left-color: #98d6b9;
+}
+.space-output > summary {
+  font-size: 13px;
+}
+.space-output > summary span {
+  color: #95a89c;
+  font-size: 11px;
+}
+.space-output-body {
+  padding-bottom: 8px;
+}
+.space-output-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.space-panel .space-output-actions button {
+  font-size: 11px;
+  padding: 4px 8px;
+  background: transparent;
+}
+.space-output-error {
+  color: #edb491;
+  overflow-wrap: anywhere;
+}
+.space-chat form {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.space-chat fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+}
+.space-chat fieldset legend {
+  color: #a3b2a8;
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+.space-panel .space-chat fieldset label,
+.space-panel .space-inline-check {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  margin: 0;
+}
+.space-chat fieldset label {
+  padding: 5px 9px;
+  border: 1px solid #35493d;
+  border-radius: 20px;
+}
+.space-panel input[type='checkbox'] {
+  width: auto;
+  height: auto;
+  padding: 0;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: #a7d8bc;
+}
+.space-chat textarea {
+  min-height: 78px;
+  resize: vertical;
+}
+.space-chat-actions,
+.space-template-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.space-team-tools {
+  border: 1px solid #34453c;
+  border-radius: 8px;
+  padding: 0 12px;
+}
+.space-team-tools-body {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 12px;
+  min-width: 0;
+}
+.space-team-tools textarea {
+  min-height: 90px;
+  width: 100%;
+}
+.space-template-actions input {
+  flex: 1 1 180px;
+  width: auto;
+}
+.space-template-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.space-template-list article {
+  border: 1px solid #34453c;
+  border-radius: 6px;
+  padding: 9px;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.space-work {
+  min-width: 0;
+}
+.space-work > details {
+  margin-left: 12px;
+  padding: 0 12px 10px;
+  border-left: 2px solid #34453c;
+}
+.space-work > details:not([open]) {
+  padding-bottom: 0;
+}
+.space-work select {
+  margin: 8px 0;
+}
+.space-work button {
+  margin: 0 8px 8px 0;
+}
+.space-work textarea {
+  margin: 8px 0;
+}
+@media (max-width: 700px) {
+  .space-chat-history {
+    max-height: 45vh;
+  }
+}

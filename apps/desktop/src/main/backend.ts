@@ -12,7 +12,7 @@ import type {
   DiagnosticsParams,
   InitializeResult,
   OperationError,
-  ProtocolV6,
+  ProtocolV10,
   SessionSignal
 } from '../generated/protocol'
 import { validate } from '../shared/validation'
@@ -47,7 +47,7 @@ function error(code: string, message: string): BackendError {
 type Pending = {
   resolve(value: unknown): void
   reject(reason: Error): void
-  timer: ReturnType<typeof setTimeout>
+  timer: ReturnType<typeof setTimeout> | null
 }
 
 /**
@@ -58,6 +58,7 @@ export class Backend {
   private child: ChildProcessWithoutNullStreams | undefined
   private buffer: Buffer = Buffer.alloc(0)
   private pending = new Map<string, Pending>()
+  private metadataMoves = new Set<Promise<unknown>>()
   private nextId = 0
   private failed: BackendError | undefined
   private ready: Promise<InitializeResult> | undefined
@@ -253,20 +254,26 @@ export class Backend {
    * 按方法校验短控制响应，诊断与运行使用独立等待。
    * Validate short control responses independently of diagnostic and run waiting.
    */
-  async call<K extends keyof ProtocolV6>(
+  async call<K extends keyof ProtocolV10>(
     method: string,
     params: object,
     resultType: K,
-    timeoutMs = 8000
-  ): Promise<ProtocolV6[K]> {
+    timeoutMs: number | null = 8000
+  ): Promise<ProtocolV10[K]> {
     // M1 的诊断与模型运行独立，取消请求立即进入控制通道。
     // M1 diagnostics and model runs are independent; cancellation goes directly to control.
-    const value = await this.request(method, params, timeoutMs)
+    const response = this.request(method, params, timeoutMs)
+    if (method === 'git.configure') this.metadataMoves.add(response)
     try {
-      return validate(resultType, value)
-    } catch {
-      this.fail(error('PROTOCOL_INVALID', '后端返回的数据格式不正确。'))
-      throw this.failed
+      const value = await response
+      try {
+        return validate(resultType, value)
+      } catch {
+        this.fail(error('PROTOCOL_INVALID', '后端返回的数据格式不正确。'))
+        throw this.failed
+      }
+    } finally {
+      this.metadataMoves.delete(response)
     }
   }
 
@@ -285,7 +292,7 @@ export class Backend {
    * 注册请求关联与超时，在写入前限制队列和帧大小。
    * Register correlation and timeout, checking queue and frame limits before writing.
    */
-  private request(method: string, params: object, timeoutMs: number): Promise<unknown> {
+  private request(method: string, params: object, timeoutMs: number | null): Promise<unknown> {
     this.assertHealthy()
     if (this.pending.size >= 32)
       return Promise.reject(error('BACKEND_BUSY', '正在处理其他请求，请稍后重试。'))
@@ -295,9 +302,14 @@ export class Backend {
       return Promise.reject(error('FRAME_TOO_LARGE', '请求超过大小限制。'))
     }
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.fail(error('BACKEND_TIMEOUT', '后端响应超时，请重新打开应用。'))
-      }, timeoutMs)
+      // 元数据跨盘移动等待真实结果；断管和退出仍统一结束请求。
+      // Metadata relocation waits for its real result; disconnect/shutdown still settle requests.
+      const timer =
+        timeoutMs === null
+          ? null
+          : setTimeout(() => {
+              this.fail(error('BACKEND_TIMEOUT', '后端响应超时，请重新打开应用。'))
+            }, timeoutMs)
       this.pending.set(id, { resolve, reject, timer })
       this.child?.stdin.write(frame)
     })
@@ -334,7 +346,7 @@ export class Backend {
         const pending = response.id === null ? undefined : this.pending.get(response.id)
         if (!pending || response.id === null) throw new Error('Unmatched RPC response')
         this.pending.delete(response.id)
-        clearTimeout(pending.timer)
+        if (pending.timer) clearTimeout(pending.timer)
         if ('error' in response) {
           pending.reject(
             new BackendError({ ...response.error.data, message: response.error.message })
@@ -358,7 +370,7 @@ export class Backend {
     this.failed = cause
     if (!this.stopping) this.log(cause.detail.code)
     for (const pending of this.pending.values()) {
-      clearTimeout(pending.timer)
+      if (pending.timer) clearTimeout(pending.timer)
       pending.reject(cause)
     }
     this.pending.clear()
@@ -377,8 +389,8 @@ export class Backend {
   }
 
   /**
-   * 先发送 EOF，超出清理宽限再终止，并等待实际退出事件。
-   * Send EOF, terminate after the cleanup grace period and await the actual exit event.
+   * 先停止接纳并等待元数据移动，再发送 EOF 并清理自有进程。
+   * Stop admission and await metadata moves before EOF and owned-process cleanup.
    */
   async stop(): Promise<void> {
     const child = this.child
@@ -387,20 +399,21 @@ export class Backend {
       await this.termination
       return
     }
-    let graceMs = (defaults.execution.cleanup_timeout_seconds * 2 + 5) * 1000
-    if (!this.failed && !this.stopping) {
-      try {
-        const catalog = await this.call(
-          'environments.list',
-          { project_id: null },
-          'EnvironmentCatalog'
-        )
-        graceMs = (catalog.settings.cleanup_timeout_seconds * 2 + 5) * 1000
-      } catch {
-        this.log('SHUTDOWN_SETTINGS_UNAVAILABLE')
-      }
-    }
+    const settings =
+      !this.failed && !this.stopping
+        ? this.call('environments.list', { project_id: null }, 'EnvironmentCatalog').catch(() => {
+            this.log('SHUTDOWN_SETTINGS_UNAVAILABLE')
+            return null
+          })
+        : Promise.resolve(null)
     this.stopping = true
+    // 普通退出不打断已接纳的 .git 移动；命令清理宽限从移动完成后才开始。
+    // Normal exit preserves accepted .git moves; process cleanup grace starts afterwards.
+    await Promise.allSettled([...this.metadataMoves])
+    const catalog = await settings
+    const cleanup =
+      catalog?.settings.cleanup_timeout_seconds ?? defaults.execution.cleanup_timeout_seconds
+    const graceMs = (cleanup * 2 + 5) * 1000
     child.stdin.end()
     const timer = setTimeout(() => this.terminate(), Math.min(graceMs, 2147483647))
     try {

@@ -466,6 +466,10 @@ class ContextService:
                     )
                 )
                 window[0] = {**window[0], "content": str(window[0].get("content", "")) + inbox}
+        prepared = PreparedWindow(window, [*history_materials, *materials])
+        if self.sessions.attachments:
+            prepared = await self.sessions.attachments.prepare(active, prepared)
+        window = prepared.messages
         estimate = self._estimate(active.log, window, definitions)
         trigger = self._trigger(selected_model(active.log), active.limits, state.settings)
         # 同一选区与策略未变化时不反复维护；新的完整历史可以再次处理。
@@ -504,6 +508,10 @@ class ContextService:
                 window[0],
                 *assemble(active.log, checkpoint, state.previews, history_materials),
             ]
+            prepared = PreparedWindow(window, [*history_materials, *materials])
+            if self.sessions.attachments:
+                prepared = await self.sessions.attachments.prepare(active, prepared)
+            window = prepared.messages
             estimate = self._estimate(active.log, window, definitions)
         if (
             state.job
@@ -527,7 +535,12 @@ class ContextService:
             copy.deepcopy(definitions),
             len(active.log.facts),
         )
-        return PreparedWindow(window, [*history_materials, *materials], estimate)
+        # 图片用量无法离线准确计数；正文估计与图片材料标注分开。
+        # Image usage is unknown offline; keep text estimates and image annotations separate.
+        has_images = any(
+            item.kind == "attachment" and item.form == "image" for item in prepared.materials
+        )
+        return PreparedWindow(window, prepared.materials, None if has_images else estimate)
 
     def _estimate(
         self, log: SessionLog, window: list[JsonObject], definitions: list[JsonObject]

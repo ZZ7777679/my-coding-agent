@@ -14,6 +14,7 @@ from my_agent.workflow.types import (
     WorkId,
     WorkItem,
     WorkMethod,
+    WorkObjective,
     WorkReport,
 )
 
@@ -69,7 +70,8 @@ class GoalDefinition(ModelData):
     """
 
     goal_id: EntityId
-    objective: Description
+    objective: WorkObjective
+    attachment_ids: list[EntityId] = Field(default_factory=list)
     criteria: Annotated[list[GoalCriterion], Field(min_length=1)]
     budget: GoalBudget
     limits: RunLimits | None = None
@@ -158,6 +160,7 @@ class GoalInputQueued(ModelData):
     operation_id: EntityId
     prompt: Annotated[str, Field(min_length=1, max_length=64000, pattern=r"\S")]
     requested_limits: RunLimits | None = None
+    attachment_ids: list[EntityId] = Field(default_factory=list)
 
 
 class GoalInputView(ModelData):
