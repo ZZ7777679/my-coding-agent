@@ -1,6 +1,6 @@
 # 从零构建自己的 Coding Agent 桌面应用：调研与实施规划
 
-> 2026-10-19 接续入口：[当前进度与原有路线](../progress/project-status-and-roadmap-2026-10-19.md) 已对照实际 M0–M5 交付重新整理。M5 首次实现及官方 DeepSeek 合作演示已在本地完成，尚未提交 / 推送；用户已表示 Go 续费，本轮未复测。本文保留历史设计，第 14 节历史 M6–M8 不是已确认的新阶段清单；当前事实见 [进度总览](../progress/README.md)，下一阶段尚未重新定稿。
+> 2026-10-19 接续入口：[当前进度与原有路线](../progress/project-status-and-roadmap-2026-10-19.md) 保留当日整理快照；其后的 Go 接入修正、合作空间 / 工作图、搜索与 Git 及增量修复已随 M5 推送 `origin/dev`，代码提交 `c96d14c`。Go 双模型短闭环和原生搜索已复测，GLM 长流程限制仍保留。本文保留历史设计，第 14 节历史 M6–M8 不是已确认的新阶段清单；当前事实见 [进度总览](../progress/README.md)，下一阶段尚未重新定稿。
 
 > 2026-09-30 范围补充：当前 M5 的 Git 工作台采用本地工作区 / 暂存区与本地版本记录，不接入远端，不以远端配置或登录为使用条件；专门分支 / worktree 界面后置。以 [M5 本地 Git 设计](m5-implementation-plan.md#33-本地-git-工作台) 为准。
 
@@ -930,7 +930,7 @@ OpenCode Go 的真实接入检查分别覆盖 `glm-5.3-flash` 与 `deepseek-v4.1
 | M2 桌面任务与代码执行 | 已有任务 / 会话、编辑、执行、Goal、联网、角色协作与 handoff；保留已有验收 | [M2 进度](../progress/m2.md) |
 | M3 上下文、记忆与多会话协作 | A 共同输入 / 回读 → B 压缩 → C 记忆 → D 协作与可选 worker → E 简单联合体验；每批包含桌面入口 | [M3 总体方案](m3-implementation-plan.md)、[压缩](m3-context-compaction-plan.md)、[记忆](m3-memory-plan.md)、[协作](m3-collaboration-plan.md) |
 | M4 Skill、工作流、MCP 浏览器与 Trace | 首版、资源管理 / 在线导入、MCP 认证及后续定向实施已推送；实际验证与剩余限制保留 | [M4 方案](m4-implementation-plan.md)、[M4 进度](../progress/m4.md) |
-| M5 智能体合作空间与完整编码工作台 | A–F 首次实现与定向验收完成；双模型图片和 DeepSeek 协作闭环通过，GLM 长业务失败保留；未提交 / 推送 | [M5 方案](m5-implementation-plan.md)、[M5 进度](../progress/m5.md) |
+| M5 智能体合作空间与完整编码工作台 | A–F 首次实现及后续增量已推送 origin/dev；双模型图片和 DeepSeek 协作闭环通过，GLM 长业务失败保留 | [M5 方案](m5-implementation-plan.md)、[M5 进度](../progress/m5.md) |
 
 **下表为历史路线，非当前阶段安排。** 编辑和执行已经组合进入 M2，当前 M3–M5 分别按上表实施；原 M3 / M5 / M6 等编号不再作为当前新增阶段的执行指令。原安装验收要求仍保留，但不属于本次 M5 功能阶段。
 
