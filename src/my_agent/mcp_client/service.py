@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import os
 import re
 import shutil
 from contextlib import AsyncExitStack
@@ -22,7 +21,7 @@ from mcp.client.stdio import StdioServerParameters
 from mcp.client.streamable_http import streamable_http_client
 
 from my_agent.errors import AgentError
-from my_agent.execution.environments import SENSITIVE_ENV_NAME
+from my_agent.execution.environments import inherited_environment
 from my_agent.execution.windows import WindowsProcess
 from my_agent.mcp_client.credentials import McpCredentials, environment_value
 from my_agent.mcp_client.errors import public_error
@@ -276,6 +275,7 @@ class McpService:
         )
         self.connections: dict[tuple[str, str, str], Connection] = {}
         self.selected: dict[str, dict[str, tuple[str, JsonObject]]] = {}
+        self.transports: dict[str, str] = {}
         self.controls: dict[tuple[str, str, str], tuple[str, asyncio.Task[None]]] = {}
         self.control_errors: dict[tuple[str, str, str], str] = {}
         self.install_task: asyncio.Task[None] | None = None
@@ -285,7 +285,7 @@ class McpService:
         """只有缺失配置使用默认浏览器条目。
 
         Default only a missing configuration."""
-        return (
+        config = (
             read_document(self.path, McpConfig)
             if self.path.exists()
             else McpConfig(
@@ -299,6 +299,10 @@ class McpService:
                 ]
             )
         )
+        # 目录读取更新展示快照，关闭连接后也能过滤不兼容定义；实际调用仍读取当前配置。
+        # Refresh display metadata even without connections; execution still reads current config.
+        self.transports = {server.server_id: server.transport for server in config.servers}
+        return config
 
     @staticmethod
     def references(refs: dict[str, str]) -> dict[str, str]:
@@ -397,6 +401,11 @@ class McpService:
                 issues=[f"MCP 配置不可用：{exc.code}；原文件保留。"],
             )
         views = []
+        sandboxed = bool(
+            params.project_id
+            and self.sessions.read_roots
+            and self.sessions.read_roots(params.project_id) is not None
+        )
         for server in servers:
             key = self.key(params, server.server_id)
             connection = self.connections.get(key)
@@ -405,6 +414,10 @@ class McpService:
             if control and not control[1].done():
                 status = control[0]
             issue = self.control_errors.get(key, connection.error if connection else "")
+            unsupported = sandboxed and server.transport == "stdio"
+            if unsupported:
+                status = "unsupported_execution_mode"
+                issue = self.stdio_sandbox_message()
             credential_status, credential_message = self.credential_state(server)
             presentation = {
                 "name",
@@ -426,7 +439,7 @@ class McpService:
             views.append(
                 McpServerView(
                     server=server,
-                    status="failed" if issue and not control else status,
+                    status="failed" if issue and not control and not unsupported else status,
                     error=issue,
                     tools=connection.tools if connection else [],
                     credential_status=credential_status,
@@ -538,11 +551,7 @@ class McpService:
         """继承正常工具环境并显式加入服务所需引用。
 
         Inherit tool environment plus explicit references."""
-        env = {
-            name: value
-            for name, value in os.environ.items()
-            if not SENSITIVE_ENV_NAME.search(name) and not name.upper().startswith("MY_AGENT_")
-        }
+        env = inherited_environment()
         env.update(self.references(server.env_refs))
         command, arguments = server.command, list(server.arguments)
         if self.sessions.skills is None:
@@ -587,11 +596,29 @@ class McpService:
             raise AgentError("MCP_UNAVAILABLE", "请指定服务程序。")
         return StdioServerParameters(command=command, args=arguments, env=env, cwd=str(cwd))
 
+    @staticmethod
+    def stdio_sandbox_message() -> str:
+        """目录与调用共用可行动说明，不建议为可选服务关闭沙箱。
+
+        Share actionable catalog/call guidance without suggesting disabling the sandbox.
+        """
+        return (
+            "普通本地 MCP 尚未接入项目沙箱，未派发调用。"
+            "可继续用文件工具、沙箱命令，或已配置的浏览器／远端 MCP；无需额外授权。"
+        )
+
     async def connect(self, params: McpParams, identity: str) -> Connection:
         """复用相同会话连接，失败不隐式重连。
 
         Reuse a session connection without implicit retry."""
         server = await self.sessions.worker.call(self.server, params, identity)
+        if server.transport == "stdio" and params.project_id and self.sessions.read_roots:
+            roots = await self.sessions.worker.call(self.sessions.read_roots, params.project_id)
+            if roots is not None:
+                raise AgentError(
+                    "SANDBOX_ENTRY_UNAVAILABLE",
+                    self.stdio_sandbox_message(),
+                )
         key = self.key(params, identity)
         connection = self.connections.get(key)
         if connection is None:
@@ -785,9 +812,7 @@ class McpService:
         node = shutil.which("node")
         if not node or not package.is_file():
             raise AgentError("BROWSER_UNAVAILABLE", "请先安装仓库锁定依赖并配置 Node。")
-        env = {
-            key: value for key, value in os.environ.items() if not SENSITIVE_ENV_NAME.search(key)
-        }
+        env = inherited_environment()
         env["PLAYWRIGHT_BROWSERS_PATH"] = str(self.root / "browser-runtime")
         log = self.root / "browser-install.log"
         with log.open("wb") as output:

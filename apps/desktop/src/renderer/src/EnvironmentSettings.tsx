@@ -39,6 +39,11 @@ export function EnvironmentSettings({
   const [prefix, setPrefix] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
   const [environmentId, setEnvironmentId] = useState('')
+  const [mode, setMode] = useState<'direct' | 'sandbox'>('direct')
+  const [network, setNetwork] = useState(false)
+  const [readPaths, setReadPaths] = useState('')
+  const [writePaths, setWritePaths] = useState('')
+  const [passthrough, setPassthrough] = useState('')
   const [limits, setLimits] = useState<ExecutionSettings | null>(null)
   const [pythonProbe, setPythonProbe] = useState<EnvironmentProbe | null>(null)
   const [pythonBusy, setPythonBusy] = useState(false)
@@ -49,6 +54,11 @@ export function EnvironmentSettings({
   function accept(data: EnvironmentCatalog): void {
     setCatalog(data)
     setEnvironmentId(data.binding?.environment_id ?? '')
+    setMode(data.binding?.mode ?? 'direct')
+    setNetwork(data.binding?.sandbox?.network === 'enabled')
+    setReadPaths(data.binding?.sandbox?.read_paths?.join('\n') ?? '')
+    setWritePaths(data.binding?.sandbox?.write_paths?.join('\n') ?? '')
+    setPassthrough(data.binding?.environment_passthrough?.join('\n') ?? '')
     setLimits(data.settings)
     setPythonProbe(null)
   }
@@ -185,10 +195,79 @@ export function EnvironmentSettings({
                 ))}
               </select>
             </label>
-            <p className="settings-hint">
-              本机直接运行 · 未隔离。程序具有当前 Windows 账户的访问能力。可选沙箱尚未提供；Docker /
-              WSL 管理后置。
-            </p>
+            <label>
+              执行方式
+              <select
+                aria-label="执行方式"
+                value={mode}
+                onChange={(event) =>
+                  setMode(event.target.value === 'sandbox' ? 'sandbox' : 'direct')
+                }
+              >
+                <option value="direct">本机直接运行 · 未隔离</option>
+                <option value="sandbox">Windows 原生沙箱 · AppContainer</option>
+              </select>
+            </label>
+            {mode === 'direct' ? (
+              <p className="settings-hint">程序具有当前 Windows 账户的访问能力。</p>
+            ) : (
+              <>
+                <p className="settings-hint">
+                  项目与独立临时目录可写；所选环境目录只读。同项目同配置复用专用主体，应用退出后撤销临时目录权限。已有
+                  venv 可能还需要将其基础 Python 目录加入只读范围。
+                </p>
+                <label>
+                  额外只读目录（每行一个，支持项目相对路径）
+                  <textarea
+                    aria-label="沙箱只读目录"
+                    value={readPaths}
+                    onChange={(e) => setReadPaths(e.target.value)}
+                  />
+                </label>
+                <label>
+                  额外可写目录（每行一个）
+                  <textarea
+                    aria-label="沙箱可写目录"
+                    value={writePaths}
+                    onChange={(e) => setWritePaths(e.target.value)}
+                  />
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={network}
+                    onChange={(e) => setNetwork(e.target.checked)}
+                  />
+                  允许沙箱网络
+                </label>
+                <p className="settings-hint">
+                  沙箱命令、终端和网页预览无需管理员授权。网页预览通过本地转发端口访问，
+                  请使用运行卡片返回的实际地址。各项目仍分别隔离，停止服务或退出应用时关闭转发。
+                  不修改防火墙、VPN 或代理。
+                </p>
+                <p className="settings-hint">
+                  命令、服务、终端、Python 探测和本地 Git 采用此隔离；LSP 与普通本地 MCP
+                  尚未接入，会提示使用文件搜索或沙箱命令。远端 MCP
+                  和浏览器是独立外部能力，不受此网络选项控制。Windows AppContainer
+                  仍可读取系统公开资源；不等同于独立虚拟机。
+                </p>
+              </>
+            )}
+            {catalog.sandbox_issue && <p role="alert">上次沙箱清理：{catalog.sandbox_issue}</p>}
+            <details>
+              <summary>项目环境变量</summary>
+              <p className="settings-hint">
+                默认继承正常开发配置，筛除常见凭据变量及含密码的连接地址。
+                项目确实需要时，在下方填写要传入的变量名称，每行一个；不在此填写值。
+                模型服务密钥不会传给项目程序。保存后影响新启动的程序，无需每次确认。
+              </p>
+              <textarea
+                aria-label="显式传入环境变量名称"
+                value={passthrough}
+                onChange={(event) => setPassthrough(event.target.value)}
+                placeholder="例如 DATABASE_URL"
+              />
+            </details>
             <button
               disabled={busy || !projectId}
               onClick={() =>
@@ -197,7 +276,23 @@ export function EnvironmentSettings({
                   window.agent.bindEnvironment({
                     project_id: projectId,
                     environment_id: environmentId || null,
-                    mode: 'direct',
+                    mode,
+                    environment_passthrough: passthrough
+                      .split(/\r?\n/)
+                      .map((value) => value.trim())
+                      .filter(Boolean),
+                    sandbox: {
+                      ...catalog.binding?.sandbox,
+                      read_paths: readPaths
+                        .split('\n')
+                        .map((v) => v.trim())
+                        .filter(Boolean),
+                      write_paths: writePaths
+                        .split('\n')
+                        .map((v) => v.trim())
+                        .filter(Boolean),
+                      network: network ? 'enabled' : 'blocked'
+                    },
                     expected_revision: catalog.revision
                   })
                 )

@@ -105,6 +105,7 @@ class FileTools:
         """
         self.context = context
         self.read = ReadTools(context.root, context.limits, context.stop)
+        self.read.policy.read_roots = context.read_roots
         self.store = store
         self.worker = worker
         self.coordinator = coordinator

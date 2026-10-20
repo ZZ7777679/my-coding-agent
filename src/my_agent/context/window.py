@@ -7,7 +7,7 @@ import json
 
 from my_agent.context.tokens import estimate_tokens, head_tail
 from my_agent.context.types import Checkpoint, ContextTokens, ToolPreview
-from my_agent.models.types import JsonObject
+from my_agent.models.types import JsonObject, ModelId
 from my_agent.runtime.context import ContextMaterial, describe_material
 from my_agent.sessions.store import SessionLog
 from my_agent.sessions.types import (
@@ -70,41 +70,56 @@ def observe_tokens(
     return observation
 
 
-def task_context(task: TaskView, budget: int) -> str:
+def task_context(task: TaskView, budget: int, session_id: str | None = None) -> str:
     """用户字段保持完整，成员进展与共同决定按容量提供近期索引。
 
     Keep user fields intact; bound recent member progress and shared decisions.
     """
+    # 以完整条目提供最新事实，避免截断 JSON 或重复每个成员的整份报告。
+    # Fit complete current facts, never truncated JSON or every member's full report.
+    candidates = [
+        {"decision": item.model_dump(mode="json")} for item in reversed(task.work.decisions)
+    ] + [
+        {
+            "member": {
+                "source": item.source.model_dump(mode="json"),
+                "summary": item.report.summary,
+                "outcome": item.report.outcome,
+                "updated_at": item.updated_at,
+            }
+        }
+        for item in sorted(
+            task.work.members, key=lambda m: m.source.session_id == session_id, reverse=True
+        )
+    ]
+    selected: list[object] = []
+    for candidate in candidates:
+        if byte_size([*selected, candidate]) <= budget:
+            selected.append(candidate)
     work = {
-        "decisions": [item.model_dump(mode="json") for item in reversed(task.work.decisions)],
-        "members": [item.model_dump(mode="json") for item in reversed(task.work.members)],
-        "items": [item.model_dump(mode="json") for item in task.work.items],
-        "assignments": [item.model_dump(mode="json") for item in task.work.assignments],
+        "recent_facts": selected,
+        "omitted_facts": len(candidates) - len(selected),
+        "work_item_count": len(task.work.planned_items) + len(task.work.items),
+        "read_more": "read_task returns current full task and work facts with paging",
     }
-    text = json.dumps(work, ensure_ascii=False)
-    if len(text.encode("utf-8")) > budget:
-        # 长工作记录按原文分页回读，不让成员全文在每次请求持续膨胀。
-        # Long work records remain pageable instead of growing every request's shared input.
-        text = text.encode("utf-8")[: max(1, budget)].decode("utf-8", errors="ignore")
-        text += "\n[Incomplete task work preview; read_task(offset=0) returns full current facts.]"
     return json.dumps(
         {
             "task_id": task.task_id,
             "revision": task.revision,
             "fields": task.fields.model_dump(mode="json"),
-            "work": text,
+            "work": work,
         },
         ensure_ascii=False,
     )
 
 
-def records(log: SessionLog) -> list[tuple[int, JsonObject]]:
+def records(log: SessionLog, target_model: ModelId | None = None) -> list[tuple[int, JsonObject]]:
     """给完整消息附加源事件位置，供窗口和继承共用。
 
     Attach source positions to complete messages.
     """
     positions: list[int] = []
-    messages, _ = log.context(positions)
+    messages, _ = log.context(positions, target_model=target_model)
     return list(zip(positions, messages, strict=True))
 
 
@@ -228,12 +243,14 @@ def assemble(
     checkpoint: Checkpoint | None,
     previews: list[ToolPreview],
     materials: list[ContextMaterial] | None = None,
+    *,
+    target_model: ModelId | None = None,
 ) -> list[JsonObject]:
     """拼接摘要和尾部；旧工具输出回读，当前工具链保持完整。
 
     Join summary and tail; reference old outputs while preserving the current tool chain.
     """
-    items = records(log)
+    items = records(log, target_model)
     latest_request = next((item for item in reversed(items) if item[1].get("role") == "user"), None)
     if checkpoint:
         items = [(seq, msg) for seq, msg in items if seq > checkpoint.through_seq]

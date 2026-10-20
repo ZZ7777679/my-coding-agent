@@ -1,10 +1,17 @@
 /** 用户维护的任务共享信息与正式会话入口。 User-maintained shared task information and session creation. */
 import { useEffect, useRef, useState } from 'react'
-import type { ModelId, ProjectSummary, TaskFields, TaskView } from '../../generated/protocol'
+import type {
+  ModelId,
+  NavigationItemName,
+  ProjectSummary,
+  TaskFields,
+  TaskView
+} from '../../generated/protocol'
 import type { WorkspaceSelection } from './TaskNavigation'
 import { WorkItems } from './WorkItems'
 import { Workflows, TaskWorkflowEditor } from './Workflows'
 import { SpacePanel } from './SpacePanel'
+import { WorkStyles } from './WorkStyles'
 
 type Props = {
   project: ProjectSummary | null
@@ -13,6 +20,8 @@ type Props = {
   connected: boolean
   onSelect: (selection: WorkspaceSelection) => void
   onChanged: () => void
+  renamedItem?: NavigationItemName | null
+  editRequest?: string
 }
 
 /** 按后端字段编辑共享记录；保存采用版本检查，错误保留草稿。 Edit shared facts with revision checks and preserved drafts. */
@@ -22,12 +31,18 @@ export function TaskPanel({
   defaultModel,
   connected,
   onSelect,
-  onChanged
+  onChanged,
+  renamedItem,
+  editRequest
 }: Props) {
   const [task, setTask] = useState<TaskView | null>(null)
+  const editor = useRef<HTMLDetailsElement>(null)
+  const taskSnapshot = useRef(task)
+  taskSnapshot.current = task
   const [fields, setFields] = useState<TaskFields>({ title: '', goal: '' })
   const [model, setModel] = useState<ModelId>(defaultModel)
   const [templateId, setTemplateId] = useState<string | null>('builtin:personal')
+  const [workstyleId, setWorkstyleId] = useState('@project')
   const [role, setRole] = useState('')
   const [scope, setScope] = useState('')
   const [error, setError] = useState('')
@@ -75,6 +90,46 @@ export function TaskPanel({
     }
   }, [identity, reload])
   useEffect(() => setModel(defaultModel), [defaultModel])
+  const taskLoaded = task !== null
+  useEffect(() => {
+    if (!editRequest || !taskLoaded || !editor.current) return
+    editor.current.open = true
+    editor.current.scrollIntoView({ block: 'nearest' })
+    editor.current.querySelector<HTMLInputElement>('input')?.focus()
+  }, [editRequest, taskLoaded])
+  useEffect(() => {
+    if (renamedItem?.kind !== 'task' || renamedItem.id !== taskId) return
+    let disposed = false
+    void window.agent
+      .getTask(taskId)
+      .then((result) => {
+        if (disposed) return
+        if (!result.ok) {
+          setError(result.error.message)
+          return
+        }
+        // 仅合并这次名称修订，不用完整重载抹去正在编辑的草稿。
+        // Merge only a name-only revision without resetting unsaved draft fields.
+        const old = taskSnapshot.current
+        if (!old) return
+        const fresh = result.data
+        if (
+          fresh.revision === old.revision + 1 &&
+          JSON.stringify({ ...old.fields, title: fresh.fields.title }) ===
+            JSON.stringify(fresh.fields)
+        ) {
+          setFields((draft) => ({ ...draft, title: fresh.fields.title }))
+          setTask(fresh)
+        } else if (fresh.revision !== old.revision)
+          setNotice('名称已更新，任务同时发生其他变更；草稿已保留，请重新载入后合并。')
+      })
+      .catch(() => {
+        if (!disposed) setError('名称已保存，但任务详情刷新失败，请重新载入。')
+      })
+    return () => {
+      disposed = true
+    }
+  }, [renamedItem, taskId])
 
   /** 输入未变时保留未确认操作的 ID，显式重试不会创建副本。 Reuse an unconfirmed operation ID for unchanged input. */
   const operation = (payload: object): string => {
@@ -111,7 +166,9 @@ export function TaskPanel({
           project_id: project.project_id,
           model_id: model,
           fields: values,
-          workflow_template_id: templateId
+          workflow_template_id: templateId,
+          workstyle_id: workstyleId && workstyleId !== '@project' ? workstyleId : null,
+          use_project_workstyle: workstyleId === '@project'
         }
         const result = await window.agent.createTask({ ...body, operation_id: operation(body) })
         if (!mounted.current || current.current !== target) return
@@ -233,6 +290,18 @@ export function TaskPanel({
       {(!taskId || task) && (
         <>
           {!task && <Workflows selected={templateId} onSelect={setTemplateId} />}
+          <WorkStyles
+            key={identity}
+            projectId={project.project_id}
+            task={task}
+            selected={workstyleId}
+            onSelect={!task ? setWorkstyleId : undefined}
+            onApplied={(next) => {
+              setTask(next)
+              setReload((r) => r + 1)
+              onChanged()
+            }}
+          />
           {task && (
             <SpacePanel
               task={task}
@@ -254,7 +323,7 @@ export function TaskPanel({
             />
           )}
           {task && <WorkItems task={task} onSelect={onSelect} />}
-          <details className="task-shared" open={!task}>
+          <details className="task-shared" open={!task} ref={editor}>
             <summary>任务目标与共享信息</summary>
             <form
               className="task-form"

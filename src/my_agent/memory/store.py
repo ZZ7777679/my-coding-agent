@@ -7,11 +7,23 @@ import re
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from pydantic import Field
+
 from my_agent.context.accounting import record_usage
 from my_agent.errors import AgentError
 from my_agent.memory.types import MemoryEntry, MemoryFields, MemoryQuery, MemoryState
+from my_agent.models.types import ModelData
 from my_agent.sessions.store import SessionStore
 from my_agent.storage import Storage, atomic_write, read_document, utc_now, write_document
+
+
+class SourceInvalidations(ModelData):
+    """仅记录被回退的来源区段，不复制或批量修改记忆正文。
+
+    Record invalidated provenance ranges without copying or rewriting memory bodies.
+    """
+
+    ranges: list[tuple[int, int]] = Field(default_factory=list)
 
 
 def terms(text: str) -> set[str]:
@@ -82,7 +94,8 @@ class MemoryStore:
         entry = read_document(path, MemoryEntry)
         if entry.project_id not in {None, project_id}:
             raise AgentError("MEMORY_NOT_FOUND", "该记忆不属于当前项目。")
-        return entry
+        effective, _ = self._effective([entry])
+        return effective[0]
 
     def _entries(self) -> tuple[list[MemoryEntry], int]:
         """读取内部条目供检索和来源传播；损坏条目单独计数。
@@ -99,7 +112,91 @@ class MemoryStore:
                 unavailable += 1
                 continue
             candidates.append(entry)
-        return candidates, unavailable
+        effective, source_unavailable = self._effective(candidates)
+        return effective, unavailable + source_unavailable
+
+    def invalidate_source(self, session_id: str, start_seq: int, end_seq: int) -> None:
+        """回退只原子保存来源范围；不扫描整库或重跑提取。
+
+        Rollback atomically records source ranges without scanning or re-extracting memory.
+        """
+        self.storage.require_writer()
+        path = self.sessions.path(session_id).with_name("memory-invalidations.json")
+        state = read_document(path, SourceInvalidations) if path.exists() else SourceInvalidations()
+        merged: list[tuple[int, int]] = []
+        for first, last in sorted([*state.ranges, (start_seq, end_seq)]):
+            if merged and first <= merged[-1][1] + 1:
+                merged[-1] = (merged[-1][0], max(last, merged[-1][1]))
+            else:
+                merged.append((first, last))
+        write_document(path, SourceInvalidations(ranges=merged))
+
+    def _effective(self, entries: list[MemoryEntry]) -> tuple[list[MemoryEntry], int]:
+        """按需投影来源有效性；独立有效来源和用户确认条目不受回退影响。
+
+        Project provenance on read, preserving independent sources and user-confirmed entries.
+        """
+        by_id = {entry.memory_id: entry for entry in entries}
+        ranges: dict[str, SourceInvalidations] = {}
+        memo: dict[str, bool] = {}
+        visiting: set[str] = set()
+
+        def stale(entry: MemoryEntry) -> bool:
+            """只读取依赖条目，来源闭环不作为独立事实证明。
+
+            Read only referenced entries; cyclic provenance is not independent evidence.
+            """
+            if entry.stale or entry.source == "user":
+                return entry.stale
+            if entry.memory_id in memo:
+                return memo[entry.memory_id]
+            if entry.memory_id in visiting:
+                return True
+            visiting.add(entry.memory_id)
+            invalid = False
+            if entry.session_id and entry.source_seq is not None:
+                if entry.session_id not in ranges:
+                    path = self.sessions.path(entry.session_id).with_name(
+                        "memory-invalidations.json"
+                    )
+                    ranges[entry.session_id] = (
+                        read_document(path, SourceInvalidations)
+                        if path.exists()
+                        else SourceInvalidations()
+                    )
+                invalid = any(
+                    start <= entry.source_seq <= end
+                    for start, end in ranges[entry.session_id].ranges
+                )
+            if entry.source_ids:
+                valid_source = False
+                for identity in entry.source_ids:
+                    if identity not in by_id:
+                        source_path = self.path(identity)
+                        if not source_path.exists():
+                            continue
+                        by_id[identity] = read_document(source_path, MemoryEntry)
+                    if not stale(by_id[identity]):
+                        valid_source = True
+                        break
+                invalid = not valid_source
+            visiting.remove(entry.memory_id)
+            memo[entry.memory_id] = invalid
+            return invalid
+
+        effective: list[MemoryEntry] = []
+        unavailable = 0
+        for entry in entries:
+            try:
+                effective.append(entry.model_copy(update={"stale": stale(entry)}))
+            except AgentError:
+                # 来源暂不可核实时不自动注入，但正文仍可查看、纠正或遗忘。
+                # Unverifiable provenance excludes recall, not viewing, correction or deletion.
+                effective.append(entry.model_copy(update={"stale": True}))
+                unavailable += 1
+            finally:
+                visiting.clear()
+        return effective, unavailable
 
     def find(
         self,

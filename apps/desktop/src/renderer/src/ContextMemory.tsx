@@ -519,7 +519,7 @@ export function ContextMemory({
                   detail('summary', '查看摘要', <pre>{context.checkpoint.text}</pre>)}
                 {detail(
                   'context-advanced',
-                  '压缩参数与计量详情',
+                  '材料加载、压缩参数与计量详情',
                   <>
                     <p>
                       上次输入 {tokens?.input_tokens?.toLocaleString() ?? '未知'} token；窗口来源{' '}
@@ -531,12 +531,143 @@ export function ContextMemory({
                       {context.raw_bytes.toLocaleString()}{' '}
                       字节。字节仅作排错计量，不是桌面上下文容量。
                     </p>
+                    <label>
+                      工具定义加载
+                      <select
+                        aria-label="工具定义加载"
+                        value={context.settings.tool_loading ?? 'on_demand'}
+                        onChange={(e) =>
+                          setContext({
+                            ...context,
+                            settings: {
+                              ...context.settings,
+                              tool_loading: e.target.value === 'all' ? 'all' : 'on_demand'
+                            }
+                          })
+                        }
+                      >
+                        <option value="on_demand">核心常驻，其余按需发现</option>
+                        <option value="all">全量工具定义</option>
+                      </select>
+                    </label>
+                    <details>
+                      <summary>代码回退覆盖范围</summary>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={context.settings.rollback?.enabled ?? true}
+                          onChange={(e) =>
+                            setContext({
+                              ...context,
+                              settings: {
+                                ...context.settings,
+                                rollback: {
+                                  ...context.settings.rollback,
+                                  enabled: e.target.checked
+                                }
+                              }
+                            })
+                          }
+                        />
+                        保存请求前后代码检查点
+                      </label>
+                      <label>
+                        单文件上限（字节）
+                        <input
+                          type="number"
+                          min={1}
+                          value={context.settings.rollback?.max_file_bytes ?? ''}
+                          onChange={(e) =>
+                            setContext({
+                              ...context,
+                              settings: {
+                                ...context.settings,
+                                rollback: {
+                                  ...context.settings.rollback,
+                                  max_file_bytes: Number(e.target.value)
+                                }
+                              }
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        单次快照上限（字节）
+                        <input
+                          type="number"
+                          min={1}
+                          value={context.settings.rollback?.max_total_bytes ?? ''}
+                          onChange={(e) =>
+                            setContext({
+                              ...context,
+                              settings: {
+                                ...context.settings,
+                                rollback: {
+                                  ...context.settings.rollback,
+                                  max_total_bytes: Number(e.target.value)
+                                }
+                              }
+                            })
+                          }
+                        />
+                      </label>
+                      <p>
+                        超过覆盖范围会列为未保存，不影响代码任务。Git
+                        暂存区和忽略目录不保存到代码快照。
+                      </p>
+                    </details>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={context.settings.background_compaction ?? false}
+                        onChange={(e) =>
+                          setContext({
+                            ...context,
+                            settings: {
+                              ...context.settings,
+                              background_compaction: e.target.checked
+                            }
+                          })
+                        }
+                      />
+                      窗口允许时在后台压缩，下一请求采用
+                    </label>
+                    <p>
+                      后台压缩单独计量；容量不足时仍等待。独立维护失败会显示原因，不改变已成功的前台结果。
+                    </p>
+                    <label>
+                      当前按需工具（英文名称，逗号分隔；删除后下一请求卸载）
+                      <textarea
+                        value={(context.settings.active_tools ?? []).join(', ')}
+                        onChange={(e) =>
+                          setContext({
+                            ...context,
+                            settings: {
+                              ...context.settings,
+                              active_tools: e.target.value
+                                .split(',')
+                                .map((name) => name.trim())
+                                .filter(Boolean)
+                            }
+                          })
+                        }
+                      />
+                    </label>
+                    <p>
+                      核心工具：{context.settings.core_tools?.join('、')}。
+                      搜索和加载不发额外路由模型请求，也不增加工具审批。 MCP
+                      保留自身已激活集合；隐藏定义不改变执行权限。
+                    </p>
                     {(
                       [
                         ['auto_trigger_tokens', '自动整理起点（token）'],
                         ['keep_recent_tokens', '自动近期保留目标（token，完整交互可超出）'],
                         ['tool_result_preview_tokens', '旧工具结果预览目标（token，0 仅引用）'],
                         ['summary_target_tokens', '摘要正文目标（token）'],
+                        [
+                          'skill_catalog_tokens',
+                          'Skill 短目录预算（本地估算 token；超出后按需搜索）'
+                        ],
                         ['summary_output_tokens', '摘要请求输出上限']
                       ] as const
                     ).map(([key, label]) => (
@@ -580,7 +711,7 @@ export function ContextMemory({
                         )
                       }
                     >
-                      保存压缩参数
+                      保存材料与压缩参数
                     </button>
                     {context.job && (
                       <p>

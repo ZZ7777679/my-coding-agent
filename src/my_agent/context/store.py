@@ -5,6 +5,7 @@ Derived checkpoint storage and public history paging.
 
 import json
 import re
+from collections.abc import Callable
 from uuid import UUID, uuid4
 
 from my_agent.context.accounting import record_usage
@@ -47,7 +48,19 @@ class ContextStore:
         if state.job:
             record_usage(path.parent / "context-usage", state.job)
 
-    def history(self, log: SessionLog, params: HistoryParams) -> HistoryPage:
+    def update(self, session_id: str, change: Callable[[ContextState], None]) -> ContextState:
+        """在同一次业务线程调用内修改最新状态，避免后台作业覆盖新设置。
+
+        Read and mutate on one writer call so background jobs cannot overwrite newer settings.
+        """
+        state = self.read(session_id)
+        change(state)
+        self.save(session_id, state)
+        return state
+
+    def history(
+        self, log: SessionLog, params: HistoryParams, effective_only: bool = False
+    ) -> HistoryPage:
         """搜索公开记录并分段返回原文，不暴露 provider 原生字段。
 
         Search public entries, not provider internals.
@@ -145,6 +158,8 @@ class ContextStore:
             if cursor is None:
                 break
         for item in sorted(public, key=lambda value: value.seq):
+            if effective_only and item.abandoned:
+                continue
             if item.seq in lookup_sequences:
                 continue
             if not params.after_seq < item.seq <= through:

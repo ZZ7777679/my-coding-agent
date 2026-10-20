@@ -27,7 +27,7 @@ from my_agent.tasks.types import (
     TaskView,
     UpdateTaskParams,
 )
-from my_agent.workflow.templates import UpdateTaskWorkflowParams, WorkflowTemplates
+from my_agent.workflow.templates import TaskWorkflow, UpdateTaskWorkflowParams, WorkflowTemplates
 from my_agent.workflow.types import (
     EventRef,
     MemberProgress,
@@ -39,6 +39,7 @@ from my_agent.workflow.types import (
     WorkItem,
     WorkReport,
 )
+from my_agent.workflow.workstyles import WorkStyleStore
 
 
 class TaskStore:
@@ -157,6 +158,23 @@ class TaskStore:
                 raise AgentError("OPERATION_CONFLICT", "该操作标识已用于不同任务输入。")
             return facts[-1].view
         now = utc_now()
+        styles = WorkStyleStore(self.storage)
+        style_id = params.workstyle_id or (
+            styles.selected(params.project_id) if params.use_project_workstyle else None
+        )
+        style = styles.instantiate(styles.load(style_id), task_id) if style_id else None
+        workflow = (
+            TaskWorkflow(
+                template=style.workflow,
+                current_stage_id=style.workflow.stages[0].stage_id
+                if style.workflow.stages
+                else None,
+            )
+            if style and style.workflow
+            else None
+            if style
+            else WorkflowTemplates(self.storage.root).snapshot(params.workflow_template_id)
+        )
         view = TaskView(
             task_id=task_id,
             project_id=params.project_id,
@@ -167,10 +185,33 @@ class TaskStore:
             source="user",
             initial_session_id=str(uuid5(UUID(task_id), "first-session")),
             initial_model_id=params.model_id,
-            workflow=WorkflowTemplates(self.storage.root).snapshot(params.workflow_template_id),
+            workflow=workflow,
+            workstyle=style,
+            work=TaskWork(planned_items=style.team.initial_work_items) if style else TaskWork(),
         )
         return self._save(
             [TaskFact(operation_id=params.operation_id, expected_revision=0, view=view)]
+        )
+
+    def rename(self, task_id: str, operation_id: str, title: str) -> TaskView:
+        """在业务线程仅修改名称，保留最新目标和工作记录。
+
+        Patch the name on the worker, preserving current task facts.
+        """
+        facts = self.history(task_id)
+        prior = next((fact for fact in facts if fact.operation_id == operation_id), None)
+        if prior is not None:
+            if prior.view.fields.title != title:
+                raise AgentError("OPERATION_CONFLICT", "该操作标识已用于不同任务名称。")
+            return facts[-1].view
+        current = facts[-1].view
+        return self.update(
+            UpdateTaskParams(
+                task_id=task_id,
+                operation_id=operation_id,
+                expected_revision=current.revision,
+                fields=current.fields.model_copy(update={"title": title}),
+            )
         )
 
     def update(self, params: UpdateTaskParams) -> TaskView:

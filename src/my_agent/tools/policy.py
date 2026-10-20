@@ -5,7 +5,7 @@ import ntpath
 import os
 import threading
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from pathspec import GitIgnoreSpec
@@ -63,6 +63,8 @@ class Scan:
     files: list[str]
     truncated: bool
     skipped: int
+    unavailable: int = 0
+    excluded_paths: list[str] = field(default_factory=list)
 
 
 class ReadPolicy:
@@ -74,6 +76,7 @@ class ReadPolicy:
         self.limits = limits
         self.stop = stop
         self.ignore_cache: dict[Path, tuple[tuple[int, int], GitIgnoreSpec]] = {}
+        self.read_roots: tuple[Path, ...] | None = None
 
     def relative(self, value: str) -> PurePosixPath:
         """将项目内绝对或相对写法统一；不凭路径写法拒绝同一文件。
@@ -174,6 +177,10 @@ class ReadPolicy:
             raise AgentError("PATH_DENIED", "文件路径无效。")
         try:
             target = (self.root / value).resolve(strict=True)
+            if self.read_roots is not None and not any(
+                target.is_relative_to(root) for root in self.read_roots
+            ):
+                raise AgentError("SANDBOX_PATH_DENIED", "目标不在当前沙箱项目或额外目录范围内。")
             if target.is_dir() != directory or (not directory and not target.is_file()):
                 raise AgentError("FILE_TYPE", "目标类型不符合工具要求。")
             return target
@@ -189,6 +196,8 @@ class ReadPolicy:
         seen: set[Path] = set()
         files: list[str] = []
         skipped = 0
+        unavailable = 0
+        excluded_paths: list[str] = []
         truncated = False
         visited = 0
         while pending:
@@ -203,7 +212,7 @@ class ReadPolicy:
                         checkpoint(self.stop)
                         visited += 1
                         if visited > self.limits.max_scan_files:
-                            return Scan(sorted(files), True, skipped)
+                            return Scan(sorted(files), True, skipped, unavailable, excluded_paths)
                         candidate = Path(entry.path)
                         rel = (
                             candidate.relative_to(self.root).as_posix()
@@ -215,6 +224,7 @@ class ReadPolicy:
                             target = self.target(rel, directory=is_dir)
                             if start == self.root and not target.is_relative_to(self.root):
                                 skipped += 1
+                                excluded_paths.append(rel + "/" if is_dir else rel)
                                 continue
                             # 指定子目录意味着定向查看；全项目发现才应用默认忽略。
                             # Explicit subdirectories are targeted views, not workspace discovery.
@@ -222,6 +232,9 @@ class ReadPolicy:
                                 target, PurePosixPath(rel), directory=is_dir
                             ):
                                 skipped += 1
+                                # 只记录被跳过的入口，不遍历忽略目录；回退可据此区分未知与不存在。
+                                # Record excluded roots without walking them.
+                                excluded_paths.append(rel + "/" if is_dir else rel)
                                 continue
                             if is_dir:
                                 if depth < self.limits.max_depth:
@@ -233,6 +246,8 @@ class ReadPolicy:
                         except (AgentError, OSError):
                             checkpoint(self.stop)
                             skipped += 1
+                            unavailable += 1
             except OSError:
                 skipped += 1
-        return Scan(sorted(set(files)), truncated, skipped)
+                unavailable += 1
+        return Scan(sorted(set(files)), truncated, skipped, unavailable, excluded_paths)

@@ -10,7 +10,7 @@ import subprocess
 import threading
 import time
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from ctypes import wintypes
 from pathlib import Path
 
@@ -145,6 +145,11 @@ class WindowsProcess:
         cwd: Path,
         environment: Mapping[str, str],
         output_limit: int,
+        *,
+        security_capabilities: ctypes.Structure | None = None,
+        pseudo_console: int | None = None,
+        input_pipe: bool = False,
+        stdout_sink: Callable[[bytes], None] | None = None,
     ) -> None:
         """显式 exe / argv / 环境启动隐藏控制台，失败清理全部自有资源。
 
@@ -167,6 +172,8 @@ class WindowsProcess:
         self.buffer_lock = threading.Lock()
         self.handle_lock = threading.RLock()
         self.readers: list[threading.Thread] = []
+        self.input_fd: int | None = None
+        self.stdout_sink = stdout_sink
         descriptors: list[int] = []
         thread_handle = 0
         attributes = ctypes.c_void_p()
@@ -191,14 +198,20 @@ class WindowsProcess:
             descriptors.extend((out_read, out_write))
             err_read, err_write = os.pipe()
             descriptors.extend((err_read, err_write))
-            stdin = os.open(os.devnull, os.O_RDONLY)
+            if input_pipe:
+                stdin, self.input_fd = os.pipe()
+            else:
+                stdin = os.open(os.devnull, os.O_RDONLY)
             descriptors.append(stdin)
             child_fds = (stdin, out_write, err_write)
             handles = (wintypes.HANDLE * 3)(*(msvcrt.get_osfhandle(fd) for fd in child_fds))
             for fd in child_fds:
                 os.set_handle_inheritable(msvcrt.get_osfhandle(fd), True)
             size = ctypes.c_size_t()
-            self.kernel.InitializeProcThreadAttributeList(None, 1, 0, ctypes.byref(size))
+            attribute_count = 2 if security_capabilities is not None else 1
+            self.kernel.InitializeProcThreadAttributeList(
+                None, attribute_count, 0, ctypes.byref(size)
+            )
             self._require(bool(size.value), "InitializeProcThreadAttributeList")
             attribute_memory = ctypes.create_string_buffer(size.value)
             attributes = ctypes.cast(attribute_memory, ctypes.c_void_p)
@@ -206,7 +219,7 @@ class WindowsProcess:
                 bool(
                     self.kernel.InitializeProcThreadAttributeList(
                         attributes,
-                        1,
+                        attribute_count,
                         0,
                         ctypes.byref(size),
                     )
@@ -214,14 +227,33 @@ class WindowsProcess:
                 "InitializeProcThreadAttributeList",
             )
             attributes_ready = True
+            if security_capabilities is not None:
+                self._require(
+                    bool(
+                        self.kernel.UpdateProcThreadAttribute(
+                            attributes,
+                            0,
+                            0x20009,
+                            ctypes.byref(security_capabilities),
+                            ctypes.sizeof(security_capabilities),
+                            None,
+                            None,
+                        )
+                    ),
+                    "AppContainerSecurityCapabilities",
+                )
             self._require(
                 bool(
                     self.kernel.UpdateProcThreadAttribute(
                         attributes,
                         0,
-                        0x20002,
-                        ctypes.byref(handles),
-                        ctypes.sizeof(handles),
+                        0x20016 if pseudo_console is not None else 0x20002,
+                        ctypes.c_void_p(pseudo_console)
+                        if pseudo_console is not None
+                        else ctypes.byref(handles),
+                        ctypes.sizeof(ctypes.c_void_p)
+                        if pseudo_console is not None
+                        else ctypes.sizeof(handles),
                         None,
                         None,
                     )
@@ -230,8 +262,11 @@ class WindowsProcess:
             )
             startup = ExtendedStartupInfo()
             startup.startup.cb = ctypes.sizeof(startup)
-            startup.startup.flags = 0x100  # STARTF_USESTDHANDLES
-            startup.startup.stdin, startup.startup.stdout, startup.startup.stderr = handles
+            # ConPTY 显式使用空标准句柄，避免 Windows 复制宿主重定向管道。
+            # Explicit null standard handles prevent host pipe duplication into ConPTY.
+            startup.startup.flags = 0x100
+            if pseudo_console is None:
+                startup.startup.stdin, startup.startup.stdout, startup.startup.stderr = handles
             startup.attributes = attributes
             info = ProcessInfo()
             arguments = ctypes.create_unicode_buffer(subprocess.list2cmdline(command))
@@ -254,11 +289,8 @@ class WindowsProcess:
                         arguments,
                         None,
                         None,
-                        True,
-                        0x4
-                        | 0x400
-                        | 0x80000
-                        | 0x8000000,  # suspended / Unicode / extended / no window
+                        pseudo_console is None,
+                        0x4 | 0x400 | 0x80000 | (0 if pseudo_console is not None else 0x8000000),
                         env_block,
                         str(cwd),
                         ctypes.byref(startup),
@@ -370,6 +402,11 @@ class WindowsProcess:
         try:
             with os.fdopen(fd, "rb", buffering=0) as stream:
                 while chunk := stream.read(4096):
+                    if channel == "stdout" and self.stdout_sink is not None:
+                        # 二进制转发使用背压，不能套用日志尾部丢弃规则。
+                        # Binary transport uses backpressure, never log-tail truncation.
+                        self.stdout_sink(chunk)
+                        continue
                     with self.buffer_lock:
                         self.buffer.append((channel, chunk))
                         self.buffer_size += len(chunk)
@@ -382,6 +419,32 @@ class WindowsProcess:
                             self.dropped += removed
         except OSError:
             self.output_failed = True
+        finally:
+            if channel == "stdout" and self.stdout_sink is not None:
+                try:
+                    self.stdout_sink(b"")
+                except OSError:
+                    self.output_failed = True
+
+    def write_input(self, data: bytes) -> None:
+        """向显式启用的输入管道写完整数据；由单个转发线程持有。
+
+        Write a full chunk to the optional pipe, owned by one forwarding thread.
+        """
+        if self.input_fd is None:
+            raise BrokenPipeError("Process input is closed")
+        remaining = memoryview(data)
+        while remaining:
+            remaining = remaining[os.write(self.input_fd, remaining) :]
+
+    def close_input(self) -> None:
+        """关闭输入以发送 EOF；进程清理前先终止 Job，解除阻塞写入。
+
+        Send EOF; terminate the job before cleanup to unblock pending writes.
+        """
+        if self.input_fd is not None:
+            descriptor, self.input_fd = self.input_fd, None
+            os.close(descriptor)
 
     def drain(self) -> tuple[list[tuple[str, bytes]], int]:
         """取得新输出与累计丢弃量，不读取子进程环境。
@@ -462,3 +525,4 @@ class WindowsProcess:
                 if handle:
                     self.kernel.CloseHandle(handle)
                     setattr(self, name, 0)
+            self.close_input()

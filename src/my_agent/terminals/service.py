@@ -5,6 +5,7 @@ Manage terminal control and lifecycle.
 
 import asyncio
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from uuid import uuid4
@@ -20,6 +21,7 @@ from my_agent.sessions.types import SessionCreated
 from my_agent.spaces.store import SpaceStore
 from my_agent.storage import Storage, utc_now
 from my_agent.terminals.native import ConPtyProcess, availability
+from my_agent.terminals.sandbox_native import SandboxTerminal
 from my_agent.terminals.store import TerminalRecord, TerminalStore, output_view
 from my_agent.terminals.types import (
     ListTerminalsParams,
@@ -46,7 +48,7 @@ class OwnedTerminal:
     """
 
     record: TerminalRecord
-    process: ConPtyProcess
+    process: ConPtyProcess | SandboxTerminal
     settings: ExecutionSettings
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     done: asyncio.Event = field(default_factory=asyncio.Event)
@@ -194,7 +196,10 @@ class TerminalService:
                 logging.getLogger(__name__).error("TERMINAL_FINAL_IO type=%s", type(exc).__name__)
                 owned.failure = AgentError("TERMINAL_IO_FAILED", "终端最终输出未完整读取。")
             finally:
-                owned.process.close()
+                try:
+                    await asyncio.to_thread(owned.process.close)
+                except AgentError as exc:
+                    owned.failure = exc
             owned.record.summary.status = (
                 "failed" if owned.failure else "stopped" if owned.stopping else "exited"
             )
@@ -233,17 +238,27 @@ class TerminalService:
             if params.project_id != context.project_id:
                 raise AgentError("TERMINAL_SCOPE_DENIED", "终端不属于当前项目。")
             params = params.model_copy(update={"session_id": context.session_id})
-        available, message = availability()
-        if not available:
-            raise AgentError("TERMINAL_UNAVAILABLE", message or "交互终端不可用。")
         await self.recover()
-        view, settings, _ = await self.worker.call(self.environments.selected, params.project_id)
+        view, settings, _ = await self.worker.call(
+            self.environments.selected, params.project_id, True
+        )
+        sandboxed = view.execution is not None and view.execution.mode == "sandbox"
+        available, message = availability()
+        binding = await self.worker.call(
+            lambda: self.environments.binding(self.environments.read(), params.project_id)
+        )
+        if binding.mode == "sandbox" and os.name == "nt":
+            available, message = True, "原生沙箱终端；启动时检查所选环境及系统授权。"
+        if not sandboxed and not available:
+            raise AgentError("TERMINAL_UNAVAILABLE", message or "交互终端不可用。")
         root = await self.worker.call(self.environments.project_root, params.project_id)
         member_id = await self.worker.call(self._session, params.project_id, params.session_id)
         if params.member_id is not None and params.member_id != member_id:
             raise AgentError("TERMINAL_SCOPE_DENIED", "成员与终端关联会话不匹配。")
         cwd = await asyncio.to_thread(working_directory, root, params.cwd)
-        argv, env = await asyncio.to_thread(command_line, params.command, view, cwd)
+        argv, env = await asyncio.to_thread(
+            command_line, params.command, view, cwd, interactive=True
+        )
         env.pop("NO_COLOR", None)
         env["TERM"] = "xterm-256color"
         record = TerminalRecord(
@@ -261,6 +276,7 @@ class TerminalService:
                 exit_code=None,
                 cwd=str(cwd),
                 environment_name=view.record.name,
+                mode="sandbox" if sandboxed else "direct",
                 cols=params.cols,
                 rows=params.rows,
                 created_at=utc_now(),
@@ -269,9 +285,26 @@ class TerminalService:
             output=[],
         )
         await self.worker.call(self.store.save, record)
-        pending = asyncio.create_task(
-            asyncio.to_thread(ConPtyProcess, argv, cwd, env, params.cols, params.rows)
-        )
+        pending: asyncio.Task[ConPtyProcess | SandboxTerminal]
+        if sandboxed:
+            pending = asyncio.create_task(
+                asyncio.to_thread(
+                    SandboxTerminal,
+                    argv,
+                    cwd,
+                    env,
+                    params.cols,
+                    params.rows,
+                    self.environments.storage.root / "sandbox-leases",
+                    root,
+                    view,
+                    settings.max_output_bytes,
+                )
+            )
+        else:
+            pending = asyncio.create_task(
+                asyncio.to_thread(ConPtyProcess, argv, cwd, env, params.cols, params.rows)
+            )
         try:
             process = await asyncio.shield(pending)
         except BaseException:
@@ -286,7 +319,7 @@ class TerminalService:
                     try:
                         await asyncio.to_thread(launched.finish, settings.cleanup_timeout_seconds)
                     finally:
-                        launched.close()
+                        await asyncio.to_thread(launched.close)
             record.summary.status = "interrupted"
             record.summary.finished_at = utc_now()
             record.summary.code = "TERMINAL_START_INTERRUPTED"

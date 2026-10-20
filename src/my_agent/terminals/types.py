@@ -88,6 +88,7 @@ class TerminalSummary(ModelData):
     """
 
     terminal_id: EntityId
+    mode: Literal["direct", "sandbox"] = "direct"
     project_id: str
     session_id: EntityId | None
     member_id: EntityId | None

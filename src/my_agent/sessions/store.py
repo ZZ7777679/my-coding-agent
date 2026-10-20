@@ -10,6 +10,7 @@ from pathlib import Path
 
 from pydantic import TypeAdapter, ValidationError
 
+from my_agent.checkpoints.types import ConversationRestored
 from my_agent.delegation.types import DelegatedUsage
 from my_agent.errors import AgentError
 from my_agent.goals.ledger import check_budget, usage
@@ -21,7 +22,7 @@ from my_agent.goals.state import (
     validate_goal_run,
 )
 from my_agent.goals.types import GoalControl, GoalCreated
-from my_agent.models.types import JsonObject
+from my_agent.models.types import JsonObject, ModelId
 from my_agent.runtime.messages import tool_result_message
 from my_agent.sessions.pairing import pending_tools
 from my_agent.sessions.recovery_types import SessionRecovered
@@ -40,6 +41,7 @@ from my_agent.sessions.types import (
     SessionCreated,
     SessionId,
     SessionModelChanged,
+    SessionRenamed,
     ToolCompleted,
     ToolSkipped,
     ToolStarted,
@@ -61,21 +63,49 @@ class SessionLog:
     facts: list[Fact]
     issue: str | None = None
 
-    def context(self, positions: list[int] | None = None) -> tuple[list[JsonObject], bool]:
+    def effective_facts(self) -> list[Fact]:
+        """回退只改变模型有效历史，原始事实和当前项目／模型选择保持。
+
+        Rewinds change effective model history, retaining raw facts and current session settings.
+        """
+        result: list[Fact] = []
+        for fact in self.facts:
+            if isinstance(fact.data, ConversationRestored) and fact.data.before_seq is not None:
+                result = [
+                    item
+                    for item in result
+                    if item.seq < fact.data.before_seq
+                    or isinstance(
+                        item.data,
+                        (SessionCreated, SessionAssigned, SessionModelChanged, SessionRenamed),
+                    )
+                ]
+            result.append(fact)
+        return result
+
+    def context(
+        self, positions: list[int] | None = None, *, target_model: ModelId | None = None
+    ) -> tuple[list[JsonObject], bool]:
         """组装完整历史并标明已结束目标，未配对工具使续接失效。
 
         Build history with ended goals marked as history; unpaired tools prevent reuse.
         """
         messages: list[JsonObject] = []
+        history_model: ModelId | None = None
+        request_models: dict[str, ModelId | None] = {}
         pending: set[str] = set()
         ended = {
             identity: state.status
             for identity, state in states(self.facts).items()
             if state.status in TERMINAL_GOALS
         }
-        for fact in self.facts:
+        for fact in self.effective_facts():
             before_count = len(messages)
             data = fact.data
+            if isinstance(data, (SessionCreated, SessionModelChanged)):
+                history_model = data.model_id
+            if isinstance(data, RequestStarted):
+                request_models[data.message_id] = data.model_id or history_model
             if isinstance(data, SessionCreated) and data.inherited_context:
                 messages.append(
                     {
@@ -85,7 +115,9 @@ class SessionLog:
                         "below is your current objective.\n" + data.inherited_context,
                     }
                 )
-            if isinstance(data, GoalCreated):
+            if isinstance(data, ConversationRestored):
+                messages.append({"role": "user", "content": data.message})
+            elif isinstance(data, GoalCreated):
                 if pending:
                     return messages, False
                 messages.append(
@@ -137,13 +169,24 @@ class SessionLog:
                 references = (
                     "\nSaved attachment references (read_attachment to reread originals): "
                     + ", ".join(data.attachment_ids)
-                    if data.attachment_ids else ""
+                    if data.attachment_ids
+                    else ""
                 )
                 messages.append({"role": "user", "content": prefix + data.prompt + references})
             elif isinstance(data, AssistantCommitted):
                 if pending:
                     return messages, False
-                messages.append(data.turn.native)
+                source_model = data.model_id or request_models.get(data.message_id)
+                native = data.turn.native
+                if target_model is not None and source_model != target_model:
+                    # 原生思考／续接字段只回传给来源模型；公开历史和工具配对不变。
+                    # Return native continuation only to its source model, retaining public history.
+                    native = {
+                        key: value
+                        for key, value in native.items()
+                        if key in {"role", "content", "tool_calls", "tool_call_id", "name"}
+                    }
+                messages.append(native)
                 pending.update(call.tool_call_id for call in data.turn.tool_calls)
             elif isinstance(data, SessionRecovered):
                 for item in data.items:
@@ -247,7 +290,9 @@ class SessionStore:
             if not isinstance(fact.data, SessionCreated) or fact.run_id is not None:
                 raise invalid
             return
-        if isinstance(fact.data, (SessionAssigned, SessionModelChanged)):
+        if isinstance(
+            fact.data, (SessionAssigned, SessionModelChanged, SessionRenamed, ConversationRestored)
+        ):
             if fact.run_id is not None:
                 raise invalid
             return

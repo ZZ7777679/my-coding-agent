@@ -7,6 +7,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
+from my_agent.checkpoints.types import ConversationRestored
 from my_agent.delegation.types import DelegatedUsage
 from my_agent.execution.types import ProgramView
 from my_agent.goals.types import (
@@ -70,6 +71,17 @@ class SessionAssigned(ModelData):
     task_id: SessionId
     role: str
     scope: str
+
+
+class SessionRenamed(ModelData):
+    """用户指定的会话显示名，不进入模型对话。
+
+    User-owned session label, excluded from model messages.
+    """
+
+    kind: Literal["session.renamed"] = "session.renamed"
+    operation_id: SessionId
+    title: str
 
 
 class SessionModelChanged(ModelData):
@@ -237,7 +249,9 @@ class ProgressSynced(ModelData):
 FactData = Annotated[
     SessionCreated
     | SessionAssigned
+    | SessionRenamed
     | SessionModelChanged
+    | ConversationRestored
     | RunAccepted
     | RequestStarted
     | AuxiliaryStarted
@@ -329,6 +343,7 @@ class ChatEntry(ModelData):
     """
 
     seq: int
+    abandoned: bool = False
     run_id: SessionId | None
     message_id: SessionId | None
     kind: Literal[

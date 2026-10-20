@@ -33,6 +33,7 @@ from my_agent.delegation.types import (
 from my_agent.diagnostics import diagnose
 from my_agent.errors import AgentError
 from my_agent.execution.environments import EnvironmentStore
+from my_agent.execution.sandbox import SandboxLease
 from my_agent.execution.service import ProgramService
 from my_agent.execution.store import ProgramStore
 from my_agent.execution.types import (
@@ -94,6 +95,7 @@ from my_agent.rpc.dto import (
     UpdateConfigParams,
 )
 from my_agent.rpc.m5_routes import M5_METHODS, dispatch_m5
+from my_agent.rpc.m6_routes import M6_METHODS, dispatch_m6
 from my_agent.runtime.tools import ToolContext
 from my_agent.sessions.trace import TraceDetailParams, TraceParams, trace_detail, trace_page
 from my_agent.skills.online import OnlineSkills
@@ -222,6 +224,10 @@ class RpcApplication:
 
         Validate and dispatch short control operations.
         """
+        if method in M6_METHODS:
+            if not self.initialized:
+                raise AgentError("NOT_INITIALIZED", "请先初始化应用。")
+            return await dispatch_m6(self, method, params)
         if method in M5_METHODS:
             if not self.initialized:
                 raise AgentError("NOT_INITIALIZED", "请先初始化应用。")
@@ -245,13 +251,23 @@ class RpcApplication:
                 if not self.initialized:
                     self.stack.enter_context(self.storage.writer())
                     self.projects.initialize()
+                    try:
+                        SandboxLease.recover(self.storage.root / "sandbox-leases")
+                    except (AgentError, OSError) as exc:
+                        # 可选隔离清理失败可见，不阻断普通本机工作。
+                        # Surface optional isolation cleanup failures without blocking direct work.
+                        self.environments.sandbox_issue = (
+                            exc.message
+                            if isinstance(exc, AgentError)
+                            else "沙箱恢复记录或临时目录不可访问；记录保留，请检查目录权限。"
+                        )
                     self.initialized = True
                 return InitializeResult(
                     app=AppInfo(
                         name=DEFAULTS["app_name"],
                         app_version=__version__,
-                        protocol_version=10,
-                        stage="M5",
+                        protocol_version=11,
+                        stage="M6",
                     ),
                     storage=self.storage.info(),
                     config=config.public(self.credential.info),
@@ -782,8 +798,8 @@ class RpcApplication:
         if method in {"sessions.get", "sessions.attach"}:
             get = GetSessionParams.model_validate(params)
             if method == "sessions.attach":
-                if len(self.subscriptions) >= 8 and get.session_id not in self.subscriptions:
-                    raise AgentError("SUBSCRIPTIONS_FULL", "会话订阅过多，请关闭旧视图。")
+                # 活跃空间可以有多位成员；传输队列已有背压和重同步，不再限制视图人数。
+                # Space members share the bounded transport queue and its resynchronization.
                 self.subscriptions.add(get.session_id)
             try:
                 return await self.sessions.view(get.session_id, get.before_seq)
@@ -915,7 +931,12 @@ class RpcApplication:
                 if self.online_skills:
                     await self.online_skills.close()
             finally:
-                await self.sessions.close()
+                try:
+                    await self.sessions.close()
+                finally:
+                    await asyncio.to_thread(
+                        SandboxLease.close_all, self.storage.root / "sandbox-leases"
+                    )
         finally:
             try:
                 await self.worker.call(self.stack.close)

@@ -7,6 +7,7 @@ import os
 import re
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from pydantic import Field, model_validator
@@ -36,6 +37,31 @@ from my_agent.storage import Storage, read_document, write_document
 from my_agent.tools.policy import relative_path
 
 SENSITIVE_ENV_NAME = re.compile(r"KEY|PASSWORD|SECRET|TOKEN", re.IGNORECASE)
+AUTH_ENV_NAME = re.compile(r"(?:^|_)(?:AUTH|AUTHORIZATION|CREDENTIALS?|PASSWD|PWD)$", re.IGNORECASE)
+CONNECTION_ENV_NAME = re.compile(
+    r"(?:^|_)(?:URL|URI|DSN|CONNECTION_?STRING|CONN_?STR)$", re.IGNORECASE
+)
+CONNECTION_PASSWORD = re.compile(r"(?:^|;)\s*(?:password|pwd)\s*=\s*[^;\s]", re.IGNORECASE)
+APP_CREDENTIAL_NAMES = frozenset({"OPENCODE_API_KEY", "DEEPSEEK_API_KEY"})
+
+
+def sensitive_environment_value(name: str, value: str) -> bool:
+    """仅识别凭据名称及含密码的连接配置，保留无认证代理与工具环境。
+
+    Recognize credential names and password-bearing connections, retaining ordinary tool settings.
+    """
+    if SENSITIVE_ENV_NAME.search(name) or (name.upper() != "PWD" and AUTH_ENV_NAME.search(name)):
+        return True
+    if not CONNECTION_ENV_NAME.search(name):
+        return False
+    if CONNECTION_PASSWORD.search(value):
+        return True
+    try:
+        # 只在内存检查配置值，不记录地址或密码；普通代理地址仍可继承。
+        # Inspect values only in memory; never log credentials or remove ordinary proxy URLs.
+        return urlsplit(value).password is not None
+    except ValueError:
+        return False
 
 
 class EnvironmentIndex(ModelData):
@@ -69,6 +95,21 @@ class EnvironmentIndex(ModelData):
         return self
 
 
+def inherited_environment(passthrough: tuple[str, ...] = ()) -> dict[str, str]:
+    """筛除宿主凭据，受信配置可明确传入项目变量，但不能带入模型服务密钥。
+
+    Scrub host credentials, allowing explicitly configured project variables but not model keys.
+    """
+    allowed = {name.upper() for name in passthrough}
+    return {
+        name: value
+        for name, value in os.environ.items()
+        if name.upper() not in APP_CREDENTIAL_NAMES
+        and not name.upper().startswith("MY_AGENT_")
+        and (name.upper() in allowed or not sensitive_environment_value(name, value))
+    }
+
+
 def execution_environment(view: EnvironmentView) -> dict[str, str]:
     """继承已有工具环境，剔除凭据与应用变量，再叠加所选环境路径。
 
@@ -76,11 +117,9 @@ def execution_environment(view: EnvironmentView) -> dict[str, str]:
     """
     # 对齐 DSH 的继承后筛除方式，避免白名单遗漏 JAVA_HOME 等正常工具配置。
     # Follow DSH's inherit-then-scrub approach instead of dropping normal tool configuration.
-    env = {
-        name: value
-        for name, value in os.environ.items()
-        if not SENSITIVE_ENV_NAME.search(name) and not name.upper().startswith("MY_AGENT_")
-    }
+    env = inherited_environment(
+        tuple(view.execution.environment_passthrough) if view.execution else ()
+    )
     paths: list[str] = []
     if view.prefix:
         prefix = Path(view.prefix)
@@ -116,6 +155,7 @@ class EnvironmentStore:
         self.storage = storage
         self.path = storage.root / "environments.json"
         self.projects = ProjectService(storage)
+        self.sandbox_issue: str | None = None
 
     def read(self) -> EnvironmentIndex:
         """缺失时采用集中默认，已有损坏数据保留。
@@ -233,6 +273,7 @@ class EnvironmentStore:
             environments=[self.resolve(item, project_id) for item in index.environments],
             binding=self.binding(index, project_id) if project_id else None,
             settings=index.settings,
+            sandbox_issue=self.sandbox_issue,
         )
 
     def _write(self, index: EnvironmentIndex, expected_revision: int) -> None:
@@ -324,14 +365,19 @@ class EnvironmentStore:
         )
         return self.catalog(params.project_id)
 
-    def selected(self, project_id: str) -> tuple[EnvironmentView, ExecutionSettings, int]:
+    def selected(
+        self, project_id: str, sandbox_supported: bool = False
+    ) -> tuple[EnvironmentView, ExecutionSettings, int]:
         """读取当前环境与执行方式，显式绑定失效不回退。
 
         Read the environment and execution mode without falling back from invalid bindings."""
         index = self.read()
         binding = self.binding(index, project_id)
-        if binding.mode != "direct":
-            raise AgentError("SANDBOX_UNAVAILABLE", "本机沙箱尚未提供，未回退到直接执行。")
+        if binding.mode == "sandbox" and not sandbox_supported:
+            raise AgentError(
+                "SANDBOX_ENTRY_UNAVAILABLE",
+                "此入口尚未接入原生沙箱；请使用沙箱命令或终端，未回退到直接执行。",
+            )
         record = next(
             (e for e in index.environments if e.environment_id == binding.environment_id), None
         )
@@ -350,7 +396,27 @@ class EnvironmentStore:
             raise AgentError(
                 view.issue or "ENVIRONMENT_UNAVAILABLE", "项目环境已失效，未改用全局环境。"
             )
-        return view, index.settings, index.revision
+        return view.model_copy(update={"execution": binding}), index.settings, index.revision
+
+    def read_roots(self, project_id: str) -> tuple[Path, ...] | None:
+        """沙箱文件读取共用项目目录配置，直接模式保持现有显式读取。
+
+        Share sandbox directory settings with file reads; preserve direct-mode explicit access.
+        """
+        binding = self.binding(self.read(), project_id)
+        if binding.mode == "direct":
+            return None
+        root = self.project_root(project_id)
+        return (
+            root,
+            *(
+                (root / value).resolve()
+                for value in (
+                    *binding.sandbox.read_paths,
+                    *binding.sandbox.write_paths,
+                )
+            ),
+        )
 
     def save_probe(
         self,

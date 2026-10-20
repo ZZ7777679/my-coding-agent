@@ -2,7 +2,7 @@
 
 import json
 
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 
 from my_agent.errors import AgentError
 from my_agent.models.types import JsonObject, ModelData, ToolCall, ToolResult
@@ -18,6 +18,14 @@ class LoadSkillArgs(ModelData):
     reason: str = ""
 
 
+class DiscoverSkillsArgs(ModelData):
+    """按用途检索或分页浏览已启用资源。 Search by purpose or browse enabled resources."""
+
+    query: str = ""
+    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=20, ge=1)
+
+
 class SkillTools:
     """选择技能后由下一请求的上下文装配提供正文。
 
@@ -30,12 +38,24 @@ class SkillTools:
 
     def is_mutating(self, name: str) -> bool:
         """加载方法不编辑项目文件。 Loading a method does not edit project files."""
-        return False if name == "load_skill" else self.delegate.is_mutating(name)
+        return (
+            False if name in {"load_skill", "discover_skills"} else self.delegate.is_mutating(name)
+        )
 
     def definitions(self) -> list[JsonObject]:
-        """只发布一个按需加载入口。 Advertise one on-demand loading entry."""
+        """发布目录发现与正文加载入口。 Advertise catalog discovery and body loading."""
         return [
             *self.delegate.definitions(),
+            {
+                "type": "function",
+                "function": {
+                    "name": "discover_skills",
+                    "description": "Search enabled Skills by name or description; empty query "
+                    "browses all with offset/limit. This does not load bodies or call a model. "
+                    "Then load_skill with a returned skill_id when useful.",
+                    "parameters": DiscoverSkillsArgs.model_json_schema(),
+                },
+            },
             {
                 "type": "function",
                 "function": {
@@ -50,14 +70,52 @@ class SkillTools:
 
     async def execute(self, call: ToolCall) -> ToolResult:
         """持久化引用，不再复制正文。 Persist references without duplicating bodies."""
-        if call.name != "load_skill":
+        if call.name not in {"load_skill", "discover_skills"}:
             return await self.delegate.execute(call)
         try:
-            args = LoadSkillArgs.model_validate(call.arguments)
             params = SkillParams(
                 project_id=self.context.project_id, session_id=self.context.session_id
             )
             worker = self.service.sessions.worker
+            if call.name == "discover_skills":
+                query = DiscoverSkillsArgs.model_validate(call.arguments)
+                catalog = await worker.call(self.service.catalog, params)
+                words = query.query.casefold().split()
+                matches = [
+                    item
+                    for item in catalog.items
+                    if item.enabled
+                    and not item.shadowed_by
+                    and all(
+                        word in (item.name + " " + item.description).casefold() for word in words
+                    )
+                ]
+                page = matches[query.offset : query.offset + query.limit]
+                return ToolResult(
+                    tool_call_id=call.tool_call_id,
+                    is_error=False,
+                    content=json.dumps(
+                        {
+                            "items": [
+                                {
+                                    "skill_id": item.skill_id,
+                                    "name": item.name,
+                                    "description": item.description,
+                                    "source": item.source,
+                                    "selected": item.skill_id in catalog.selected,
+                                }
+                                for item in page
+                            ],
+                            "total": len(matches),
+                            "next_offset": query.offset + len(page)
+                            if query.offset + len(page) < len(matches)
+                            else None,
+                            "issues": catalog.issues,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+            args = LoadSkillArgs.model_validate(call.arguments)
             document = await worker.call(
                 self.service.read, SkillReadParams(**params.model_dump(), skill_id=args.skill_id)
             )
@@ -82,7 +140,10 @@ class SkillTools:
                 is_error=False,
             )
         except ValidationError:
-            error = {"code": "INVALID_TOOL_ARGUMENTS", "message": "请提供目录中的 skill_id。"}
+            error = {
+                "code": "INVALID_TOOL_ARGUMENTS",
+                "message": "请按当前工具定义提供查询参数或 skill_id。",
+            }
         except AgentError as exc:
             error = {
                 "code": "INVALID_TOOL_ARGUMENTS"

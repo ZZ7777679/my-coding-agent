@@ -24,6 +24,7 @@ import type {
 import { SessionMembership } from './SessionMembership'
 import { Collaboration } from './Collaboration'
 import { Changes } from './Changes'
+import { Checkpoints } from './Checkpoints'
 import { ProgramCall, programTools } from './ProgramCards'
 import { Goals, GoalBudgetFields, GoalHistory } from './Goals'
 import { WebReferences } from './WebReferences'
@@ -187,6 +188,7 @@ export function Chat({
   const [goalBudget, setGoalBudget] = useState<GoalBudget>({})
   const [planDocument, setPlanDocument] = useState('')
   const [showChanges, setShowChanges] = useState(false)
+  const [showCheckpoints, setShowCheckpoints] = useState(false)
   const [showTrace, setShowTrace] = useState(false)
   const [foldedRuns, setFoldedRuns] = useState<Record<string, boolean>>({})
   const [traceSeq, setTraceSeq] = useState<number | null>(null)
@@ -407,8 +409,11 @@ export function Chat({
       for (const item of submittedAttachments) {
         if (item.source_path && (item.origin ?? 'file') === 'file') {
           const refreshed = await window.agent.importAttachment({
-            session_id: sessionId, path: item.source_path,
-            start_line: item.start_line, end_line: item.end_line, purpose: item.purpose
+            session_id: sessionId,
+            path: item.source_path,
+            start_line: item.start_line,
+            end_line: item.end_line,
+            purpose: item.purpose
           })
           if (!refreshed.ok) {
             if (currentSelection.current === sessionId) setError(refreshed.error.message)
@@ -602,6 +607,21 @@ export function Chat({
             </p>
           )}
           {history.map((entry) => {
+            if (entry.abandoned)
+              return (
+                <details key={entry.seq} className="abandoned-entry">
+                  <summary>
+                    已放弃分支 · {entry.kind} · #{entry.seq}
+                  </summary>
+                  <HistoryEntry
+                    entry={entry}
+                    reasoningOpen={!foldedReasoning[entry.message_id ?? String(entry.seq)]}
+                    onReasoningToggle={(open) =>
+                      toggleReasoning(entry.message_id ?? String(entry.seq), open)
+                    }
+                  />
+                </details>
+              )
             if (entry.kind.startsWith('tool.')) {
               const identity = entry.call?.tool_call_id ?? entry.result?.tool_call_id
               const paired = history.find(
@@ -711,6 +731,15 @@ export function Chat({
         </div>
         <div className="composer-dock">
           <div className="composer-tools">
+            {selected && (
+              <button
+                className="text-button"
+                onClick={() => setShowCheckpoints(!showCheckpoints)}
+                aria-expanded={showCheckpoints}
+              >
+                回退
+              </button>
+            )}
             {selected && (
               <button
                 className="text-button trace-toggle"
@@ -1051,6 +1080,24 @@ export function Chat({
           </div>
         </div>
       </section>
+      {selected && showCheckpoints && (
+        <Checkpoints
+          key={selected}
+          sessionId={selected}
+          running={Boolean(
+            snapshot?.summary.run && ['running', 'stopping'].includes(snapshot.summary.run.status)
+          )}
+          onClose={() => setShowCheckpoints(false)}
+          onRestored={(result) => {
+            if (result.rewound) {
+              setPrompt(result.prompt ?? '')
+              setOlder([])
+              setOlderCursor(null)
+            }
+            onRunChange()
+          }}
+        />
+      )}
       {selected && project && showTrace && (
         <Trace
           key={selected}

@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING
 # Treat untyped YAML values as objects and check the fields used here.
 import yaml  # type: ignore[import-untyped]
 
+from my_agent.context.tokens import estimate_tokens
+from my_agent.context.types import ContextSettings
 from my_agent.errors import AgentError
 from my_agent.runtime.context import ContextMaterial, describe_material
 from my_agent.sessions.projection import summarize
@@ -362,7 +364,10 @@ class SkillService:
         )
 
     def materials(
-        self, log: SessionLog, method: WorkMethod | None = None
+        self,
+        log: SessionLog,
+        method: WorkMethod | None = None,
+        catalog_tokens: int = ContextSettings().skill_catalog_tokens,
     ) -> tuple[str, list[ContextMaterial]]:
         """请求边界刷新规则与选中技能，压缩不删除引用。
 
@@ -399,37 +404,52 @@ class SkillService:
             + "\nRead applicable nested rules before working in those directories."
         )
         effective = [i for i in catalog.items if i.enabled and not i.shadowed_by]
-        text.append(
-            "Available skills (load_skill only when useful):\n"
-            + json.dumps(
-                [
-                    {"skill_id": i.skill_id, "name": i.name, "description": i.description}
-                    for i in effective
-                ],
-                ensure_ascii=False,
-            )
-        )
-        materials.append(
-            describe_material(
-                kind="skill_catalog",
-                title="Skill 与子目录规范索引",
-                form="catalog",
-                reason="按需选择资源",
-                text="\n".join(text[-2:]),
-            )
-        )
+        rule_index = text[-1]
         chosen = list(catalog.selected)
         if summary.task_id:
             from my_agent.tasks.store import TaskStore
 
             task = TaskStore(self.sessions.store.storage).get(summary.task_id)
+            if task.workstyle:
+                chosen.extend(
+                    identity for identity in task.workstyle.skill_ids if identity not in chosen
+                )
+            if self.sessions.spaces:
+                record = self.sessions.spaces.store.get(task.task_id)
+                if record:
+                    member_id = next(
+                        (
+                            b.member_id
+                            for b in record.view.bindings
+                            if b.session_id == log.session_id
+                        ),
+                        None,
+                    )
+                    member = next(
+                        (m for m in record.view.config.members if m.member_id == member_id), None
+                    )
+                    if member:
+                        chosen.extend(
+                            identity for identity in member.skill_ids if identity not in chosen
+                        )
             flow = task.workflow
             if flow:
                 stage_id = flow.session_stages.get(log.session_id, flow.current_stage_id)
                 stage = next((s for s in flow.template.stages if s.stage_id == stage_id), None)
                 workflow_text = (
                     "Task workflow (guidance, not authorization or execution gates):\n"
-                    + flow.model_dump_json()
+                    + json.dumps(
+                        {
+                            "name": flow.template.name,
+                            "current_stage": stage.model_dump(mode="json") if stage else None,
+                            "stage_index": [
+                                {"stage_id": s.stage_id, "name": s.name}
+                                for s in flow.template.stages
+                            ],
+                            "read_more": "read_task",
+                        },
+                        ensure_ascii=False,
+                    )
                     + "\nThis session's stage: "
                     + str(stage_id)
                     + "\nOnly an active Goal may continue autonomously. Review findings do not "
@@ -462,6 +482,35 @@ class SkillService:
             matched = next((i for i in effective if i.name == method), None)
             if matched and matched.skill_id not in chosen:
                 chosen.append(matched.skill_id)
+        headers = [
+            {"skill_id": item.skill_id, "name": item.name, "description": item.description}
+            for item in effective
+        ]
+        complete_catalog = estimate_tokens(headers) <= catalog_tokens
+        if not complete_catalog:
+            headers = [item for item in headers if item["skill_id"] in chosen]
+        catalog_text = (
+            "Skills: "
+            + str(len(effective))
+            + " enabled. "
+            + (
+                "Full short catalog below."
+                if complete_catalog
+                else "Current selections below; discover_skills searches or pages the catalog."
+            )
+            + " Use load_skill when useful, without reloading active bodies.\n"
+            + json.dumps(headers, ensure_ascii=False)
+        )
+        text.append(catalog_text)
+        materials.append(
+            describe_material(
+                kind="skill_catalog",
+                title="Skill 与子目录规范索引",
+                form="catalog",
+                reason="完整短目录" if complete_catalog else "当前选择；其余按需发现",
+                text=rule_index + "\n" + catalog_text,
+            )
+        )
         for identity in chosen:
             item = next((i for i in catalog.items if i.skill_id == identity and i.enabled), None)
             if not item:

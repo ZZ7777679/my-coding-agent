@@ -217,8 +217,10 @@ app
       if (window && !window.isDestroyed()) window.webContents.send('agent:session-event', signal)
     })
     window.webContents.on('will-navigate', (event) => event.preventDefault())
-    window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) =>
-      callback(false)
+    // 允许界面主动复制文字；无需读取用户已有剪贴板。
+    // Allow UI text copying without granting clipboard reads.
+    window.webContents.session.setPermissionRequestHandler((_contents, permission, callback) =>
+      callback(permission === 'clipboard-sanitized-write')
     )
     window.webContents.on('did-fail-load', () => {
       log('RENDERER_LOAD_FAILED')
@@ -226,6 +228,26 @@ app
     })
     handle('agent:info', 0, async () => (await readyBackend()).info())
     registerM5Ipc(handle, readyBackend)
+    handle('agent:m6-project-directory', 1, async (value) => {
+      const params = validate('EnvironmentProjectParams', value)
+      const projects = await (await readyBackend()).call('projects.list', {}, 'ProjectsView')
+      const project = projects.recent_projects.find(
+        (item) => item.project_id === params.project_id
+      )
+      if (!project || !project.available)
+        throw new BackendError({
+          code: 'PROJECT_UNAVAILABLE',
+          message: '项目目录不可用，请在项目工作台重新定位。',
+          remediation: ''
+        })
+      if (await shell.openPath(project.path))
+        throw new BackendError({
+          code: 'FOLDER_OPEN_FAILED',
+          message: '无法打开项目目录，请复制路径后手动打开。',
+          remediation: ''
+        })
+      return validate('EmptyParams', {})
+    })
     handle('agent:m5-pick-attachments', 1, async (value) => {
       const params = validate('DocumentSessionParams', value)
       const service = await readyBackend()

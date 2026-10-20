@@ -304,12 +304,14 @@ export function Trace({
   projectId,
   revision,
   focusSeq,
+  focusRun,
   onClose
 }: {
   sessionId: string
   projectId: string
   revision: number
   focusSeq: number | null
+  focusRun?: string | null
   onClose: () => void
 }) {
   const [items, setItems] = useState<TraceItem[]>([])
@@ -336,12 +338,12 @@ export function Trace({
     setCursor(null)
     setTool('')
     setErrors(false)
-  }, [sessionId, focusSeq])
+  }, [sessionId, focusSeq, focusRun])
   useEffect(() => {
     if (focusSeq === null) return
     let disposed = false
     void window.agent
-      .listTrace({ session_id: sessionId, before_seq: focusSeq + 1 })
+      .listTrace({ session_id: sessionId, before_seq: focusSeq + 1, run_id: focusRun })
       .then((r) => {
         if (!disposed && r.ok) {
           setItems((previous) =>
@@ -358,13 +360,14 @@ export function Trace({
     return () => {
       disposed = true
     }
-  }, [sessionId, focusSeq])
+  }, [sessionId, focusSeq, focusRun])
   useEffect(() => {
     const ticket = ++generation.current
     let disposed = false
     void window.agent
       .listTrace({
         session_id: sessionId,
+        run_id: focusRun,
         tool,
         errors_only: errors,
         before_seq: null,
@@ -412,7 +415,7 @@ export function Trace({
     return () => {
       disposed = true
     }
-  }, [sessionId, revision, focusSeq, tool, errors, refreshTick])
+  }, [sessionId, revision, focusSeq, focusRun, tool, errors, refreshTick])
   /** 保留当前页，向前加载历史。 Load older facts while retaining the current page. */
   async function older() {
     if (!cursor || busy) return
@@ -422,6 +425,7 @@ export function Trace({
       const result = await window.agent.listTrace({
         session_id: sessionId,
         before_seq: cursor,
+        run_id: focusRun,
         tool,
         errors_only: errors
       })
@@ -445,7 +449,11 @@ export function Trace({
     if (jobCursor == null || busy) return
     setBusy(true)
     try {
-      const r = await window.agent.listTrace({ session_id: sessionId, job_offset: jobCursor })
+      const r = await window.agent.listTrace({
+        session_id: sessionId,
+        job_offset: jobCursor,
+        run_id: focusRun
+      })
       if (r.ok) {
         setJobs((old) => [
           ...new Map(
@@ -466,6 +474,7 @@ export function Trace({
         <strong>Trace · 执行轨迹</strong>
         <button onClick={onClose}>关闭 Trace</button>
       </header>
+      {focusRun && <p className="muted">当前运行：{focusRun}</p>}
       <div className="trace-filters">
         <input
           aria-label="筛选工具"

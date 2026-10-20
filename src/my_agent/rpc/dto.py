@@ -89,6 +89,7 @@ from my_agent.models.connections import (
 )
 from my_agent.models.types import ModelId as ModelId
 from my_agent.rpc.m5_types import M5_TYPES
+from my_agent.rpc.m6_types import M6_TYPES
 from my_agent.runtime.modes import RunMode
 from my_agent.runtime.settings import RunLimits
 from my_agent.sessions.trace import TraceDetail, TraceDetailParams, TracePage, TraceParams
@@ -298,8 +299,8 @@ class AppInfo(DTO):
 
     name: Text
     app_version: Text
-    protocol_version: Literal[10]
-    stage: Literal["M5"]
+    protocol_version: Literal[11]
+    stage: Literal["M6"]
 
 
 class StorageInfo(DTO):
@@ -379,7 +380,7 @@ class InitializeParams(DTO):
     """
 
     app_version: Text
-    protocol_version: Literal[10]
+    protocol_version: Literal[11]
     data_schema_version: Literal[1]
 
 
@@ -428,8 +429,8 @@ class InitializeResult(DTO):
             "terminals.interrupt",
             "terminals.stop",
             "git.status",
-        "git.settings",
-        "git.configure",
+            "git.settings",
+            "git.configure",
             "git.diff",
             "git.stage",
             "git.unstage",
@@ -773,6 +774,7 @@ PUBLIC_TYPES: dict[str, type[BaseModel]] = {
     model.__name__: model
     for model in (
         *M5_TYPES,
+        *M6_TYPES,
         SpaceParams,
         SaveSpaceParams,
         SaveSpaceLayoutParams,

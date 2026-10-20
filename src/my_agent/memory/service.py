@@ -18,6 +18,7 @@ from my_agent.context.window import byte_size
 from my_agent.errors import AgentError
 from my_agent.memory.store import MemoryStore
 from my_agent.memory.types import (
+    MemoryEntry,
     MemoryExtraction,
     MemoryFields,
     MemoryJob,
@@ -31,6 +32,7 @@ from my_agent.sessions.projection import selected_model, summarize
 from my_agent.sessions.store import SessionLog
 from my_agent.sessions.types import RunFinished, ToolCompleted, ToolStarted
 from my_agent.storage import utc_now
+from my_agent.tasks.store import TaskStore
 
 if TYPE_CHECKING:
     from my_agent.sessions.service import SessionService
@@ -117,8 +119,62 @@ class MemoryService:
             state.used_ids = []
         await self.sessions.worker.call(self.store.save_state, session_id, state)
         if not settings.contribute or not settings.automatic:
-            await self.cancel(session_id)
+            await self.stop_job(session_id)
         return await self.page(session_id, MemoryQuery())
+
+    def _recall_entries(
+        self, log: SessionLog, settings: MemorySettings
+    ) -> tuple[list[tuple[MemoryEntry, str]], int]:
+        """优先当前问题，再以任务目标和近期用户输入补齐接续线索。
+
+        Prefer the current question, then supplement with task goals and recent user context.
+        """
+        summary = summarize(log)
+        messages, _ = log.context()
+        prompts = [
+            message["content"]
+            for message in reversed(messages)
+            if message.get("role") == "user" and isinstance(message.get("content"), str)
+        ]
+        latest = str(prompts[0]) if prompts else ""
+        primary, unavailable = self.store.find(
+            summary.project_id,
+            MemoryQuery(query=latest),
+            associations=settings.associations,
+            include_pinned=True,
+        )
+        related: list[str] = []
+        if summary.task_id:
+            task = TaskStore(self.sessions.store.storage).get(summary.task_id)
+            related.extend((task.fields.title, task.fields.goal))
+        related.extend(str(prompt) for prompt in prompts[1:])
+        # 检索补充有界且不发额外模型请求；最新问题始终具有更高顺序。
+        # Bound retrieval hints without another model call; current matches keep priority.
+        query = "\n".join(related)[: settings.recall_chars]
+        secondary, missing = (
+            self.store.find(
+                summary.project_id,
+                MemoryQuery(query=query),
+                associations=settings.associations,
+            )
+            if query
+            else ([], 0)
+        )
+        selected: list[tuple[MemoryEntry, str]] = []
+        seen_ids: set[str] = set()
+        seen_contents: set[str] = set()
+        for collection, reason in (
+            (primary, "当前问题相关"),
+            (secondary, "任务目标 / 近期用户话题相关"),
+        ):
+            for entry in collection:
+                normalized = " ".join(entry.content.split()).casefold()
+                if entry.memory_id in seen_ids or normalized in seen_contents:
+                    continue
+                seen_ids.add(entry.memory_id)
+                seen_contents.add(normalized)
+                selected.append((entry, "用户固定" if entry.pinned else reason))
+        return selected, max(unavailable, missing)
 
     async def recall(self, log: SessionLog, materials: list[ContextMaterial] | None = None) -> str:
         """从相关知识中装载有界正文；每次读取最新条目。
@@ -141,25 +197,28 @@ class MemoryService:
         )
         if not state.settings.use:
             return policy
-        messages, _ = log.context()
-        latest = next(
-            (msg.get("content", "") for msg in reversed(messages) if msg.get("role") == "user"), ""
-        )
-        query = MemoryQuery(query=latest if isinstance(latest, str) else "")
         entries, unavailable = await self.sessions.worker.call(
-            self.store.find,
-            summarize(log).project_id,
-            query,
-            associations=state.settings.associations,
-            include_pinned=True,
+            self._recall_entries, log, state.settings
         )
         remaining = state.settings.recall_chars
-        used = []
+        used: list[str] = []
         pieces = []
-        for entry in entries[: state.settings.recall_limit]:
-            if remaining <= 0:
+        for entry, reason in entries:
+            if remaining <= 0 or len(used) >= state.settings.recall_limit:
                 break
-            text = entry.content[:remaining]
+            full = len(entry.content) <= remaining
+            # 不把截掉适用条件的半条规则当作知识；长条目保留明确的全文读取入口。
+            # Never inject a rule with its conditions cut off; expose a full-read reference instead.
+            text = (
+                entry.content
+                if full
+                else (
+                    f"{entry.title}\n[Long memory; read_memory(memory_id='{entry.memory_id}') "
+                    "for the full content and applicability before using this knowledge.]"
+                )
+            )
+            if len(text) > remaining:
+                continue
             pieces.append(
                 {
                     "memory_id": entry.memory_id,
@@ -169,8 +228,9 @@ class MemoryService:
                     "revision": entry.revision,
                     "scope": entry.scope,
                     "updated_at": entry.updated_at,
-                    "form": "full" if len(text) == len(entry.content) else "fragment",
-                    "more": len(text) < len(entry.content),
+                    "form": "full" if full else "reference",
+                    "more": not full,
+                    "reason": reason,
                 }
             )
             remaining -= len(text)
@@ -180,8 +240,8 @@ class MemoryService:
                     describe_material(
                         kind="memory",
                         title=entry.title,
-                        form="full" if len(text) == len(entry.content) else "fragment",
-                        reason="固定优先 / 当前问题相关" if entry.pinned else "当前问题相关",
+                        form="full" if full else "reference",
+                        reason=reason,
                         source_id=entry.memory_id,
                         revision=entry.revision,
                         text=text,
@@ -211,7 +271,7 @@ class MemoryService:
         if self.sessions.closing:
             return
         state = await self.sessions.worker.call(self.store.state, log.session_id, len(log.facts))
-        new = [fact for fact in log.facts if fact.seq > state.processed_seq]
+        new = [fact for fact in log.effective_facts() if fact.seq > state.processed_seq]
         useful_calls = {
             fact.data.call.tool_call_id
             for fact in new
@@ -341,6 +401,7 @@ class MemoryService:
                         limit=100,
                         max_chars=min(32000, state.settings.maintenance_input_bytes // 6),
                     ),
+                    True,
                 )
                 if not page.items:
                     through = len(log.facts)
@@ -694,7 +755,7 @@ class MemoryService:
         for pending_id in list(self.jobs):
             pending_log = await self.sessions._load(pending_id)
             if summarize(pending_log).project_id == project_id:
-                await self.cancel(pending_id)
+                await self.stop_job(pending_id)
         await self.sessions.worker.call(self.store.forget, identity, summarize(log).project_id)
         return await self.page(session_id, MemoryQuery())
 
@@ -703,12 +764,19 @@ class MemoryService:
 
         Stop maintenance without stopping ordinary work.
         """
+        await self.stop_job(session_id)
+        return await self.page(session_id, MemoryQuery())
+
+    async def stop_job(self, session_id: str) -> None:
+        """内部停止入口不读取条目列表，回退与退出不隐含整库检索。
+
+        Internal cancellation avoids library reads during rollback and shutdown.
+        """
         self.pending.discard(session_id)
         task = self.jobs.pop(session_id, None)
         if task:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
-        return await self.page(session_id, MemoryQuery())
 
     async def close(self) -> None:
         """应用退出时取消并回收维护。
@@ -716,4 +784,4 @@ class MemoryService:
         Cancel and reap maintenance at application exit.
         """
         for sid in list(self.jobs):
-            await self.cancel(sid)
+            await self.stop_job(sid)

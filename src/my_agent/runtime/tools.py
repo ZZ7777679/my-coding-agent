@@ -37,6 +37,7 @@ class ToolContext:
     request_sink: RunSink | None = None
     collaboration_id: str | None = None
     archive_output: Callable[[str], Awaitable[str]] | None = None
+    read_roots: tuple[Path, ...] | None = None
 
 
 class ToolExecutor(Protocol):

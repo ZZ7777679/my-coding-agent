@@ -94,6 +94,7 @@ export function WorkGraphPanel({ active, space, connected, onSelectSession, onCh
   const epoch = useRef(0)
   const alive = useRef(true)
   const action = useRef(false)
+  const editGeneration = useRef(0)
   const canvas = useRef<HTMLDivElement>(null)
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 })
   const [flow, setFlow] = useState<ReactFlowInstance<WorkNode, Edge> | null>(null)
@@ -108,7 +109,11 @@ export function WorkGraphPanel({ active, space, connected, onSelectSession, onCh
   useEffect(() => {
     if (!canvas.current || !active) return
     const observer = new ResizeObserver(([entry]) => {
-      setCanvasSize({ width: entry.contentRect.width, height: entry.contentRect.height })
+      setCanvasSize((current) =>
+        current.width === entry.contentRect.width && current.height === entry.contentRect.height
+          ? current
+          : { width: entry.contentRect.width, height: entry.contentRect.height }
+      )
     })
     observer.observe(canvas.current)
     return () => observer.disconnect()
@@ -119,7 +124,7 @@ export function WorkGraphPanel({ active, space, connected, onSelectSession, onCh
       void flow.fitView({ padding: 0.12, maxZoom: 1 })
     })
     return () => cancelAnimationFrame(frame)
-  }, [flow, active, columns, canvasSize, items.length])
+  }, [flow, active, columns, canvasSize.width, canvasSize.height, items.length])
 
   /** 最新刷新才能替换后端投影，任务卸载后丢弃。 Only the newest refresh may update the mounted projection. */
   const refresh = useCallback(async () => {
@@ -181,6 +186,7 @@ export function WorkGraphPanel({ active, space, connected, onSelectSession, onCh
 
   /** 首次编辑固定基础修订，后台进度刷新不悄悄重置版本。 Capture a draft revision before editing. */
   const edit = (next: WorkItem[]) => {
+    editGeneration.current++
     if (draft === null) setRevision(view?.task.revision ?? null)
     setDraft(next)
   }
@@ -271,6 +277,8 @@ export function WorkGraphPanel({ active, space, connected, onSelectSession, onCh
     if (!draft || revision === null || action.current) return
     action.current = true
     setBusy(true)
+    const savedGeneration = editGeneration.current
+    setError('')
     try {
       const response = await window.agent.saveWorkGraph({
         task_id: space.task_id,
@@ -283,11 +291,18 @@ export function WorkGraphPanel({ active, space, connected, onSelectSession, onCh
       if (response.ok) {
         epoch.current++
         setView(response.data)
-        setDraft(null)
-        setOwnerChanges({})
-        setNotice('工作图已保存到当前任务。')
+        setRevision(response.data.task.revision)
+        // 保存期间的拖动或输入仍是新草稿，响应不能将它们清空。
+        // Edits made during a save remain a draft instead of being erased by its response.
+        if (savedGeneration === editGeneration.current) {
+          setDraft(null)
+          setOwnerChanges({})
+          setNotice('工作图已保存到当前任务。')
+        } else setNotice('已保存提交时的工作图；之后的编辑仍待保存。')
         onChanged()
       } else setError(response.error.message)
+    } catch {
+      if (alive.current) setError('未能确认工作图保存结果，草稿已保留；请刷新查看后再保存。')
     } finally {
       action.current = false
       if (alive.current) setBusy(false)
@@ -578,7 +593,9 @@ export function WorkGraphPanel({ active, space, connected, onSelectSession, onCh
           {issue}
         </p>
       ))}
-      {notice && <p role="status">{notice}</p>}
+      <p role="status" className="work-graph-notice">
+        {notice || '\u00a0'}
+      </p>
       {!view && !error && <p>正在读取工作图…</p>}
       <div className="work-graph-layout">
         <div>
@@ -591,8 +608,8 @@ export function WorkGraphPanel({ active, space, connected, onSelectSession, onCh
                 onInit={setFlow}
                 fitViewOptions={{ padding: 0.12, maxZoom: 1 }}
                 fitView
-                nodesDraggable={!disabled}
-                nodesConnectable={!disabled}
+                nodesDraggable={connected}
+                nodesConnectable={connected}
                 onNodesChange={changeNodes}
                 onEdgesChange={changeEdges}
                 onConnect={connect}

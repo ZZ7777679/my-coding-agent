@@ -2,6 +2,8 @@
 
 Public environment, binding and execution contracts."""
 
+import json
+from importlib.resources import files
 from typing import Annotated, Literal
 
 from pydantic import Field
@@ -10,6 +12,9 @@ from my_agent.identifiers import EntityId as SessionId
 from my_agent.models.types import ModelData
 
 LocalPath = Annotated[str, Field(min_length=1, max_length=4096, pattern=r"^[^\x00]*$")]
+_SANDBOX = json.loads(files("my_agent").joinpath("defaults.json").read_text(encoding="utf-8"))[
+    "sandbox"
+]
 
 
 class SystemEnvironment(ModelData):
@@ -95,6 +100,19 @@ class EnvironmentRecord(ModelData):
     probe: EnvironmentProbe | None = None
 
 
+class SandboxSettings(ModelData):
+    """原生沙箱的明确目录授权与网络能力。 Explicit native sandbox paths and network capabilities."""
+
+    read_paths: list[LocalPath] = Field(default_factory=list)
+    write_paths: list[LocalPath] = Field(default_factory=list)
+    network: Literal["blocked", "enabled"] = _SANDBOX["network"]
+    # 只为读取旧配置保留；免提权路径没有授权等待步骤。
+    # Kept for old settings only; the unprivileged path has no authorization wait.
+    authorization_timeout_seconds: Annotated[int, Field(ge=1)] = _SANDBOX[
+        "authorization_timeout_seconds"
+    ]
+
+
 class ProjectExecution(ModelData):
     """项目唯一默认环境和后续执行方式。
 
@@ -108,6 +126,12 @@ class ProjectExecution(ModelData):
         description="Legacy compatibility field; not an execution gate. Use the selected mode.",
     )
     mode: Literal["direct", "sandbox"]
+    sandbox: SandboxSettings = Field(default_factory=SandboxSettings)
+    # 只保存用户选择的变量名；值在启动时继承，不进入配置或模型材料。
+    # Persist selected names only; inherit values at launch, never into config or model context.
+    environment_passthrough: list[Annotated[str, Field(min_length=1, pattern=r"^[^=\x00]+$")]] = (
+        Field(default_factory=list)
+    )
 
 
 class EnvironmentView(ModelData):
@@ -122,6 +146,7 @@ class EnvironmentView(ModelData):
     interpreter: str | None
     launcher: str | None
     prefix: str | None
+    execution: ProjectExecution | None = None
 
 
 class EnvironmentCatalog(ModelData):
@@ -133,6 +158,7 @@ class EnvironmentCatalog(ModelData):
     environments: list[EnvironmentView]
     binding: ProjectExecution | None
     settings: ExecutionSettings
+    sandbox_issue: str | None = None
 
 
 class EnvironmentProjectParams(ModelData):
@@ -251,7 +277,7 @@ class ProgramSummary(ModelData):
     command: Command
     resolved_command: list[str]
     cwd: str
-    mode: Literal["direct"] = "direct"
+    mode: Literal["direct", "sandbox"] = "direct"
     status: Literal[
         "starting", "running", "ready", "stopping", "exited", "stopped", "failed", "interrupted"
     ]

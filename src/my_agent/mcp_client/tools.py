@@ -113,6 +113,13 @@ class McpTools:
         for name, (server, tool) in self.service.selected.get(self.context.session_id, {}).items():
             if self.context.mode == "plan" and self.is_mutating(name):
                 continue
+            if (
+                self.context.read_roots is not None
+                and self.service.transports.get(server) == "stdio"
+            ):
+                # 仍保留已选择身份；切回支持的模式后恢复，当前请求不诱导无效调用。
+                # Retain selections for supported modes without advertising unusable calls.
+                continue
             result.append(
                 {
                     "type": "function",

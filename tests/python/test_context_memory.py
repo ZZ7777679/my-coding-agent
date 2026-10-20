@@ -967,6 +967,53 @@ def test_memory_correction_uses_relevant_entries_and_actual_program_output(tmp_p
     asyncio.run(scenario())
 
 
+def test_memory_followup_recall_and_complete_long_entry_reference(tmp_path):
+    """短句接续使用近期用户话题，长知识不会被截成半条规则。
+
+    Recall recent user topics for short follow-ups without injecting truncated rules.
+    """
+
+    async def scenario():
+        """用真实请求装配核对关联、完整性和跨项目隔离。
+
+        Check relevance, completeness and project isolation through real request assembly.
+        """
+        model = KnowledgeModel()
+        async with app_at(tmp_path / "data", model) as app:
+            created = await create_session(app, tmp_path / "project")
+            sid, pid = created.session.session_id, created.session.project_id
+            service = app.sessions.memory
+            await service.configure(sid, MemorySettings(automatic=False, recall_chars=500))
+            short = service.store.save(
+                pid, MemoryFields(title="quartz", content="quartz uses local assets.")
+            )
+            long = service.store.save(
+                pid,
+                MemoryFields(
+                    title="quartz deployment",
+                    content="quartz deployment " * 80 + "ONLY when explicitly publishing.",
+                ),
+            )
+            unrelated = service.store.save(
+                str(uuid4()), MemoryFields(title="quartz", content="Other project facts")
+            )
+            await run(app, sid, "Discuss quartz deployment")
+            await run(app, sid, "Continue")
+            view = await app.sessions.contexts.view(sid)
+            materials = {
+                m.source_id: m for m in view.last_request.manifest.materials if m.kind == "memory"
+            }
+            assert short.memory_id in materials and unrelated.memory_id not in materials
+            assert materials[short.memory_id].reason == "任务目标 / 近期用户话题相关"
+            assert materials[long.memory_id].form == "reference"
+            system = model.requests[-1]["messages"][0]["content"]
+            assert "local assets" in system and "read_memory" in system
+            assert "quartz deployment quartz deployment" not in system
+            assert len(model.requests) == 2  # 召回没有额外模型路由 / No extra routing request.
+
+    asyncio.run(scenario())
+
+
 def test_memory_search_pinning_and_inactive_replacement(tmp_path):
     """搜索不混入固定项，自动召回优先固定项，失效替代不隐藏有效记忆。
 

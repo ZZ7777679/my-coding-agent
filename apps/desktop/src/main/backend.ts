@@ -12,7 +12,7 @@ import type {
   DiagnosticsParams,
   InitializeResult,
   OperationError,
-  ProtocolV10,
+  ProtocolV11,
   SessionSignal
 } from '../generated/protocol'
 import { validate } from '../shared/validation'
@@ -254,12 +254,12 @@ export class Backend {
    * 按方法校验短控制响应，诊断与运行使用独立等待。
    * Validate short control responses independently of diagnostic and run waiting.
    */
-  async call<K extends keyof ProtocolV10>(
+  async call<K extends keyof ProtocolV11>(
     method: string,
     params: object,
     resultType: K,
     timeoutMs: number | null = 8000
-  ): Promise<ProtocolV10[K]> {
+  ): Promise<ProtocolV11[K]> {
     // M1 的诊断与模型运行独立，取消请求立即进入控制通道。
     // M1 diagnostics and model runs are independent; cancellation goes directly to control.
     const response = this.request(method, params, timeoutMs)

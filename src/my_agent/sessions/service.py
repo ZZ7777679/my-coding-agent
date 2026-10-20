@@ -46,6 +46,7 @@ from my_agent.sessions.types import (
     SessionCreated,
     SessionModelChanged,
     SessionPage,
+    SessionRenamed,
     SessionSignal,
     SessionSummary,
     SessionView,
@@ -159,12 +160,16 @@ class SessionService:
         finish_run: Callable[[str], Awaitable[None]] | None = None,
         close_execution: Callable[[], Awaitable[None]] | None = None,
         sync_report: Callable[[str, int], Awaitable[tuple[str, int] | None]] | None = None,
+        read_roots: Callable[[str], tuple[Path, ...] | None] | None = None,
     ) -> None:
         """显式注入组件，不在运行时创建 provider。
 
         Inject components without runtime provider construction.
         """
         self.store = store
+        from my_agent.checkpoints.store import CheckpointStore
+
+        self.checkpoints = CheckpointStore(store.storage)
         self.projects = projects
         self.worker = worker
         self.model_factory = model_factory
@@ -174,6 +179,7 @@ class SessionService:
         self.finish_run = finish_run
         self.close_execution = close_execution
         self.sync_report = sync_report
+        self.read_roots = read_roots
         self.epoch = str(uuid4())
         self.active_runs: dict[str, ActiveRun] = {}
         self.lock = asyncio.Lock()
@@ -372,6 +378,32 @@ class SessionService:
                 raise AgentError("RUN_BUSY", "请等待该会话运行结束，再修改归属或分工。")
             await self.worker.call(self.store.append, log, assignment, None)
             return summarize(log)
+
+    async def rename(self, session_id: str, operation_id: str, title: str) -> SessionSummary:
+        """保存显示名并通知订阅，不暂停运行或改变对话。
+
+        Persist and notify a label change without interrupting runs.
+        """
+        async with self.lock:
+            log = await self._load(session_id)
+            change = SessionRenamed(operation_id=operation_id, title=title)
+            prior = next(
+                (
+                    f.data
+                    for f in log.facts
+                    if isinstance(f.data, SessionRenamed) and f.data.operation_id == operation_id
+                ),
+                None,
+            )
+            if prior is not None and prior != change:
+                raise AgentError("OPERATION_CONFLICT", "该操作标识已用于不同会话名称。")
+            if prior is None:
+                await self.worker.call(self.store.append, log, change, None)
+                self.signal_log(log)
+            active = self.active_for(session_id)
+            return summarize(
+                log, active=active is not None, stopping=bool(active and active.cancel.is_set())
+            )
 
     async def select_model(
         self, session_id: str, operation_id: str, model_id: ModelId
@@ -865,6 +897,10 @@ class SessionService:
         sink = ServiceSink(self, active)
         work: asyncio.Task[Literal["finished", "yielded"]] | None = None
         tools: WorkflowTools | None = None
+        file_checkpoint: str | None = None
+        from my_agent.checkpoints.types import RollbackSettings
+
+        rollback_settings = RollbackSettings()
         finished = RunFinished(status="completed", code=None, message=None)
         try:
             context, complete = active.log.context()
@@ -873,6 +909,34 @@ class SessionService:
             if active.cancel.is_set():
                 raise asyncio.CancelledError
             contexts = self.contexts
+            try:
+                if contexts:
+                    rollback_settings = (
+                        await self.worker.call(contexts.store.read, active.log.session_id)
+                    ).settings.rollback
+                if rollback_settings.enabled:
+                    accepted, accepted_prompt = next(
+                        (f, f.data.prompt)
+                        for f in active.log.facts
+                        if f.run_id == active.run_id and isinstance(f.data, RunAccepted)
+                    )
+                    file_checkpoint = await self.worker.call(
+                        self.checkpoints.begin,
+                        root,
+                        active.log.session_id,
+                        summarize(active.log).project_id,
+                        active.run_id,
+                        accepted.seq,
+                        accepted_prompt,
+                        active.limits,
+                        rollback_settings,
+                    )
+            except (AgentError, OSError) as exc:
+                # 可选检查点失败不阻断普通编码；明示缺少恢复覆盖。
+                # Optional checkpoint failure does not block coding; log missing coverage.
+                logging.getLogger(__name__).warning(
+                    "CHECKPOINT_CAPTURE_FAILED type=%s", type(exc).__name__
+                )
             tool_context = ToolContext(
                 root=root,
                 limits=active.limits,
@@ -883,6 +947,9 @@ class SessionService:
                 mode=active.mode,
                 plan_document=active.plan_document,
                 request_sink=sink,
+                read_roots=await self.worker.call(self.read_roots, summarize(active.log).project_id)
+                if self.read_roots
+                else None,
                 collaboration_id=active.collaboration_id,
                 archive_output=(
                     lambda text: self.worker.call(
@@ -895,6 +962,14 @@ class SessionService:
             tools = WorkflowTools(
                 tool_context, self.tool_factory(tool_context), active.log, self.worker
             )
+            from my_agent.tools.discovery import CapabilityTools
+
+            request_tools: ToolExecutor = tools
+            capability_tools = None
+            if contexts is not None:
+                capability_tools = CapabilityTools(tool_context, tools, contexts.store, self.worker)
+                await capability_tools.refresh()
+                request_tools = capability_tools
             model = self.model_factory()
 
             async def run_with_context() -> Literal["finished", "yielded"]:
@@ -904,7 +979,7 @@ class SessionService:
                 """
                 result = await run_loop(
                     model=model,
-                    tools=tools,
+                    tools=request_tools,
                     sink=sink,
                     model_id=model_id,
                     model_selector=lambda: selected_model(active.log),
@@ -914,7 +989,7 @@ class SessionService:
                     stop=active.stop,
                     context_provider=lambda: self.shared_context(active.log),
                     system_prompt=system_prompt(active.mode, active.plan_document)
-                    + (contexts.usage_guide(tools.definitions()) if contexts else "")
+                    + (contexts.usage_guide(request_tools.definitions()) if contexts else "")
                     + tools.request_reference()
                     + (
                         "\n\nBundled work method:\n" + active.method.text
@@ -927,17 +1002,20 @@ class SessionService:
                         else ""
                     ),
                     terminal=tools.finished,
+                    prepare_tools=capability_tools.refresh if capability_tools else None,
                     yield_requested=lambda: active.yield_requested,
                     window_provider=(
-                        lambda current, definitions: contexts.prepare(
-                            active, sink, current, definitions
+                        lambda current, definitions, request_model: contexts.prepare(
+                            active, sink, current, definitions, request_model
                         )
                     )
                     if contexts
                     else None,
                 )
                 if self.contexts:
-                    await self.contexts.wait(active.log.session_id, run_id=active.run_id)
+                    await self.contexts.wait(
+                        active.log.session_id, run_id=active.run_id, include_background=False
+                    )
                 if self.delegations:
                     await self.delegations.finish_owner(active, result == "yielded")
                 return result
@@ -992,7 +1070,11 @@ class SessionService:
             if work is not None:
                 await asyncio.gather(work, return_exceptions=True)
             if self.contexts is not None:
-                await self.contexts.stop_job(active.log.session_id, run_id=active.run_id)
+                await self.contexts.stop_job(
+                    active.log.session_id,
+                    run_id=active.run_id,
+                    include_background=finished.status != "completed",
+                )
             if self.collaboration is not None:
                 self.collaboration.delivering.pop(active.run_id, None)
             if self.delegations is not None and not finished.checkpoint:
@@ -1007,6 +1089,20 @@ class SessionService:
             try:
                 if tools is not None:
                     finished = finished.model_copy(update={"report": tools.report})
+                if file_checkpoint:
+                    try:
+                        await self.worker.call(
+                            self.checkpoints.finish,
+                            active.log.session_id,
+                            file_checkpoint,
+                            root,
+                            active.limits,
+                            rollback_settings,
+                        )
+                    except (AgentError, OSError) as exc:
+                        logging.getLogger(__name__).warning(
+                            "CHECKPOINT_FINISH_FAILED type=%s", type(exc).__name__
+                        )
                 await sink.commit(finished)
             except AgentError as exc:
                 active.log.issue = exc.code

@@ -1,8 +1,30 @@
 /** M5 明确能力接口，数据类型仅来自生成协议。 Explicit M5 capabilities using generated contracts only. */
-import type { ProtocolV10 as P } from '../generated/protocol'
+import type { ProtocolV11 as P } from '../generated/protocol'
 import type { Result } from './api'
 
 export interface M5DesktopAPI {
+  /** 重命名导航项，保持身份和项目文件。 Rename a navigation label, retaining identity and files. */
+  renameNavigation(params: P['RenameNavigationParams']): Promise<Result<P['NavigationItemName']>>
+  /** 打开已登记项目的目录。 Open a registered project directory. */
+  openProjectDirectory(params: P['EnvironmentProjectParams']): Promise<Result<P['EmptyParams']>>
+  /** 读取组合工作方式及项目默认。 Read composite workstyles and project default. */
+  listWorkStyles(params: P['WorkStyleQuery']): Promise<Result<P['WorkStyleCatalog']>>
+  /** 保存组合定义。 Save composite definitions. */
+  saveWorkStyle(params: P['SaveWorkStyle']): Promise<Result<P['WorkStyle']>>
+  /** 从任务生成可编辑预览。 Preview reusable definitions from a task. */
+  captureWorkStyle(params: P['CaptureWorkStyle']): Promise<Result<P['WorkStyle']>>
+  /** 保存未来任务默认。 Save future-task default. */
+  defaultWorkStyle(params: P['WorkStyleDefault']): Promise<Result<P['WorkStyleCatalog']>>
+  /** 解析导入文本。 Parse imported text. */
+  parseWorkStyle(params: P['ParseWorkStyle']): Promise<Result<P['WorkStyle']>>
+  /** 显式采用模板定义，保留历史。 Adopt template definitions with retained history. */
+  applyWorkStyle(params: P['ApplyWorkStyle']): Promise<Result<P['TaskView']>>
+  /** 读取请求检查点。 Read request checkpoints. */
+  listCheckpoints(params: P['CheckpointParams']): Promise<Result<P['CheckpointPage']>>
+  /** 预览实际恢复差异。 Preview actual restoration changes. */
+  previewRestore(params: P['PreviewCheckpointParams']): Promise<Result<P['RestorePreview']>>
+  /** 恢复代码或从原消息重新开始。 Restore code or restart from the selected message. */
+  restoreCheckpoint(params: P['RestoreCheckpointParams']): Promise<Result<P['RestoreResult']>>
   /** 读取开关和可恢复备份。 Read switch and recoverable backup. */
   getGitSettings(params: P['GitProjectParams']): Promise<Result<P['GitSettings']>>
   /** 移走或恢复项目自身 Git 元数据。 Relocate or restore this project's Git metadata. */

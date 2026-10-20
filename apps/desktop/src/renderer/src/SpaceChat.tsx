@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { SpaceChatView, SpaceView } from '../../generated/protocol'
 import './SpaceChat.css'
 import { Markdown } from './Markdown'
+import { Trace } from './Trace'
 import { applySpaceDelta, mergeSpaceSnapshot } from './space-stream'
 
 type Props = {
@@ -26,9 +27,21 @@ export function SpaceChat({
   const [pending, setPending] = useState(false)
   const [activeOnly, setActiveOnly] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [trace, setTrace] = useState<{
+    session: string
+    run: string
+    seq: number | null
+  } | null>(null)
   const identity = useRef(space.task_id)
   identity.current = space.task_id
   const latestRequest = useRef(0)
+  // 相同成员配置的快照不重建订阅，否则会取消尚未执行的完成状态刷新。
+  // Equivalent member snapshots must not cancel a queued completion refresh.
+  const boundSessions = (space.bindings ?? [])
+    .map((item) => item.session_id)
+    .filter(Boolean)
+    .sort()
+    .join('|')
 
   /** 按需带入旧页，不让实时刷新清空已展开历史。 Load older pages without losing them on refresh. */
   async function loadOlder(): Promise<void> {
@@ -80,12 +93,10 @@ export function SpaceChat({
   }, [load])
 
   useEffect(() => {
+    if (!connected) return
     const taskId = space.task_id
-    const sessions = new Map(
-      (space.bindings ?? [])
-        .filter((item) => item.session_id)
-        .map((item) => [item.session_id, item.member_id])
-    )
+    const sessions = new Set(boundSessions.split('|').filter(Boolean))
+    let disposed = false
     let scheduled: ReturnType<typeof setTimeout> | undefined
     /** 合并快照刷新而不推迟已有刷新，持续输出也能恢复。 Coalesce snapshots without postponing an already scheduled refresh. */
     const refresh = (): void => {
@@ -107,11 +118,28 @@ export function SpaceChat({
         refresh()
       }
     })
+    // 前端监听不会自动订阅 RPC；先接通知，再读快照补上接入期间的变化。
+    // Frontend listeners do not subscribe the RPC transport; attach before resynchronizing.
+    for (const session_id of sessions) {
+      void window.agent
+        .attachSession({ session_id, before_seq: null })
+        .then((result) => {
+          if (disposed) return
+          if (result.ok) refresh()
+          else setError(result.error.message)
+        })
+        .catch(() => {
+          if (!disposed) setError('成员动态订阅失败，可刷新页面重新连接。')
+        })
+    }
     return () => {
+      disposed = true
       unsubscribe()
       if (scheduled) clearTimeout(scheduled)
+      for (const sessionId of sessions)
+        void window.agent.detachSession(sessionId).catch(() => undefined)
     }
-  }, [load, space.task_id, space.bindings])
+  }, [load, space.task_id, boundSessions, connected])
 
   /** 用一个明确操作身份发送普通消息或启动持续目标。 Send an ordinary message or start a continuing goal with an explicit operation ID. */
   async function send(goal: boolean): Promise<void> {
@@ -216,6 +244,7 @@ export function SpaceChat({
   /** 回答保持独立折叠节点，实时刷新不替换展开状态或阅读位置。
    * Keep stable disclosure nodes across live updates and preserve the reader's position. */
   const renderOutput = (output: NonNullable<SpaceChatView['outputs']>[number], index: number) => {
+    const runId = output.run_id
     const waitingMember = (space.bindings ?? []).find(
       (binding) => binding.session_id === output.waiting_for
     )
@@ -223,7 +252,7 @@ export function SpaceChat({
       <details
         className={`space-output ${active(output.status) ? 'is-active' : ''}`}
         open
-        key={`${output.session_id}:${output.run_id}:${output.message_id}:${output.seq ?? index}`}
+        key={`${output.session_id}:${output.run_id}:${output.message_id ?? output.origin_id ?? index}`}
       >
         <summary>
           <strong>{name(output.member_id)}</strong>
@@ -238,7 +267,22 @@ export function SpaceChat({
         </summary>
         <div className="space-output-body">
           <div className="space-output-actions">
-            <button onClick={() => onSelectSession(output.session_id)}>会话 / Trace</button>
+            <button onClick={() => onSelectSession(output.session_id)}>进入会话</button>
+            {runId ? (
+              <button
+                onClick={() =>
+                  setTrace({
+                    session: output.session_id,
+                    run: runId,
+                    seq: output.seq ?? null
+                  })
+                }
+              >
+                本次运行 / Trace
+              </button>
+            ) : (
+              <span>{active(output.status) ? '等待接纳' : '无运行记录'}</span>
+            )}
             {output.waiting_for && (
               <button onClick={() => onSelectSession(output.waiting_for!)}>查看等待对象</button>
             )}
@@ -377,6 +421,23 @@ export function SpaceChat({
           </form>
         </div>
       </details>
+      {trace && (
+        <div className="space-trace-overlay">
+          <Trace
+            key={`${trace.session}:${trace.run}`}
+            sessionId={trace.session}
+            projectId={space.project_id}
+            revision={
+              view?.outputs?.find(
+                (output) => output.session_id === trace.session && output.run_id === trace.run
+              )?.seq ?? 0
+            }
+            focusSeq={trace.seq}
+            focusRun={trace.run}
+            onClose={() => setTrace(null)}
+          />
+        </div>
+      )}
     </section>
   )
 }

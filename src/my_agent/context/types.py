@@ -9,12 +9,16 @@ from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 
+from my_agent.checkpoints.types import RollbackSettings
 from my_agent.identifiers import EntityId
 from my_agent.models.types import ModelData, ModelId, TokenUsage
 from my_agent.runtime.context import ContextManifest
 
 _DEFAULTS = json.loads(files("my_agent").joinpath("defaults.json").read_text(encoding="utf-8"))[
     "compaction"
+]
+_CAPABILITIES = json.loads(files("my_agent").joinpath("defaults.json").read_text(encoding="utf-8"))[
+    "capabilities"
 ]
 
 
@@ -38,6 +42,8 @@ class ContextSettings(ModelData):
     """
 
     automatic: bool = True
+    background_compaction: bool = False
+    rollback: RollbackSettings = Field(default_factory=RollbackSettings)
     auto_trigger_tokens: Annotated[int, Field(ge=1)] = _DEFAULTS["auto_trigger_tokens"]
     keep_recent_tokens: Annotated[int, Field(ge=0)] = _DEFAULTS["keep_recent_tokens"]
     tool_result_preview_tokens: Annotated[int, Field(ge=0)] = _DEFAULTS[
@@ -45,6 +51,10 @@ class ContextSettings(ModelData):
     ]
     summary_target_tokens: Annotated[int, Field(ge=1)] = _DEFAULTS["summary_target_tokens"]
     summary_output_tokens: Annotated[int, Field(ge=1)] | None = None
+    tool_loading: Literal["on_demand", "all"] = _CAPABILITIES["tool_loading"]
+    core_tools: list[str] = Field(default_factory=lambda: list(_CAPABILITIES["core_tools"]))
+    active_tools: list[str] = Field(default_factory=list)
+    skill_catalog_tokens: Annotated[int, Field(ge=0)] = _CAPABILITIES["skill_catalog_tokens"]
 
 
 class Checkpoint(ModelData):
@@ -93,6 +103,7 @@ class ContextJob(ModelData):
     retained_tokens: int | None = None
     through_seq: int = 0
     policy: ContextSettings | None = None
+    background: bool = False
 
 
 class ToolPreview(ModelData):

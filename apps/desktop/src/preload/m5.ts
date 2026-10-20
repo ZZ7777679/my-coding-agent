@@ -1,5 +1,5 @@
 /** M5 有限 preload 转发。 Restricted M5 preload forwarding. */
-import type { ProtocolV10 as P } from '../generated/protocol'
+import type { ProtocolV11 as P } from '../generated/protocol'
 import type { M5DesktopAPI } from '../shared/m5-api'
 import type { Result } from '../shared/api'
 
@@ -12,6 +12,18 @@ type Invoke = <K extends keyof P>(
 /** 按公开契约装配方法，不暴露通用 RPC。 Compose explicit contracts without exposing arbitrary RPC. */
 export function m5Api(invoke: Invoke): M5DesktopAPI {
   return {
+    renameNavigation: (params) =>
+      invoke('agent:m6-renameNavigation', 'NavigationItemName', [params]),
+    openProjectDirectory: (params) => invoke('agent:m6-project-directory', 'EmptyParams', [params]),
+    listWorkStyles: (params) => invoke('agent:m6-listWorkStyles', 'WorkStyleCatalog', [params]),
+    saveWorkStyle: (params) => invoke('agent:m6-saveWorkStyle', 'WorkStyle', [params]),
+    captureWorkStyle: (params) => invoke('agent:m6-captureWorkStyle', 'WorkStyle', [params]),
+    defaultWorkStyle: (params) => invoke('agent:m6-defaultWorkStyle', 'WorkStyleCatalog', [params]),
+    parseWorkStyle: (params) => invoke('agent:m6-parseWorkStyle', 'WorkStyle', [params]),
+    applyWorkStyle: (params) => invoke('agent:m6-applyWorkStyle', 'TaskView', [params]),
+    listCheckpoints: (params) => invoke('agent:m6-listCheckpoints', 'CheckpointPage', [params]),
+    previewRestore: (params) => invoke('agent:m6-previewRestore', 'RestorePreview', [params]),
+    restoreCheckpoint: (params) => invoke('agent:m6-restoreCheckpoint', 'RestoreResult', [params]),
     getGitSettings: (params) => invoke('agent:m5-getGitSettings', 'GitSettings', [params]),
     configureGit: (params) => invoke('agent:m5-configureGit', 'GitSettings', [params]),
     pickAttachments: (params) => invoke('agent:m5-pick-attachments', 'AttachmentPage', [params]),

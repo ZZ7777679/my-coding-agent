@@ -1,11 +1,20 @@
 /** 左侧项目、任务、会话树；选择与展开分开管理。 Project/task/session tree with independent selection and expansion. */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ProjectSummary, SessionSummary, TaskSummary } from '../../generated/protocol'
+import type {
+  NavigationItemName,
+  ProjectSummary,
+  SessionSummary,
+  TaskSummary
+} from '../../generated/protocol'
+import { NavigationMenu, type NavigationPopup, type NavigationTarget } from './NavigationMenu'
+import type { KeyboardEvent, MouseEvent } from 'react'
 
 export type WorkspaceSelection = {
   projectId: string
   taskId: string | null
   sessionId: string | null
+  /** 一次用户编辑入口，非持久化业务身份。 One UI edit request, not a persisted entity identity. */
+  editTaskRequest?: string
 }
 type Props = {
   projects: ProjectSummary[]
@@ -13,6 +22,7 @@ type Props = {
   revision: number
   connected: boolean
   onSelect: (selection: WorkspaceSelection) => void
+  onRenamed: (item: NavigationItemName) => void
 }
 
 /** 按任务和会话各自游标加载，保留不可读条目的明确提示。 Page tasks and sessions with explicit unreadable-record feedback. */
@@ -21,8 +31,15 @@ function ProjectBranch({
   selected,
   revision,
   connected,
-  onSelect
-}: Omit<Props, 'projects'> & { project: ProjectSummary }) {
+  onSelect,
+  onContext
+}: Omit<Props, 'projects' | 'onRenamed'> & {
+  project: ProjectSummary
+  onContext: (
+    event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>,
+    target: NavigationTarget
+  ) => void
+}) {
   const [expanded, setExpanded] = useState(selected?.projectId === project.project_id)
   const [tasks, setTasks] = useState<TaskSummary[]>([])
   const [sessions, setSessions] = useState<SessionSummary[]>([])
@@ -137,6 +154,24 @@ function ProjectBranch({
       className={'tree-session ' + (selected?.sessionId === session.session_id ? 'selected' : '')}
       data-session-id={session.session_id}
       title={session.role ? `${session.title} · ${session.role}` : session.title}
+      aria-haspopup="menu"
+      onContextMenu={(event) =>
+        onContext(event, {
+          kind: 'session',
+          project,
+          session,
+          taskName: tasks.find((task) => task.task_id === session.task_id)?.title
+        })
+      }
+      onKeyDown={(event) => {
+        if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))
+          onContext(event, {
+            kind: 'session',
+            project,
+            session,
+            taskName: tasks.find((task) => task.task_id === session.task_id)?.title
+          })
+      }}
       onClick={() =>
         onSelect({ projectId, taskId: session.task_id ?? null, sessionId: session.session_id })
       }
@@ -210,8 +245,15 @@ function ProjectBranch({
         <button
           className={'tree-project ' + (selected?.projectId === projectId ? 'selected' : '')}
           title={project.path}
-          disabled={!connected}
+          aria-haspopup="menu"
+          onContextMenu={(event) => onContext(event, { kind: 'project', project })}
+          onKeyDown={(event) => {
+            if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))
+              onContext(event, { kind: 'project', project })
+          }}
+          aria-disabled={!connected}
           onClick={() => {
+            if (!connected) return
             setExpanded(true)
             onSelect({ projectId, taskId: null, sessionId: null })
           }}
@@ -252,6 +294,14 @@ function ProjectBranch({
                     'tree-task ' +
                     (selected?.taskId === task.task_id && !selected.sessionId ? 'selected' : '')
                   }
+                  data-task-id={task.task_id}
+                  title={task.title}
+                  aria-haspopup="menu"
+                  onContextMenu={(event) => onContext(event, { kind: 'task', project, task })}
+                  onKeyDown={(event) => {
+                    if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))
+                      onContext(event, { kind: 'task', project, task })
+                  }}
                   onClick={() => onSelect({ projectId, taskId: task.task_id, sessionId: null })}
                 >
                   <span>{task.title}</span>
@@ -316,13 +366,44 @@ function ProjectBranch({
 }
 
 /** 所有项目在左栏独立展开，右侧只显示选中的任务或会话。 Expand projects independently of the main detail view. */
-export function TaskNavigation({ projects, ...props }: Props) {
+export function TaskNavigation({ projects, onRenamed, ...props }: Props) {
+  const [popup, setPopup] = useState<NavigationPopup | null>(null)
+  /** 右键与键盘调用同一菜单，不触发树节点选择。 Open the same menu from mouse or keyboard without selecting. */
+  const openMenu = (
+    event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>,
+    target: NavigationTarget
+  ) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const rect = event.currentTarget.getBoundingClientRect()
+    setPopup({
+      target,
+      anchor: event.currentTarget,
+      x: 'clientX' in event ? event.clientX : rect.left + 12,
+      y: 'clientY' in event ? event.clientY : rect.bottom
+    })
+  }
+  /** 关闭后恢复原节点焦点。 Restore the original node focus when dismissed. */
+  const closeMenu = () => {
+    const anchor = popup?.anchor
+    setPopup(null)
+    requestAnimationFrame(() => anchor?.focus())
+  }
   return (
     <nav className="task-navigation" aria-label="项目任务会话">
       {projects.map((project) => (
-        <ProjectBranch key={project.project_id} project={project} {...props} />
+        <ProjectBranch key={project.project_id} project={project} {...props} onContext={openMenu} />
       ))}
       {!projects.length && <p className="sidebar-empty">先选择项目文件夹。</p>}
+      {popup && (
+        <NavigationMenu
+          popup={popup}
+          connected={props.connected}
+          onClose={closeMenu}
+          onSelect={props.onSelect}
+          onRenamed={onRenamed}
+        />
+      )}
     </nav>
   )
 }

@@ -33,6 +33,10 @@
   flex-wrap: wrap;
   align-items: center;
 }
+.work-graph-notice {
+  min-height: 1.5em;
+  margin: 0;
+}
 .work-graph-toolbar strong {
   margin-right: auto;
 }

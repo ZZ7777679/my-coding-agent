@@ -1,18 +1,32 @@
 {
   "app_name": "My Coding Agent",
-  "stage": "M5",
-  "protocol_version": 10,
+  "stage": "M6",
+  "protocol_version": 11,
   "data_schema_version": 1,
   "data_dir": "E:\\MyCodingAgentData",
   "data_dir_env": "MY_AGENT_DATA_DIR",
   "development_project_dir": "E:\\claude_code\\my-coding-agent-test",
   "project_dir_env": "MY_AGENT_PROJECT_DIR",
   "max_frame_bytes": 1048576,
+  "rollback": {
+    "enabled": true,
+    "max_file_bytes": 16777216,
+    "max_total_bytes": 536870912
+  },
+  "sandbox": {
+    "network": "enabled",
+    "authorization_timeout_seconds": 120
+  },
   "compaction": {
     "auto_trigger_tokens": 800000,
     "keep_recent_tokens": 15000,
     "tool_result_preview_tokens": 1000,
     "summary_target_tokens": 2000
+  },
+  "capabilities": {
+    "tool_loading": "on_demand",
+    "skill_catalog_tokens": 2000,
+    "core_tools": ["list_files", "read_file", "search", "create_file", "edit_file", "run_command", "read_program", "stop_program", "report_work", "discover_tools", "discover_skills", "load_skill", "discover_mcp_tools"]
   },
   "context_windows": {
     "source": "models.dev / opencode-go",

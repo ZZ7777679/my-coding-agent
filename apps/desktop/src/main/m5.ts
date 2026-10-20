@@ -1,5 +1,5 @@
 /** M5 已登记的明确 IPC 能力。 Explicit registered M5 IPC capabilities. */
-import type { ProtocolV10 as P } from '../generated/protocol'
+import type { ProtocolV11 as P } from '../generated/protocol'
 import type { Backend } from './backend'
 import { validate } from '../shared/validation'
 import defaults from '../../../../src/my_agent/defaults.json'
@@ -10,6 +10,21 @@ type Register = (
   action: (...args: unknown[]) => Promise<unknown>
 ) => void
 const routes: ReadonlyArray<readonly [string, string, keyof P, keyof P]> = [
+  [
+    'agent:m6-renameNavigation',
+    'navigation.rename',
+    'RenameNavigationParams',
+    'NavigationItemName'
+  ],
+  ['agent:m6-listWorkStyles', 'workstyles.list', 'WorkStyleQuery', 'WorkStyleCatalog'],
+  ['agent:m6-saveWorkStyle', 'workstyles.save', 'SaveWorkStyle', 'WorkStyle'],
+  ['agent:m6-captureWorkStyle', 'workstyles.capture', 'CaptureWorkStyle', 'WorkStyle'],
+  ['agent:m6-defaultWorkStyle', 'workstyles.default', 'WorkStyleDefault', 'WorkStyleCatalog'],
+  ['agent:m6-parseWorkStyle', 'workstyles.parse', 'ParseWorkStyle', 'WorkStyle'],
+  ['agent:m6-applyWorkStyle', 'workstyles.apply', 'ApplyWorkStyle', 'TaskView'],
+  ['agent:m6-listCheckpoints', 'checkpoints.list', 'CheckpointParams', 'CheckpointPage'],
+  ['agent:m6-previewRestore', 'checkpoints.preview', 'PreviewCheckpointParams', 'RestorePreview'],
+  ['agent:m6-restoreCheckpoint', 'checkpoints.restore', 'RestoreCheckpointParams', 'RestoreResult'],
   ['agent:m5-getWorkGraph', 'spaces.work_graph', 'SpaceParams', 'WorkGraphView'],
   ['agent:m5-saveWorkGraph', 'spaces.work_graph_save', 'SaveWorkGraphParams', 'WorkGraphView'],
   ['agent:m5-startWorkGraph', 'spaces.work_graph_start', 'StartWorkGraphParams', 'SpaceChatView'],

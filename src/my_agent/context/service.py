@@ -35,7 +35,7 @@ from my_agent.context.window import (
 from my_agent.errors import AgentError
 from my_agent.mcp_client.types import McpParams
 from my_agent.models.failures import ModelResponseError
-from my_agent.models.types import JsonObject, TokenUsage
+from my_agent.models.types import JsonObject, ModelId, TokenUsage
 from my_agent.runtime.context import ContextMaterial, PreparedWindow, describe_material
 from my_agent.runtime.events import RunSink
 from my_agent.runtime.settings import RunLimits
@@ -104,6 +104,7 @@ class ContextService:
         self.store = ContextStore(sessions.store)
         self.jobs: dict[str, asyncio.Task[None]] = {}
         self.job_owners: dict[str, str | None] = {}
+        self.background_jobs: set[str] = set()
         self.request_baselines: dict[str, tuple[str, list[JsonObject], list[JsonObject], int]] = {}
         self.no_gain_prefixes: dict[str, NoGainPrefix] = {}
 
@@ -223,9 +224,9 @@ class ContextService:
         Save policy without rewriting in-flight requests.
         """
         await self.sessions._load(session_id)
-        state = await self.sessions.worker.call(self.store.read, session_id)
-        state.settings = settings
-        await self.sessions.worker.call(self.store.save, session_id, state)
+        await self.sessions.worker.call(
+            self.store.update, session_id, lambda state: setattr(state, "settings", settings)
+        )
         return await self.view(session_id)
 
     async def capture(self, log: SessionLog, limit_bytes: int) -> str:
@@ -291,6 +292,7 @@ class ContextService:
         *,
         automatic: bool = False,
         fixed_tokens: int = 0,
+        background: bool = False,
     ) -> None:
         """先保存作业接纳，再固定历史前缀。
 
@@ -299,27 +301,33 @@ class ContextService:
         state = await self.sessions.worker.call(self.store.read, log.session_id)
         job = ContextJob(
             job_id=str(uuid4()),
-            run_id=run_id,
+            run_id=None if background else run_id,
             status="preparing",
             model_id=selected_model(log),
             started_at=utc_now(),
             mode="automatic" if automatic else "manual",
             through_seq=len(log.facts),
             policy=state.settings.model_copy(deep=True),
+            background=background,
             output_token_limit=min(
                 limits.max_output_tokens,
                 state.settings.summary_output_tokens or limits.max_output_tokens,
             ),
         )
-        state.job = job
-        await self.sessions.worker.call(self.store.save, log.session_id, state)
+        await self.sessions.worker.call(
+            self.store.update, log.session_id, lambda state: setattr(state, "job", job)
+        )
         snapshot = SessionLog(log.session_id, list(log.facts), log.issue)
-        task = asyncio.create_task(self._compact(snapshot, limits, sink, fixed_tokens))
+        task = asyncio.create_task(
+            self._compact(snapshot, limits, None if background else sink, fixed_tokens)
+        )
         # 获取异常避免无人查看的后台告警；请求边界仍会重新抛出真实失败。
         # Retrieve background exceptions; request boundaries still propagate actual failures.
         task.add_done_callback(lambda value: value.exception() if not value.cancelled() else None)
         self.jobs[log.session_id] = task
         self.job_owners[log.session_id] = run_id
+        if background:
+            self.background_jobs.add(log.session_id)
         self.sessions.signal_log(log)
 
     async def prepare(
@@ -328,6 +336,7 @@ class ContextService:
         sink: RunSink,
         current: list[JsonObject],
         definitions: list[JsonObject],
+        request_model: ModelId,
     ) -> PreparedWindow:
         """先生成有效窗口再检查容量，绝不先拒绝原始全历史。
 
@@ -335,13 +344,19 @@ class ContextService:
         """
         sid = active.log.session_id
         pending = self.jobs.get(sid)
-        if pending and not pending.done() and self.job_owners.get(sid) == active.run_id:
+        if (
+            pending
+            and not pending.done()
+            and self.job_owners.get(sid) == active.run_id
+            and sid not in self.background_jobs
+        ):
             await self.wait(sid)
             pending = None
         if pending and pending.done():
             owner = self.job_owners.get(sid)
+            background = sid in self.background_jobs
             self._forget_job(sid, pending)
-            if owner == active.run_id:
+            if owner == active.run_id and not background:
                 await pending
             else:
                 # 独立整理的失败已显示在其卡片；不能使后来的正常对话失败。
@@ -371,6 +386,7 @@ class ContextService:
                 checkpoint,
                 state.previews,
                 history_materials,
+                target_model=request_model,
             ),
         ]
         if self.sessions.mcp:
@@ -384,6 +400,9 @@ class ContextService:
                         "server_id": item.server.server_id,
                         "description": item.server.description,
                         "status": item.status,
+                        "execution_note": item.error
+                        if item.status == "unsupported_execution_mode"
+                        else "",
                     }
                     for item in catalog.servers
                     if item.server.enabled
@@ -411,6 +430,7 @@ class ContextService:
                 self.sessions.skills.materials,
                 active.log,
                 active.method.name if active.method else None,
+                state.settings.skill_catalog_tokens,
             )
             materials.extend(resource_materials)
             window[0] = {**window[0], "content": str(window[0].get("content", "")) + resource_text}
@@ -466,28 +486,53 @@ class ContextService:
                     )
                 )
                 window[0] = {**window[0], "content": str(window[0].get("content", "")) + inbox}
+        names = [
+            str(fn.get("name", ""))
+            for definition in definitions
+            if isinstance(fn := definition.get("function"), dict)
+        ]
+        tool_groups = {
+            "core": [name for name in names if name in state.settings.core_tools],
+            "loaded": [
+                name
+                for name in names
+                if name not in state.settings.core_tools and not name.startswith("mcp_")
+            ],
+            "mcp": [name for name in names if name.startswith("mcp_")],
+        }
+        materials.append(
+            describe_material(
+                kind="tools",
+                title="本次实际工具定义",
+                form="catalog",
+                reason="按实际发送定义区分核心、已加载扩展与 MCP；折叠不改变请求",
+                text=json.dumps(tool_groups, ensure_ascii=False),
+            )
+        )
         prepared = PreparedWindow(window, [*history_materials, *materials])
         if self.sessions.attachments:
             prepared = await self.sessions.attachments.prepare(active, prepared)
         window = prepared.messages
-        estimate = self._estimate(active.log, window, definitions)
-        trigger = self._trigger(selected_model(active.log), active.limits, state.settings)
+        estimate = self._estimate(active.log, window, definitions, request_model)
+        trigger = self._trigger(request_model, active.limits, state.settings)
         # 同一选区与策略未变化时不反复维护；新的完整历史可以再次处理。
         # Do not maintain an unchanged range/policy repeatedly; new complete history may qualify.
         complete = groups(records(active.log))
         through = complete[-1][-1][0] if complete else 0
         unchanged = bool(
             state.job
-            and state.job.outcome is not None
+            and (state.job.outcome is not None or state.job.status == "failed")
             and state.job.through_seq == through
             and state.job.policy == state.settings
-            and state.job.model_id == selected_model(active.log)
+            and state.job.model_id == request_model
             and state.job.output_token_limit
             == min(
                 active.limits.max_output_tokens,
                 state.settings.summary_output_tokens or active.limits.max_output_tokens,
             )
         )
+        capacity = self._capacity(request_model, active.limits)
+        must_wait = capacity is not None and estimate > capacity
         if state.settings.automatic and estimate >= trigger and not unchanged:
             if sid not in self.jobs:
                 await self._start(
@@ -497,30 +542,44 @@ class ContextService:
                     active.run_id,
                     automatic=True,
                     fixed_tokens=estimate_tokens([window[:1], definitions]),
+                    background=state.settings.background_compaction and not must_wait,
                 )
-            # 触发后在本请求边界采用减量，不再把旧大窗口发送一遍。
-            # Adopt reductions at this boundary instead of sending the old large window again.
+        if sid in self.jobs and (sid not in self.background_jobs or must_wait):
+            # 仅同步模式或容量不足时等待；后台结果只在下一次请求边界采用。
+            # Wait only in synchronous mode or at capacity; adopt background work next boundary.
             await self.wait(sid)
             state = await self.sessions.worker.call(self.store.read, sid)
             checkpoint = state.checkpoints[-1] if state.checkpoints else None
             history_materials = []
             window = [
                 window[0],
-                *assemble(active.log, checkpoint, state.previews, history_materials),
+                *assemble(
+                    active.log,
+                    checkpoint,
+                    state.previews,
+                    history_materials,
+                    target_model=request_model,
+                ),
             ]
             prepared = PreparedWindow(window, [*history_materials, *materials])
             if self.sessions.attachments:
                 prepared = await self.sessions.attachments.prepare(active, prepared)
             window = prepared.messages
-            estimate = self._estimate(active.log, window, definitions)
+            estimate = self._estimate(active.log, window, definitions, request_model)
         if (
             state.job
             and state.job.status == "ready"
             and state.job.outcome in {"summary", "trimmed"}
         ):
-            state.job.status = "adopted"
-            await self.sessions.worker.call(self.store.save, sid, state)
-        capacity = self._capacity(selected_model(active.log), active.limits)
+            job_id = state.job.job_id
+
+            def adopt(latest: ContextState) -> None:
+                """只标记当前已组装的结果。 Mark only the result assembled for this request."""
+                if latest.job and latest.job.job_id == job_id and latest.job.status == "ready":
+                    latest.job.status = "adopted"
+
+            await self.sessions.worker.call(self.store.update, sid, adopt)
+        capacity = self._capacity(request_model, active.limits)
         if capacity is not None and estimate > capacity:
             raise AgentError(
                 "BUDGET_CONTEXT",
@@ -530,7 +589,7 @@ class ContextService:
                 "请缩小对应材料或调整输出预留。以上为估计，不是服务端精确计量。",
             )
         self.request_baselines[sid] = (
-            selected_model(active.log),
+            request_model,
             copy.deepcopy(window),
             copy.deepcopy(definitions),
             len(active.log.facts),
@@ -543,7 +602,11 @@ class ContextService:
         return PreparedWindow(window, prepared.materials, None if has_images else estimate)
 
     def _estimate(
-        self, log: SessionLog, window: list[JsonObject], definitions: list[JsonObject]
+        self,
+        log: SessionLog,
+        window: list[JsonObject],
+        definitions: list[JsonObject],
+        request_model: ModelId | None = None,
     ) -> int:
         """相同前缀用实际输入加新增估计；变更后回退本地计量。
 
@@ -557,7 +620,7 @@ class ContextService:
                 None,
             )
             if (
-                model == selected_model(log)
+                model == (request_model or selected_model(log))
                 and tools == definitions
                 and window[: len(prior)] == prior
                 and completed
@@ -591,12 +654,16 @@ class ContextService:
             else settings.auto_trigger_tokens
         )
 
-    async def wait(self, session_id: str, *, run_id: str | None = None) -> None:
+    async def wait(
+        self, session_id: str, *, run_id: str | None = None, include_background: bool = True
+    ) -> None:
         """容量不足时等待当前作业；运行收尾只等待自身作业。
 
         Await the current job for capacity, or only the owner's job during run finalization.
         """
         if run_id is not None and self.job_owners.get(session_id) != run_id:
+            return
+        if not include_background and session_id in self.background_jobs:
             return
         task = self.jobs.get(session_id)
         if task is not None:
@@ -613,12 +680,16 @@ class ContextService:
         await self.stop_job(session_id)
         return await self.view(session_id)
 
-    async def stop_job(self, session_id: str, *, run_id: str | None = None) -> None:
+    async def stop_job(
+        self, session_id: str, *, run_id: str | None = None, include_background: bool = True
+    ) -> None:
         """按所有者清理请求，不依赖可选摘要文件可读。
 
         Reap requests by owner, independently of optional checkpoint readability.
         """
         if run_id is not None and self.job_owners.get(session_id) != run_id:
+            return
+        if not include_background and session_id in self.background_jobs:
             return
         task = self.jobs.get(session_id)
         if task:
@@ -634,6 +705,7 @@ class ContextService:
         if self.jobs.get(session_id) is task:
             self.jobs.pop(session_id)
             self.job_owners.pop(session_id, None)
+            self.background_jobs.discard(session_id)
 
     async def close(self) -> None:
         """退出时收回全部辅助请求。
@@ -667,9 +739,9 @@ class ContextService:
                 log, old, state.previews, settings.tool_result_preview_tokens
             )
             if additions:
-                latest = await self.sessions.worker.call(self.store.read, sid)
-                latest.previews.extend(additions)
-                await self.sessions.worker.call(self.store.save, sid, latest)
+                latest = await self.sessions.worker.call(
+                    self.store.update, sid, lambda current: current.previews.extend(additions)
+                )
                 state.previews = latest.previews
             available = [
                 (seq, msg)
@@ -857,7 +929,6 @@ class ContextService:
                 )
                 checkpoints.append(previous)
                 prefix = prefix[count:]
-            latest = await self.sessions.worker.call(self.store.read, sid)
             candidate = assemble(log, previous, state.previews)
             reduced = assemble(log, old, state.previews)
             job.compression_applied = bool(checkpoints) and estimate_tokens(
@@ -865,12 +936,6 @@ class ContextService:
             ) < estimate_tokens(reduced)
             if job.compression_applied:
                 self.no_gain_prefixes.pop(sid, None)
-                latest.checkpoints.extend(checkpoints)
-                latest.previews = [
-                    item
-                    for item in latest.previews
-                    if previous is None or item.seq > previous.through_seq
-                ]
                 job.outcome = "summary"
                 job.message = "旧前缀已替换为接续摘要，原历史可回读。"
             else:
@@ -887,8 +952,24 @@ class ContextService:
                 candidate[1:] if job.compression_applied or old else candidate
             )
             job.status, job.finished_at = "ready", utc_now()
-            latest.job = job
-            await self.sessions.worker.call(self.store.save, sid, latest)
+
+            def finish(latest: ContextState) -> None:
+                """提交当前作业结果，保留同期设置和选择。
+
+                Commit results without replacing concurrent settings.
+                """
+                if latest.job is None or latest.job.job_id != job.job_id:
+                    return
+                if job.compression_applied:
+                    latest.checkpoints.extend(checkpoints)
+                    latest.previews = [
+                        item
+                        for item in latest.previews
+                        if previous is None or item.seq > previous.through_seq
+                    ]
+                latest.job = job
+
+            await self.sessions.worker.call(self.store.update, sid, finish)
         except asyncio.CancelledError:
             job.status, job.message, job.finished_at = (
                 "cancelled",
@@ -941,6 +1022,10 @@ class ContextService:
 
         Preserve concurrent settings edits when updating a job.
         """
-        latest = await self.sessions.worker.call(self.store.read, session_id)
-        latest.job = job
-        await self.sessions.worker.call(self.store.save, session_id, latest)
+
+        def update(latest: ContextState) -> None:
+            """迟到更新不能替换新作业。 Late progress cannot replace a newer job."""
+            if latest.job and latest.job.job_id == job.job_id:
+                latest.job = job
+
+        await self.sessions.worker.call(self.store.update, session_id, update)

@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import type {
   InitializeResult,
+  NavigationItemName,
   OperationError,
   ProjectsView,
   PublicConfig,
@@ -23,6 +24,7 @@ import { TaskPanel } from './TaskPanel'
 import { ProgramCards } from './ProgramCards'
 import { Resources } from './Resources'
 import { Workflows } from './Workflows'
+import { WorkStyles } from './WorkStyles'
 import './style.css'
 
 /**
@@ -67,6 +69,7 @@ function App() {
   >('projects')
   const [selection, setSelection] = useState<WorkspaceSelection | null>(null)
   const [treeRevision, setTreeRevision] = useState(0)
+  const [renamedItem, setRenamedItem] = useState<NavigationItemName | null>(null)
   const [activeRuns, setActiveRuns] = useState<SessionSummary[]>([])
   const runGeneration = useRef(0)
   const generation = useRef(0)
@@ -309,13 +312,18 @@ function App() {
           revision={treeRevision}
           connected={connected && !busy}
           onSelect={(next) => void navigate(next)}
+          onRenamed={(item) => {
+            setRenamedItem(item)
+            refreshTree()
+            void refresh()
+          }}
         />
         <div className="sidebar-bottom">
           <span className={'connection-dot ' + (connected ? 'online' : '')} />
           <span data-testid="connection-status">
             {phase === 'loading' ? '正在连接后端' : connected ? '本地后端已连接' : '后端不可用'}
           </span>
-          <small>{info?.app.stage ?? 'M5'}</small>
+          <small>{info?.app.stage ?? 'M6'}</small>
         </div>
       </aside>
 
@@ -565,6 +573,8 @@ function App() {
             connected={connected}
             onSelect={(next) => void navigate(next)}
             onChanged={refreshTree}
+            renamedItem={renamedItem}
+            editRequest={selection?.editTaskRequest}
           />
         )}
         {(view === 'skills' || view === 'mcp') && (
@@ -584,6 +594,7 @@ function App() {
               个人流程仍是默认，开源方法均为本应用适配版。
             </p>
             <Workflows initiallyOpen />
+            <WorkStyles key={project?.project_id ?? 'global'} projectId={project?.project_id} />
           </section>
         )}
         <div hidden={view !== 'settings'}>

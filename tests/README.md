@@ -1,5 +1,23 @@
 # 测试与回归
 
+M6 独立审查修复：`test_checkpoints.py -k unignored` 覆盖取消忽略的既有文件、目录／Windows 大小写和旧快照；`test_workstyles.py` 覆盖套用后的负责人／报告／删除标记、其它工作保留、幂等与重启。`test_sandbox_usability.py -k 'ancestor_denial or cleanup_without'` 检查祖先拒绝与无 ACE 清理；按既有隔离运行时配置执行 `test_sandbox_stability.py -k 'system_volume_project or required_grant_denial'` 实测系统卷项目的 Python／PowerShell／终端与清理。系统卷兼容样本仅在用户临时目录创建唯一临时项目，结束删除并核对祖先 DACL 恢复；数据根和报告仍归 `.artifacts/tests/`，不提权、不操作个人项目。桌面 `m6-workstyles-rollback.spec.ts` 同时覆盖真实 Run 的 Trace 与 `RUN_BUSY` 接纳失败卡片不可打开无关轨迹。
+
+沙箱可用性修复：`pytest tests/python/test_sandbox_usability.py -q` 验证变量筛选／显式名称保存、发现兼容性、未派发 MCP 反馈后接续及坏租约不跳过其他记录；无外网、真实模型或系统授权。沿下述隔离运行时配置，`test_sandbox_stability.py::test_sandbox_local_git_and_python_inspection` 实测普通权限 Git 初始化／暂存／提交／差异／历史与 Python 探测、退出清理。构建桌面后 `npm.cmd --prefix apps/desktop run test:desktop -- sandbox-settings.spec.ts` 验证名称保存／重新加载及本地 MCP 兼容提示，不启动项目进程。`m6-environment-*` 共用契约样本检查只传名称的协议；既有 `bind-environment*` 保持兼容。
+
+导航右键：`pytest tests/python/test_navigation.py -q` 验证名称、身份、任务内容、重启与回退兼容；桌面构建后 `npm.cmd --prefix apps/desktop run test:desktop -- navigation-menu.spec.ts` 验证三个层级右键／键盘、剪贴板、重命名及任务草稿保留。隔离根和截图进入 `.artifacts/tests/desktop-navigation-*/`；不调用真实模型或网络。
+
+M6 真实材料对照：`.venv/Scripts/python.exe -X utf8 tests/models/m6_materials_live.py --enable-real-models` 在隔离样本中对比完整与按需工具定义，分别运行 GLM 读取和切换 DeepSeek 的只读接续；记录实际工具、服务端用量和时序。仅显式启用时使用 Go 额度，最多 20 请求／600 秒，无自动重试；报告进入 `.artifacts/tests/m6-live-*/`，不加入普通 CI。这些上限仅用于验收，不写入产品设置。
+
+M6 回退与复用：`pytest tests/python/test_checkpoints.py tests/python/test_workstyles.py -q` 使用生产存储／RPC 和离线模型，覆盖原始字节、有效历史、记忆来源、撤销恢复、组合模板及材料范围。构建后 `npm.cmd --prefix apps/desktop run test:desktop -- m6-workstyles-rollback.spec.ts` 验证真实 Electron 入口，产物进入 `.artifacts/tests/desktop-m6-*/`。
+
+原生沙箱显式验收：`tests/support/appcontainer_probe.py --runtime <隔离 Python 副本>` 与 `tests/python/test_sandbox_execution.py`；后者仅在设置 `MY_AGENT_TEST_SANDBOX_RUNTIME` 指向 `.artifacts/tests/` 内运行时副本后运行。创建临时 AppContainer 与目录 ACL，不提权、不修改防火墙／VPN／代理。本机 HTTP 通过普通权限管道转发，使用服务返回的实际 URL。不属于普通 CI；是否通过和清理状态以本次产物及 M6 进度记录为准。
+
+稳定性补验：同一运行时变量下执行 `pytest tests/python/test_sandbox_stability.py -q`。验证项目内外／额外目录／junction／子进程边界、20 次串行与 8 次并行、超时／取消后接续、双项目 HTTP、2 MiB GET／POST、升级后双向字节、活动连接退出、准备时取消、宿主崩溃恢复。实验要求非管理员宿主并禁止 UAC 启动入口。fixtures 在 `tests/fixtures/sandbox_boundary.py`、`sandbox_http.py`，独立崩溃宿主在 `tests/support/sandbox_crash_host.py`；报告归本次 `.artifacts/tests/python-*/`。不使用真实模型或外网服务。
+
+该文件的 `-k shells_without_network` 复用系统 PowerShell 和复制的 Node，覆盖项目 cwd、子进程、目录内外写入、交互式 PowerShell 与清理，不启动 HTTP 授权；`-k command_terminal_and_service` 覆盖 Python／CMD／HTTP。`-k optional` 模拟恢复 I/O 故障，核对可选沙箱失败不阻断直接模式。M6 桌面样本同时覆盖沙箱设置保存；`knowledge.spec.ts` 核对工具加载／后台压缩选项实际保存和原知识入口。执行范围按本次变更选择，不要求每次全跑。
+
+M6 定向入口：`pytest tests/python/test_capability_discovery.py -q` 验证能力发现／卸载持久化、大 Skill 目录按需加载、跨模型原生历史投影、后台压缩的前台并行／失败／新尾部与设置保留，以及回退取消在途摘要、防止旧分支进入新请求；使用隔离数据和模型替身。`test_checkpoints.py` 包含回退不扫描记忆整库、来源投影与独立有效来源保留。记忆接续／长条目／纠错复用 `test_context_memory.py -k 'memory_followup or memory_correction or memory_search_pinning'`。Windows 受限执行环境若在 asyncio 的本机 socketpair 初始化阻塞，需允许本机回环再运行，不修改系统网络或产品实现。
+
 2026-10-19 M5 收尾搜索 / Git：`.venv/Scripts/python.exe -X utf8 -m pytest tests/python/test_search_git_tools.py -q` 覆盖真实 rg 正则 / 上下文 / 路径筛选、201 文件批处理、无效模式在真实 Run 中纠正接续、字面后备、有界输出，以及模型 Git 初始化 / 双区差异 / 暂存 / 提交 / 历史、Plan、归档、关闭 / 重建服务 / 恢复、上层仓库保留和备份冲突。使用隔离项目、测试仓库本地身份和 Git ceiling；无远端、无真实模型。桌面构建后 `npm.cmd --prefix apps/desktop run test:desktop -- search-git.spec.ts` 验证 201 文件搜索、普通请求继续可用、Git 开关及退出重启恢复；时序、截图与数据归 `.artifacts/tests/desktop-search-git-*/`。按本批变更选用，不加入每次开发必跑清单。
 
 `node --test --test-name-pattern="search and Git waits" tests/gateway/backend.test.mjs` 使用真实 Python / RPC / 文件移动，仅通过 `support/search_git_backend.py` 注入慢查询与 17 秒移动延迟；验证新查询停止旧查询、Git 锁等待不阻塞普通控制、正常退出等待迁移、搜索进程清理和重启恢复。数据归 `.artifacts/tests/gateway-*/search-git-*/`，不打开窗口或访问网络，不在产品入口加入测试开关。

@@ -54,7 +54,10 @@ async def run_loop(
     terminal: Callable[[], bool] | None = None,
     yield_requested: Callable[[], bool] | None = None,
     model_selector: Callable[[], ModelId] | None = None,
-    window_provider: Callable[[list[JsonObject], list[JsonObject]], Awaitable[PreparedWindow]]
+    prepare_tools: Callable[[], Awaitable[None]] | None = None,
+    window_provider: Callable[
+        [list[JsonObject], list[JsonObject], ModelId], Awaitable[PreparedWindow]
+    ]
     | None = None,
 ) -> Literal["finished", "yielded"]:
     """检查预算再请求，完整事实落盘后串行执行工具。
@@ -64,8 +67,9 @@ async def run_loop(
     requests = 0
     calls = 0
     context: list[JsonObject] = [{"role": "system", "content": system_prompt}, *messages]
-    definitions = tools.definitions()
     while True:
+        if prepare_tools is not None:
+            await prepare_tools()
         definitions = tools.definitions()
         if stop.is_set():
             raise asyncio.CancelledError
@@ -102,8 +106,9 @@ async def run_loop(
             )
             materials.extend(shared.additional_materials)
         estimated_input = None
+        request_model = model_selector() if model_selector else model_id
         if window_provider is not None:
-            prepared = await window_provider(context, definitions)
+            prepared = await window_provider(context, definitions, request_model)
             context = prepared.messages
             materials.extend(prepared.materials)
             estimated_input = prepared.estimated_input_tokens
@@ -114,7 +119,6 @@ async def run_loop(
             raise AgentError("BUDGET_CONTEXT", "请求上下文超过字节预算，可在设置中调整后继续。")
         model.check_available()
         message_id = str(uuid4())
-        request_model = model_selector() if model_selector else model_id
         await sink.commit(
             RequestStarted(
                 message_id=message_id,
@@ -256,6 +260,9 @@ def recoverable_tool_error(call: ToolCall, result: ToolResult) -> bool:
             "MEMORY_NOT_FOUND",
             "MEMORY_EDITED",
             "HISTORY_UNAVAILABLE",
+            # 能力在派发前不匹配，模型可以选其他工具；实际沙箱启动失败仍停止。
+            # Pre-dispatch incompatibility permits another tool; actual sandbox launch faults stop.
+            "SANDBOX_ENTRY_UNAVAILABLE",
         }
         or (
             call.name in {"list_changes", "read_change"}

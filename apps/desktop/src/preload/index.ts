@@ -6,18 +6,18 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { m5Api } from './m5'
 import type { DesktopAPI, Result } from '../shared/api'
-import type { ProtocolV10 } from '../generated/protocol'
+import type { ProtocolV11 } from '../generated/protocol'
 import { validate } from '../shared/validation'
 
 /**
  * 校验 IPC 结果封装与方法契约，拒绝混合成功和失败字段。
  * Validate the IPC envelope and method contract, rejecting mixed success/error fields.
  */
-async function invoke<K extends keyof ProtocolV10>(
+async function invoke<K extends keyof ProtocolV11>(
   channel: string,
   contract: K,
   args: unknown[] = []
-): Promise<Result<ProtocolV10[K]>> {
+): Promise<Result<ProtocolV11[K]>> {
   const raw: unknown = await ipcRenderer.invoke(channel, ...args)
   if (typeof raw !== 'object' || raw === null || !('ok' in raw)) throw new Error('IPC_INVALID')
   if (raw.ok === false && 'error' in raw && !('data' in raw)) {

@@ -176,7 +176,6 @@ class ProjectService:
                 "path": str(display),
                 "canonical_path": str(canonical),
                 "identity": identity,
-                "name": display.name or str(display),
                 "last_opened_at": utc_now(),
             }
         )
@@ -222,7 +221,7 @@ class ProjectService:
             )
         record = ProjectRecord(
             project_id=existing.project_id if existing else str(uuid4()),
-            name=display.name or str(display),
+            name=existing.name if existing else display.name or str(display),
             path=str(display),
             canonical_path=str(canonical),
             identity=identity,
@@ -236,3 +235,16 @@ class ProjectService:
         self.storage.initialize()
         write_document(self.path, updated)
         return self.view()
+
+    def rename(self, project_id: str, name: str) -> None:
+        """只保存项目显示名，保持目录、身份和当前选择。
+
+        Rename the label without moving files or changing selection.
+        """
+        self.storage.require_writer()
+        index = self.read()
+        record = next((item for item in index.projects if item.project_id == project_id), None)
+        if record is None:
+            raise AgentError("PROJECT_NOT_FOUND", "找不到该项目记录。")
+        record.name = name
+        write_document(self.path, index)

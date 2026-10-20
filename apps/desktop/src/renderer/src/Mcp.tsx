@@ -21,6 +21,7 @@ const connectionLabels: Record<string, string> = {
   closing: '关闭中',
   closed: '已关闭',
   failed: '连接失败',
+  unsupported_execution_mode: '当前沙箱暂不支持',
   authenticating: '正在授权'
 }
 const transportLabels: Record<NonNullable<McpServer['transport']>, string> = {
@@ -402,8 +403,8 @@ export function Mcp({
     <section className="detail-card settings-card mcp-manager" aria-label="MCP 资源库">
       <p className="muted">
         {sessionId ? '此会话独立连接；切换会话不会关闭浏览器。' : '这里的测试连接独立于会话连接。'}{' '}
-        临时浏览器不保存登录状态，退出应用时关闭。
-        项目启用表示可供 Agent 发现；连接成功表示服务可用，实际调用见会话 Trace。
+        临时浏览器不保存登录状态，退出应用时关闭。 项目启用表示可供 Agent
+        发现；连接成功表示服务可用，实际调用见会话 Trace。
       </p>
       {!!catalog?.presets?.length && (
         <section aria-label="常用 MCP 服务">
@@ -538,10 +539,16 @@ export function Mcp({
                 </p>
               )}
               <div className="mcp-actions">
-                <button disabled={busy} onClick={() => void act('connect', server.server_id)}>
+                <button
+                  disabled={busy || status === 'unsupported_execution_mode'}
+                  onClick={() => void act('connect', server.server_id)}
+                >
                   连接 / 重连
                 </button>
-                <button disabled={busy} onClick={() => void act('refresh', server.server_id)}>
+                <button
+                  disabled={busy || status === 'unsupported_execution_mode'}
+                  onClick={() => void act('refresh', server.server_id)}
+                >
                   刷新工具
                 </button>
                 <button disabled={busy} onClick={() => void act('close', server.server_id)}>

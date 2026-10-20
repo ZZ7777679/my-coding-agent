@@ -144,6 +144,8 @@ class ProjectTools:
                 "command is the same program/powershell object accepted by run_command. "
                 "cwd may be relative or absolute within the selected project. "
                 "Verifies an owned listener and HTTP headers. "
+                "Use the returned summary.url for browsing; sandbox previews can use a different "
+                "forwarded port from the internal ready_url, without administrator setup. "
                 "Retained until stopped or app exit. HTTP response is not a business test.",
             ),
             (

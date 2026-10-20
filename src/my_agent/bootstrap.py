@@ -10,6 +10,8 @@ from uuid import uuid4
 
 from my_agent.attachments.service import AttachmentService
 from my_agent.changes.store import ChangeStore
+from my_agent.checkpoints.service import RollbackService
+from my_agent.checkpoints.tools import RollbackTools
 from my_agent.collaboration.arrangements import SessionArrangements
 from my_agent.collaboration.service import CollaborationService
 from my_agent.collaboration.store import CollaborationStore
@@ -154,7 +156,9 @@ def build_sessions(
         return SharedContext(
             task.task_id,
             task.revision,
-            task_context(task, load_config(storage.location).run.max_context_bytes // 8)
+            task_context(
+                task, load_config(storage.location).run.max_context_bytes // 8, log.session_id
+            )
             + "\nSession role: "
             + summary.role
             + "\nSession scope: "
@@ -199,6 +203,7 @@ def build_sessions(
         finish_run=execution.finish_run,
         close_execution=execution.close,
         sync_report=sync_report,
+        read_roots=execution.environments.read_roots,
     )
     sessions.file_coordinator = files
     attachments = AttachmentService(sessions)
@@ -292,5 +297,10 @@ def build_sessions(
             attachments,
         ),
         team,
+    )
+    existing_tools = sessions.tool_factory
+    rollback = RollbackService(sessions)
+    sessions.tool_factory = lambda context: RollbackTools(
+        context, existing_tools(context), rollback
     )
     return sessions

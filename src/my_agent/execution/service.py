@@ -18,11 +18,14 @@ from my_agent.errors import AgentError
 from my_agent.execution.commands import command_line, working_directory
 from my_agent.execution.environments import EnvironmentStore, execution_environment
 from my_agent.execution.listeners import listener_pids, local_endpoint, owns_listener
+from my_agent.execution.sandbox import SandboxProcess
+from my_agent.execution.sandbox_preview import SandboxPreview
 from my_agent.execution.store import ProgramRecord, ProgramStore, output_view
 from my_agent.execution.types import (
     EnvironmentCatalog,
     EnvironmentParams,
     EnvironmentProbe,
+    EnvironmentView,
     ExecutionSettings,
     GetProgramParams,
     ListProgramsParams,
@@ -42,15 +45,37 @@ from my_agent.worker import BusinessWorker
 
 
 async def spawn(
-    command: list[str], cwd: Path, env: dict[str, str], settings: ExecutionSettings
+    command: list[str],
+    cwd: Path,
+    env: dict[str, str],
+    settings: ExecutionSettings,
+    *,
+    sandbox_directory: Path | None = None,
+    root: Path | None = None,
+    view: EnvironmentView | None = None,
 ) -> WindowsProcess:
     """取消启动也收回已创建句柄，避免线程已启动却无人持有。
 
     Reap a process created by the worker even if the awaiting coroutine is cancelled.
     """
-    pending = asyncio.create_task(
-        asyncio.to_thread(WindowsProcess, command, cwd, env, settings.max_output_bytes)
-    )
+    pending: asyncio.Task[WindowsProcess]
+    if sandbox_directory is not None and root is not None and view is not None:
+        pending = asyncio.create_task(
+            asyncio.to_thread(
+                SandboxProcess,
+                command,
+                cwd,
+                env,
+                settings.max_output_bytes,
+                sandbox_directory,
+                root,
+                view,
+            )
+        )
+    else:
+        pending = asyncio.create_task(
+            asyncio.to_thread(WindowsProcess, command, cwd, env, settings.max_output_bytes)
+        )
     try:
         return await asyncio.shield(pending)
     except asyncio.CancelledError:
@@ -58,7 +83,7 @@ async def spawn(
         try:
             await asyncio.to_thread(process.finish, settings.cleanup_timeout_seconds)
         finally:
-            process.close()
+            await asyncio.to_thread(process.close)
         raise
 
 
@@ -80,6 +105,7 @@ class OwnedProgram:
     native_dropped: int = 0
     output_bytes: int = 0
     decoders: dict[str, codecs.IncrementalDecoder] = field(default_factory=dict)
+    preview_task: asyncio.Task[SandboxPreview] | None = None
 
 
 class ProgramService:
@@ -165,6 +191,14 @@ class ProgramService:
         try:
             while True:
                 self._consume(owned)
+                if (
+                    owned.preview_task is not None
+                    and owned.preview_task.done()
+                    and owned.preview_task.exception() is None
+                ):
+                    preview_failure = owned.preview_task.result().failure
+                    if preview_failure is not None:
+                        raise preview_failure
                 if owned.process.output_failed:
                     raise AgentError("PROGRAM_OUTPUT_FAILED", "程序输出通道中断。")
                 code = owned.process.poll()
@@ -191,6 +225,16 @@ class ProgramService:
             owned.failure = AgentError("PROGRAM_INTERNAL", "程序管理发生内部错误，已停止本次进程。")
         finally:
             try:
+                if owned.preview_task is not None:
+                    try:
+                        preview = await owned.preview_task
+                        await asyncio.to_thread(preview.close)
+                    except (AgentError, OSError, TimeoutError) as exc:
+                        owned.failure = (
+                            exc
+                            if isinstance(exc, AgentError)
+                            else AgentError("SANDBOX_PREVIEW_FAILED", "沙箱预览转发未能完成。")
+                        )
                 await asyncio.to_thread(
                     owned.process.finish, owned.settings.cleanup_timeout_seconds
                 )
@@ -198,7 +242,10 @@ class ProgramService:
             except AgentError as exc:
                 owned.failure = exc
             finally:
-                owned.process.close()
+                try:
+                    await asyncio.to_thread(owned.process.close)
+                except AgentError as exc:
+                    owned.failure = exc
             state: Literal["failed", "stopped", "exited"] = (
                 "failed" if owned.failure else "stopped" if owned.stop_requested else "exited"
             )
@@ -251,7 +298,7 @@ class ProgramService:
         checkpoint(context.stop)
         await self.recover()
         view, settings, revision = await self.worker.call(
-            self.environments.selected, context.project_id
+            self.environments.selected, context.project_id, True
         )
         root = await self.worker.call(self.environments.project_root, context.project_id)
         cwd = await asyncio.to_thread(working_directory, root, args.cwd)
@@ -277,6 +324,7 @@ class ProgramService:
                 command=args.command,
                 resolved_command=argv,
                 cwd=str(cwd),
+                mode=view.execution.mode if view.execution else "direct",
                 status="starting",
                 pid=None,
                 exit_code=None,
@@ -294,7 +342,17 @@ class ProgramService:
         await self.worker.call(self.store.save, record)
         try:
             checkpoint(context.stop)
-            process = await spawn(argv, cwd, env, settings)
+            process = await spawn(
+                argv,
+                cwd,
+                env,
+                settings,
+                root=root,
+                view=view,
+                sandbox_directory=(self.environments.storage.root / "sandbox-leases")
+                if view.execution and view.execution.mode == "sandbox"
+                else None,
+            )
         except BaseException:
             record.summary.status = "interrupted"
             record.summary.code = "PROGRAM_START_INTERRUPTED"
@@ -346,9 +404,26 @@ class ProgramService:
             ):
                 while not owned.done.is_set():
                     if await asyncio.to_thread(owns_listener, owned.process, args.ready_url):
+                        ready_url = args.ready_url
+                        if isinstance(owned.process, SandboxProcess):
+                            if owned.preview_task is None:
+                                # 与监控器共享创建任务；取消就绪等待也必须回收新转发端口。
+                                # Share creation with the monitor so cancellation still reaps it.
+                                owned.preview_task = asyncio.create_task(
+                                    asyncio.to_thread(
+                                        SandboxPreview,
+                                        owned.process,
+                                        args.ready_url,
+                                        owned.settings.cleanup_timeout_seconds,
+                                        timeout,
+                                    )
+                                )
+                            preview = await asyncio.shield(owned.preview_task)
+                            ready_url = preview.url
+                            owned.record.summary.url = ready_url
                         try:
                             async with client.stream(
-                                "GET", args.ready_url, timeout=min(timeout, 2)
+                                "GET", ready_url, timeout=min(timeout, 2)
                             ) as response:
                                 status = response.status_code
                             if owned.done.is_set() or owned.process.poll() is not None:
@@ -358,6 +433,11 @@ class ProgramService:
                             owned.record.summary.http_status = status
                             owned.record.summary.message = (
                                 "本进程 HTTP 已响应；这不代表业务检查通过。"
+                                + (
+                                    "沙箱预览使用上方转发地址，无需提权。"
+                                    if owned.preview_task
+                                    else ""
+                                )
                             )
                             await self._save(owned)
                             ready = True
@@ -497,7 +577,7 @@ class ProgramService:
 
         Use normal command resolution and a short interpreter run for path and version.
         """
-        view, settings, _ = await self.worker.call(self.environments.selected, project_id)
+        view, settings, _ = await self.worker.call(self.environments.selected, project_id, True)
         cwd = await self.worker.call(self.environments.project_root, project_id)
         probe = EnvironmentProbe(
             checked_at=utc_now(),
@@ -522,7 +602,17 @@ class ProgramService:
                 ],
             )
             argv, env = command_line(command, view, cwd)
-            process = await spawn(argv, cwd, env, settings)
+            process = await spawn(
+                argv,
+                cwd,
+                env,
+                settings,
+                sandbox_directory=self.environments.storage.root / "sandbox-leases"
+                if view.execution and view.execution.mode == "sandbox"
+                else None,
+                root=cwd,
+                view=view,
+            )
             try:
                 async with asyncio.timeout(settings.probe_timeout_seconds):
                     while process.poll() is None:

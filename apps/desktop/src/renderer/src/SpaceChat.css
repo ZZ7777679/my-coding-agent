@@ -195,3 +195,18 @@
     max-height: 45vh;
   }
 }
+.space-trace-overlay {
+  position: fixed;
+  inset: 3rem 1rem 1rem auto;
+  width: min(48rem, calc(100vw - 2rem));
+  z-index: 30;
+  background: #151e1b;
+  box-shadow: 0 10px 40px #0008;
+  display: flex;
+}
+.space-trace-overlay .trace-panel {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  max-height: 100%;
+}

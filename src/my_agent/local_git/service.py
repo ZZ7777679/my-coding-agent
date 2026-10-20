@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 from my_agent.errors import AgentError
 from my_agent.execution.environments import EnvironmentStore, executable, execution_environment
 from my_agent.execution.service import spawn
-from my_agent.execution.types import ExecutionSettings
+from my_agent.execution.types import EnvironmentView, ExecutionSettings
 from my_agent.execution.windows import WindowsProcess
 from my_agent.local_git.settings import GitSettingsStore
 from my_agent.local_git.types import (
@@ -44,6 +44,7 @@ class GitExecution:
     program: str
     env: dict[str, str]
     settings: ExecutionSettings
+    view: EnvironmentView
 
 
 @dataclass(frozen=True)
@@ -107,7 +108,7 @@ class LocalGitService:
         setting = await self.settings(GitProjectParams(project_id=project_id))
         if not setting.enabled:
             raise AgentError("GIT_DISABLED", "本项目 Git 已关闭；可在本地 Git 面板开启并恢复备份。")
-        view, settings, _ = await self.worker.call(self.environments.selected, project_id)
+        view, settings, _ = await self.worker.call(self.environments.selected, project_id, True)
         root = await self.worker.call(self.environments.project_root, project_id)
         env = execution_environment(view)
         for name in list(env):
@@ -124,7 +125,7 @@ class LocalGitService:
         env["GIT_TERMINAL_PROMPT"] = "0"
         env["GIT_OPTIONAL_LOCKS"] = "0"
         program = await asyncio.to_thread(executable, "git.exe", env, root)
-        return GitExecution(root, program, env, settings)
+        return GitExecution(root, program, env, settings, view)
 
     async def _run(self, execution: GitExecution, arguments: list[str]) -> GitOutput:
         """持续读取双通道、超时与取消都清理 Job；不启动 remote 命令。
@@ -143,7 +144,17 @@ class LocalGitService:
             "status.relativePaths=true",
             *arguments,
         ]
-        process = await spawn(command, execution.root, execution.env, execution.settings)
+        process = await spawn(
+            command,
+            execution.root,
+            execution.env,
+            execution.settings,
+            sandbox_directory=self.environments.storage.root / "sandbox-leases"
+            if execution.view.execution and execution.view.execution.mode == "sandbox"
+            else None,
+            root=execution.root,
+            view=execution.view,
+        )
         self.processes.add(process)
         outputs: dict[str, str] = {"stdout": "", "stderr": ""}
         decoders = {name: codecs.getincrementaldecoder("utf-8")("replace") for name in outputs}

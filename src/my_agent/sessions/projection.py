@@ -5,6 +5,7 @@ Public projections exclude native provider data.
 
 from pydantic import TypeAdapter, ValidationError
 
+from my_agent.checkpoints.types import ConversationRestored
 from my_agent.delegation.types import DelegatedUsage
 from my_agent.execution.types import ProgramView
 from my_agent.goals.state import TERMINAL_GOALS
@@ -27,6 +28,7 @@ from my_agent.sessions.types import (
     SessionAssigned,
     SessionCreated,
     SessionModelChanged,
+    SessionRenamed,
     SessionSummary,
     ToolCompleted,
     ToolSkipped,
@@ -157,11 +159,14 @@ def summarize(log: SessionLog, *, active: bool = False, stopping: bool = False) 
         )
     else:
         first_prompt = "新会话"
+    renamed = next(
+        (f.data for f in reversed(log.facts) if isinstance(f.data, SessionRenamed)), None
+    )
     return SessionSummary(
         session_id=log.session_id,
         project_id=header.project_id,
         model_id=selected_model(log),
-        title=first_prompt.replace("\n", " ")[:80],
+        title=renamed.title if renamed else first_prompt.replace("\n", " ")[:80],
         created_at=log.facts[0].at,
         updated_at=log.facts[-1].at,
         can_continue=complete and not active,
@@ -182,6 +187,7 @@ def entries(log: SessionLog, before_seq: int | None) -> tuple[list[ChatEntry], i
     Page history by bytes/count in original order.
     """
     result: list[ChatEntry] = []
+    effective = {fact.seq for fact in log.effective_facts()}
     size = 0
     cursor: int | None = None
     ended_goals = {
@@ -212,8 +218,13 @@ def entries(log: SessionLog, before_seq: int | None) -> tuple[list[ChatEntry], i
             "message_id": None,
             "call": None,
             "result": None,
+            "abandoned": fact.seq not in effective,
         }
-        if fact.seq in terminal_entries:
+        if isinstance(data, ConversationRestored):
+            entry = ChatEntry.model_validate(
+                {**common, "kind": "session.recovered", "text": data.message}
+            )
+        elif fact.seq in terminal_entries:
             goal = terminal_entries[fact.seq]
             entry = ChatEntry.model_validate(
                 {
