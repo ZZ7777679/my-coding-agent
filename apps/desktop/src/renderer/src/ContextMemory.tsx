@@ -3,6 +3,7 @@ import type { ContextView, HistoryPage, HistoryParams, MemoryPage } from '../../
 import type { Result } from '../../shared/api'
 import { KnowledgeDetails, type QuestionMaterial } from './KnowledgeDetails'
 import { MemoryManager, type MemoryDraft } from './MemoryManager'
+import { useLatestRefresh } from './useLatestRefresh'
 
 type Panel = 'context' | 'history' | 'memory'
 /** 每会话独立的查看缓存，不与业务状态混用。
@@ -112,26 +113,38 @@ export function ContextMemory({
       }),
     [sessionId]
   )
-  useEffect(() => {
-    let cancelled = false
-    void Promise.all([
-      window.agent.getContext({ session_id: sessionId }),
-      window.agent.listMemory({ session_id: sessionId })
-    ])
-      .then(([a, b]) => {
-        if (cancelled) return
-        if (a.ok) setContext(a.data)
-        else setError(a.error.message)
-        if (b.ok) setMemory(b.data)
-        else setError(b.error.message)
-      })
-      .catch(() => {
-        if (!cancelled) setError('无法读取上下文状态，请检查后端连接。')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [sessionId, revision, refresh])
+  useLatestRefresh(
+    async (isCurrent) => {
+      await window.agent
+        .getContext({ session_id: sessionId })
+        .then((a) => {
+          if (!isCurrent()) return
+          setError('')
+          if (a.ok) setContext(a.data)
+          else setError(a.error.message)
+        })
+        .catch(() => {
+          if (isCurrent()) setError('无法读取上下文状态，请检查后端连接。')
+        })
+    },
+    [sessionId, revision, refresh],
+    connected
+  )
+
+  useLatestRefresh(
+    async (isCurrent) => {
+      try {
+        const result = await window.agent.listMemory({ session_id: sessionId })
+        if (!isCurrent()) return
+        if (result.ok) setMemory(result.data)
+        else setError(result.error.message)
+      } catch {
+        if (isCurrent()) setError('无法读取记忆，请检查后端连接。')
+      }
+    },
+    [sessionId, revision, refresh],
+    connected && ui.panel !== null
+  )
 
   /** 保留失败并忽略卸载后的回包；关闭不取消操作。
    * Keep failures and ignore unmounted responses; closing never cancels work. */
@@ -416,9 +429,11 @@ export function ContextMemory({
                   <p>
                     保留最新输入和近期历史；{context.checkpoint ? '采用已保存摘要；' : '尚无摘要；'}
                     刷新任务目标、结论和协作结果；
-                    {memory?.state.settings?.use
-                      ? '按当前问题带入相关记忆。'
-                      : '自动带入记忆已关闭。'}
+                    {!memory
+                      ? '记忆设置读取中。'
+                      : memory.state.settings?.use
+                        ? '按当前问题带入相关记忆。'
+                        : '自动带入记忆已关闭。'}
                     已选材料随提问发送。此处是组装规则，实际清单在请求发出时确定。
                   </p>
                 )}

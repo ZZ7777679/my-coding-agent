@@ -8,6 +8,7 @@
   "development_project_dir": "E:\\claude_code\\my-coding-agent-test",
   "project_dir_env": "MY_AGENT_PROJECT_DIR",
   "max_frame_bytes": 1048576,
+  "session_read_cache_bytes": 33554432,
   "diagnostics": {
     "max_records": 2000,
     "prune_every": 100,

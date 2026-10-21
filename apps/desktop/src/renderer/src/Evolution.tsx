@@ -97,7 +97,13 @@ export function Evolution({
   const [proposalJobs, setProposalJobs] = useState<Record<string, string>>(
     saved?.proposalJobs ?? {}
   )
-  const [findingSelections, setFindingSelections] = useState<Record<string, string[]>>({})
+  const [findingSelections, setFindingSelections] = useState<Record<string, string[]>>(
+    saved?.findingSelections ?? {}
+  )
+  const loadedJobs = useRef(new Map<string, EvolutionJob>())
+  const jobsCursor = useRef<string | null | undefined>(undefined)
+  const pagedJobs = useRef(false)
+  const [focusJob, setFocusJob] = useState<string | null>(null)
   const feedbackIdentity = useRef({ key: '', id: crypto.randomUUID() })
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -128,7 +134,8 @@ export function Evolution({
     sourceProjectId,
     directed,
     generation,
-    proposalJobs
+    proposalJobs,
+    findingSelections
   }
   useEffect(
     () => () => {
@@ -223,7 +230,9 @@ export function Evolution({
         value.jobs = [detail, ...(value.jobs ?? [])]
       }
       if (alive.current && ticket === refreshId.current) {
-        setPage(value)
+        for (const job of value.jobs ?? []) loadedJobs.current.set(job.job_id, job)
+        if (!pagedJobs.current) jobsCursor.current = value.jobs_next_cursor
+        setPage({ ...value, jobs: [...loadedJobs.current.values()] })
         const current = candidateRef.current
         if (current) {
           const latest = unwrap(
@@ -339,7 +348,7 @@ export function Evolution({
     instruction: [feedback.trim(), instruction.trim()].filter(Boolean).join('\n\n')
   }
   const inputKey = JSON.stringify(requestInput)
-  const feedbackKey = JSON.stringify([feedback, references, directed ? target : null])
+  const feedbackKey = JSON.stringify([feedback, references, origin, directed ? target : null])
   if (feedbackIdentity.current.key !== feedbackKey)
     feedbackIdentity.current = { key: feedbackKey, id: crypto.randomUUID() }
   const linkedJobId = generation?.key === inputKey ? generation.jobId : null
@@ -357,11 +366,20 @@ export function Evolution({
     }
   }
   /** 展开同一作业，避免查看进度触发另一次请求。 Expand the existing job without issuing another model request. */
-  function showJob(id: string) {
-    const element = document.getElementById(`evolution-job-${id}`)
+  async function showJob(id: string) {
+    const job = unwrap(await window.agent.evolutionJob({ project_id: projectId, job_id: id }))
+    if (!alive.current) return
+    loadedJobs.current.set(id, job)
+    setPage((old) => (old ? { ...old, jobs: [...loadedJobs.current.values()] } : old))
+    setFocusJob(id)
+  }
+  useEffect(() => {
+    if (!focusJob) return
+    const element = document.getElementById(`evolution-job-${focusJob}`)
     if (element instanceof HTMLDetailsElement) element.open = true
     element?.scrollIntoView({ block: 'center' })
-  }
+    if (element) setFocusJob(null)
+  }, [focusJob, page])
   const shownEntry = useRef<string | null>(null)
   useEffect(() => {
     if (
@@ -370,15 +388,35 @@ export function Evolution({
       page?.jobs?.some((job) => job.job_id === entry.jobId)
     ) {
       shownEntry.current = entry.jobId
-      showJob(entry.jobId)
+      void action(() => showJob(entry.jobId!))
     }
   }, [entry?.jobId, page])
   /** 相同发现的生成入口连接既有作业，变更勾选后可另行生成。 Reuse a proposal job for the same findings and allow a changed selection. */
   function proposalKey(job: EvolutionJob) {
     return JSON.stringify([
       job.job_id,
-      findingSelections[job.job_id] ?? (job.findings ?? []).map((item) => item.finding_id)
+      [
+        ...(findingSelections[job.job_id] ?? (job.findings ?? []).map((item) => item.finding_id))
+      ].sort()
     ])
+  }
+  /** 沿冻结调查再次生成；活动输入仍由后端去重。 Regenerate from frozen evidence; the backend deduplicates active work. */
+  async function propose(job: EvolutionJob, retry = false) {
+    const existing = proposalJobs[proposalKey(job)]
+    if (existing && !retry) return showJob(existing)
+    const next = unwrap(
+      await window.agent.evolutionGenerate({
+        project_id: projectId,
+        mode: 'propose',
+        target: job.request?.target ?? null,
+        review_job_id: job.job_id,
+        finding_ids: findingSelections[job.job_id] ?? (job.findings ?? []).map((f) => f.finding_id)
+      })
+    )
+    if (alive.current) {
+      setProposalJobs((old) => ({ ...old, [proposalKey(job)]: next.job_id }))
+      setNotice('沿原调查生成候选已启动；原范围和已读证据保留。')
+    }
   }
   return (
     <section className="content evolution">
@@ -419,7 +457,7 @@ export function Evolution({
           <button
             className="evolution-primary"
             disabled={busy}
-            onClick={() => (linkedJobId ? showJob(linkedJobId) : void action(generateAgain))}
+            onClick={() => void action(linkedJobId ? () => showJob(linkedJobId) : generateAgain)}
           >
             {linkedJobId ? '查看本次改进进度' : '开始改进'}
           </button>
@@ -494,6 +532,7 @@ export function Evolution({
                     project_id: projectId,
                     feedback_id: feedbackIdentity.current.id,
                     text: feedback,
+                    origin,
                     sources: references.map((item) => item.source),
                     target: directed ? target : null
                   })
@@ -896,31 +935,21 @@ export function Evolution({
                     (job.findings ?? []).map((item) => item.finding_id)
                   ).length
                 }
-                onClick={() =>
-                  void action(async () => {
-                    const existing = proposalJobs[proposalKey(job)]
-                    if (existing) {
-                      showJob(existing)
-                      return
-                    }
-                    const next = unwrap(
-                      await window.agent.evolutionGenerate({
-                        project_id: projectId,
-                        mode: 'propose',
-                        target: null,
-                        review_job_id: job.job_id,
-                        finding_ids:
-                          findingSelections[job.job_id] ??
-                          (job.findings ?? []).map((item) => item.finding_id)
-                      })
-                    )
-                    setProposalJobs((old) => ({ ...old, [proposalKey(job)]: next.job_id }))
-                    setNotice(`关联候选生成已启动：${next.job_id}`)
-                  })
-                }
+                onClick={() => void action(() => propose(job))}
               >
                 {proposalJobs[proposalKey(job)] ? '查看关联候选进度' : '生成所选问题的关联候选'}
               </button>
+              {proposalJobs[proposalKey(job)] && (
+                <button
+                  disabled={
+                    busy ||
+                    !(findingSelections[job.job_id] ?? job.findings.map((f) => f.finding_id)).length
+                  }
+                  onClick={() => void action(() => propose(job, true))}
+                >
+                  沿原调查重新生成候选
+                </button>
+              )}
             </section>
           )}
           <p>
@@ -955,6 +984,29 @@ export function Evolution({
               停止复盘
             </button>
           )}
+          {['failed', 'cancelled', 'interrupted'].includes(job.status) &&
+            !job.experiment_directory && (
+              <button
+                disabled={busy}
+                onClick={() =>
+                  void action(async () => {
+                    const next = unwrap(
+                      await window.agent.evolutionGenerate({
+                        project_id: projectId,
+                        review_job_id: job.job_id,
+                        mode: job.mode ?? 'investigate',
+                        target: job.request?.target ?? null,
+                        instruction: job.request?.instruction ?? '',
+                        finding_ids: job.request?.finding_ids ?? []
+                      })
+                    )
+                    await showJob(next.job_id)
+                  })
+                }
+              >
+                接续本次调查
+              </button>
+            )}
           {[
             ...new Set([
               ...(job.candidate_ids ?? []),
@@ -967,6 +1019,28 @@ export function Evolution({
           ))}
         </details>
       ))}
+      {jobsCursor.current && (
+        <button
+          disabled={busy}
+          onClick={() =>
+            void action(async () => {
+              const older = unwrap(
+                await window.agent.evolutionList({
+                  project_id: projectId,
+                  jobs_before: jobsCursor.current
+                })
+              )
+              if (!alive.current) return
+              for (const job of older.jobs ?? []) loadedJobs.current.set(job.job_id, job)
+              pagedJobs.current = true
+              jobsCursor.current = older.jobs_next_cursor ?? null
+              setPage((old) => (old ? { ...old, jobs: [...loadedJobs.current.values()] } : old))
+            })
+          }
+        >
+          更早的调查与候选生成
+        </button>
+      )}
       <div className="detail-card">
         <h2>改进记录</h2>
         {!page?.candidates?.length && <p>暂无候选。可生成建议，或展开下面的编辑器创建草稿。</p>}
@@ -983,6 +1057,27 @@ export function Evolution({
                 ' · 旧版本结果，已过期'}
             </span>
             <p>{item.message}</p>
+            <button
+              disabled={busy}
+              onClick={() =>
+                void action(async () => {
+                  const job = unwrap(
+                    await window.agent.evolutionGenerate({
+                      project_id: projectId,
+                      mode: 'propose',
+                      target: { kind: 'memory', identity: '', scope: 'project' },
+                      candidate_ids: [item.candidate_id],
+                      instruction:
+                        '从这项改进及对应版本的实际效果中提炼可复用经验。先查相关记忆，避免重复；区分采用与有效，不确定性保留。没有值得复用的结论可以不生成候选。'
+                    })
+                  )
+                  await showJob(job.job_id)
+                  setNotice('经验提炼已启动，沿用当前记忆采用设置。')
+                })
+              }
+            >
+              提炼为经验候选
+            </button>
           </div>
         ))}
         {page?.next_cursor && (
@@ -1043,7 +1138,7 @@ export function Evolution({
                   })
                 }
               >
-                查看候选实际参考材料
+                查看所属调查的全部材料
               </button>
             ) : (
               <p className="muted">此候选未保存模型输入快照（手动创建或旧记录）。</p>
@@ -1059,6 +1154,16 @@ export function Evolution({
                       </button>
                     ) : item.diagnostic_id ? (
                       `诊断 ${item.diagnostic_id}`
+                    ) : item.candidate_id ? (
+                      <span>
+                        来源改进 · 正文版本 {item.content_revision ?? '未知'} ·
+                        {item.comparison_at ? ` 比较 ${item.comparison_at}` : ' 效果未验证'}
+                        <button
+                          onClick={() => void action(() => openCandidate(item.candidate_id!))}
+                        >
+                          查看来源改进的当前记录
+                        </button>
+                      </span>
                     ) : (
                       '文字反馈'
                     )}
@@ -1066,6 +1171,23 @@ export function Evolution({
                 ))}
               </details>
             )}
+            {!!candidate.resource_sources?.length && (
+              <details>
+                <summary>关联资源 · {candidate.resource_sources.length}</summary>
+                {candidate.resource_sources.map((ref, index) => (
+                  <p key={index}>
+                    {names.get(ref.target.kind)} · {ref.target.identity} · 阅读版本{' '}
+                    {ref.version ?? '未知'}
+                  </p>
+                ))}
+              </details>
+            )}
+            <p className="muted">
+              以上是此候选的已关联来源；调查全部材料还包含其他发现的参考内容。
+              {!candidate.sources?.length &&
+                !candidate.resource_sources?.length &&
+                '此项尚未记录明确来源关联，不影响候选保存或采用。'}
+            </p>
             {candidate.recovery_directory && (
               <p>
                 启动失败时可关闭应用，运行独立恢复入口：
@@ -1190,6 +1312,9 @@ export function Evolution({
         {candidate && (
           <details>
             <summary>记录实际效果</summary>
+            <p className="muted">
+              采用只表示已修改。记录效果后，可从上方改进记录中“提炼为经验候选”；不会自动把每次修改变成长期记忆。
+            </p>
             <textarea
               aria-label="比较说明"
               value={comparison}

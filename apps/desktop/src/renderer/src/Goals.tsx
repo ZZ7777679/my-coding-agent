@@ -1,6 +1,7 @@
 /** 局部 Goal 的真实状态、用户控制与累计预算。 Real local-goal state, controls and budgets. */
 import { useEffect, useRef, useState } from 'react'
 import type { ControlGoalParams, GoalBudget, GoalView, RunView } from '../../generated/protocol'
+import { useLatestRefresh } from './useLatestRefresh'
 
 const labels: Record<GoalView['status'], string> = {
   active: '持续推进中',
@@ -151,44 +152,33 @@ export function Goals({
     }
   }, [])
 
-  useEffect(() => {
-    if (!connected || !visible) return
-    const ticket = ++generation.current
-    let disposed = false
-    let fetching = false
-    /** 迟到响应只属于原会话，不覆盖新的选择。 Ignore late replies for a superseded selection. */
-    const load = async () => {
-      if (disposed || fetching) return
-      fetching = true
+  useLatestRefresh(
+    async (isCurrent) => {
+      const ticket = ++generation.current
       try {
         const result = await window.agent.listGoals({
           session_id: sessionId,
           limit: 1,
           before_seq: null
         })
-        if (disposed || ticket !== generation.current) return
+        if (!isCurrent() || ticket !== generation.current) return
         if (!result.ok) {
           setError(result.error.message)
           return
         }
         const current = result.data.goals[0] ?? null
+        setError('')
         setGoal(current)
         setCursor(result.data.before_seq)
         callbacks.current.onValue(current)
       } catch {
-        if (!disposed) setError('无法读取 Goal 状态，未自动重启工作。')
-      } finally {
-        fetching = false
+        if (isCurrent()) setError('无法读取 Goal 状态，未自动重启工作。')
       }
-    }
-    const timer = setTimeout(() => void load(), 40)
-    const recovery = setInterval(() => void load(), 2500)
-    return () => {
-      disposed = true
-      clearTimeout(timer)
-      clearInterval(recovery)
-    }
-  }, [sessionId, revision, connected, visible, refresh])
+    },
+    [sessionId, revision, refresh],
+    connected && visible,
+    2500
+  )
 
   useEffect(() => {
     setExpanded(false)

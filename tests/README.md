@@ -1,5 +1,7 @@
 # 测试与回归
 
+旧会话读取／请求积压：`pytest tests/python/test_session_read_cache.py tests/python/test_goal_records.py -q` 检查解析复用、变更／损坏／删除失效、缓存淘汰不限制读取及 Goal 原持久规则；桌面构建后 `npm.cmd --prefix apps/desktop run test:desktop -- old-session.spec.ts` 使用 `tests/support/long_session.py` 的隔离 180 轮样本，观测慢读取下的请求合并、会话切换、忙碌提示恢复和历史不变。知识面板兼容用 `knowledge.spec.ts`。产物归 `.artifacts/tests/desktop-old-session-*/`，不调用模型、不写个人历史；只在涉及这条链路时运行。
+
 M7 独立改进预算：`pytest tests/python/test_evolution_budget.py -q` 通过真实服务和离线模型检查调查／提案／指定资源生成的独立预算、接纳快照、持久化、旧记录兼容、有限／不限与取消。`test_go.py -k 'unlimited_model_budget or frame_limits or failure_cause'` 覆盖真实客户端的省略 token 参数、HTTP 超时关闭、300K 大帧／取消及原数值限制；`test_evolution.py -k review_evidence` 包含不限选材的 Trace 分页。桌面构建后 `npm.cmd --prefix apps/desktop run test:desktop -- evolution.spec.ts -g "independent budgets"` 检查首屏入口、八项有限／不限切换、普通配置不变、重启和恢复单项限额；截图／隔离数据在 `.artifacts/tests/desktop-m7-budget-*/`。预算正反字段沿用共享契约 `-k m7-budget`／`--test-name-pattern=m7-budget`。不访问网络、个人历史或真实模型，按相关改动选择执行。
 
 M6 独立审查修复：`test_checkpoints.py -k unignored` 覆盖取消忽略的既有文件、目录／Windows 大小写和旧快照；`test_workstyles.py` 覆盖套用后的负责人／报告／删除标记、其它工作保留、幂等与重启。`test_sandbox_usability.py -k 'ancestor_denial or cleanup_without'` 检查祖先拒绝与无 ACE 清理；按既有隔离运行时配置执行 `test_sandbox_stability.py -k 'system_volume_project or required_grant_denial'` 实测系统卷项目的 Python／PowerShell／终端与清理。系统卷兼容样本仅在用户临时目录创建唯一临时项目，结束删除并核对祖先 DACL 恢复；数据根和报告仍归 `.artifacts/tests/`，不提权、不操作个人项目。桌面 `m6-workstyles-rollback.spec.ts` 同时覆盖真实 Run 的 Trace 与 `RUN_BUSY` 接纳失败卡片不可打开无关轨迹。
@@ -293,6 +295,8 @@ M2 收尾复用该文件中的三条定向检查：`::test_bidirectional_deliver
 用户明确选择官方直连时，关闭占用此演示数据根的桌面后，用 `.venv/Scripts/python.exe -X utf8 -m tests.models.m5_space_direct --root <演示根绝对路径> --enable-real-models` 运行。只读取 `DEEPSEEK_API_KEY`，请求官方 `deepseek-flash`，复用真实文件、群聊与协作服务；默认最多 24 请求 / 600 秒，可通过参数调整。报告 `direct-report.json` 标注实际 provider 与 API 模型名；不修改产品默认 Go 配置。结束后桌面可查看持久历史，桌面新请求仍沿用 Go，并非增加了完整 provider 设置。已有报告不会自动重放。
 
 ## M7 自进化定向验证
+
+- 十二项审查修复：`pytest tests/python/test_evolution_review_fixes.py -q` 使用真实服务和离线模型，覆盖指定资源纠错、独立候选冲突、重启接续、历史分页、准备取消／时间预算／跨项目接纳、现场反馈冻结、记忆正文检索／派生纠错、独立证据失效，以及历史改进检索→经验采用→版本变化后的召回。桌面 `evolution.spec.ts -g 'investigates cross-project'` 追加勾选导航保留、原调查再次生成、超过一页的作业／按 ID 打开历史和经验提炼入口；产物仍归 `.artifacts/tests/desktop-m7-investigation-*/`。不发真实模型请求，不修改个人数据。
 
 - 选择性筛选与现场入口：`pytest tests/python/test_evolution_screening.py -q` 覆盖长正文检索、重复归组、准确阅读计量、任务／项目完整分页、冻结接续及模型工具与桌面同一作业。桌面 `evolution.spec.ts -g 'contextual entry'` 检查三种现场范围、启动与原地进度、跳转同一作业、线索／实际阅读及清除继承范围。离线模型，产物 `.artifacts/tests/desktop-m7-contextual-*/`。指定资源与普通调查现在共用筛选／按需读取，预览不再默认铺入 Trace 全文。
 

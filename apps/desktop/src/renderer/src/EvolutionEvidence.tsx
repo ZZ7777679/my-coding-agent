@@ -234,6 +234,18 @@ export function EvolutionInputView({
             {item.title} · {item.content.length} 字符 {item.truncated ? '· 已截断' : ''}
           </summary>
           {item.truncated && <p>来源共有 {item.total_chars} 字符；下方是实际纳入的部分。</p>}
+          {item.resource && (
+            <p>
+              资源 {item.resource.target.identity || '新资源'} · 阅读版本{' '}
+              {item.resource.version ?? '未知'}
+            </p>
+          )}
+          {item.source?.candidate_id && (
+            <p>
+              改进 {item.source.candidate_id} · 正文版本 {item.source.content_revision ?? '未知'} ·
+              {item.source.comparison_at ? ` 效果记录 ${item.source.comparison_at}` : ' 效果未验证'}
+            </p>
+          )}
           {item.source?.session_id && (
             <button onClick={() => onTrace(item.source!)}>打开原始 Trace</button>
           )}

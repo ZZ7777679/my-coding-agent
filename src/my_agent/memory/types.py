@@ -57,8 +57,22 @@ class MemoryEntry(MemoryFields):
     session_id: EntityId | None
     source_seq: int | None
     trace_sources: list[MemoryTraceSource] = Field(default_factory=list)
+    evolution_sources: list["MemoryEvolutionSource"] = Field(default_factory=list)
     created_at: str
     updated_at: str
+
+
+class MemoryEvolutionSource(ModelData):
+    """宿主读过的改进版本与效果记录；采用不等于改善。
+
+    Host-read improvement revision and outcome record; adoption does not imply improvement.
+    """
+
+    project_id: EntityId
+    candidate_id: EntityId
+    content_revision: int
+    status: str
+    comparison_at: str | None = None
 
 
 class MemorySettings(ModelData):

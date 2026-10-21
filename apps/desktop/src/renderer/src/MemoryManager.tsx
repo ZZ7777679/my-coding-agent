@@ -488,6 +488,18 @@ export function MemoryManager({
                       {entry.source_seq ?? '无'}
                       ；来源条目 {entry.source_ids?.join('、') || '无'}。
                     </p>
+                    {(entry.evolution_sources ?? []).map((source) => (
+                      <p
+                        key={`${source.project_id}:${source.candidate_id}:${source.content_revision}`}
+                      >
+                        改进来源 {source.candidate_id} · 正文版本 {source.content_revision} ·
+                        当时状态 {source.status}
+                        {' · '}
+                        {source.comparison_at
+                          ? `效果记录 ${source.comparison_at}`
+                          : '未记录效果，采用不代表改善'}
+                      </p>
+                    ))}
                     {entry.source === 'maintenance' && (
                       <p className="muted">
                         这是后台模型提取的内容；事件号记录处理边界，不代表该条知识已逐项验证。

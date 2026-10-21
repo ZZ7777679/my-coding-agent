@@ -21,7 +21,12 @@ from my_agent.evolution.types import (
     EvolutionTarget,
 )
 from my_agent.memory.store import MemoryStore
-from my_agent.memory.types import MemoryEntry, MemoryFields, MemoryTraceSource
+from my_agent.memory.types import (
+    MemoryEntry,
+    MemoryEvolutionSource,
+    MemoryFields,
+    MemoryTraceSource,
+)
 from my_agent.models.types import ModelData, ToolCall
 from my_agent.runtime.tools import ToolContext
 from my_agent.sessions.store import SessionLog
@@ -122,7 +127,7 @@ class EvolutionResources:
                 entry.model_dump(include=set(MemoryFields.model_fields))
             )
             return EvolutionResource(
-                target=target,
+                target=target.model_copy(update={"scope": entry.scope}),
                 content=fields.model_dump_json(indent=2),
                 label=entry.title,
                 version=str(entry.revision),
@@ -130,7 +135,7 @@ class EvolutionResources:
         if target.kind == "workstyle":
             style = await worker.call(self.styles.load, target.identity)
             return EvolutionResource(
-                target=target,
+                target=target.model_copy(update={"scope": "user"}),
                 content=style.model_dump_json(indent=2, exclude={"updated_at"}),
                 label=style.name,
                 version=style.updated_at,
@@ -150,7 +155,7 @@ class EvolutionResources:
                 None,
             )
             return EvolutionResource(
-                target=target,
+                target=target.model_copy(update={"scope": "project"}),
                 content=item.content if item else None,
                 label=target.identity,
                 version=str(item.revision) if item else None,
@@ -207,6 +212,7 @@ class EvolutionResources:
             )
         tools = await self.file_tools(project_id, str(uuid4()))
         file_path = target.identity or "AGENTS.md"
+        target = target.model_copy(update={"identity": file_path, "scope": "project"})
         # 读取改进目标与写入范围一致；不是扫描任意宿主目录。
         # Read the same project target that adoption can write, not arbitrary host files.
         try:
@@ -229,19 +235,8 @@ class EvolutionResources:
         worker = self.sessions.worker
         store = EvolutionStore(self.storage)
         sources = candidate.sources
-        if candidate.review_job_id:
-            job = await worker.call(store.job, candidate.project_id, candidate.review_job_id)
-            # index 仅用于目录选择；只有实际装入正文的 Trace 才构成派生来源。
-            # An index only supports selection; only included Trace bodies are provenance.
-            sources = (
-                [
-                    material.source
-                    for material in job.review_input.materials
-                    if material.kind == "trace"
-                ]
-                if job.review_input
-                else []
-            )
+        # 候选已按发现关联实际阅读；不能在采用时扩大为整次调查。
+        # Candidate links already select actual reads; adoption must not expand to the whole job.
         selected: set[tuple[str, int]] = set()
         for source in sources:
             if not source.session_id:
@@ -263,8 +258,16 @@ class EvolutionResources:
                     # Invalidate paired results/replies too, not just their starting facts.
                     selected.add((log.session_id, row.seq))
                     selected.add((log.session_id, row.updated_seq))
-        memory_ids: list[str] = []
-        for identity in dict.fromkeys(candidate.feedback_ids):
+        memory_ids = [
+            ref.target.identity
+            for ref in candidate.resource_sources
+            if ref.target.kind in {"memory", "preference"}
+            and ref.target.identity
+            and ref.target.identity != candidate.target.identity
+        ]
+        # 旧人工候选保留显式反馈关联；新调查使用逐候选的实际资源来源。
+        # Preserve legacy explicit feedback links; new investigations use candidate-specific reads.
+        for identity in dict.fromkeys(candidate.feedback_ids if not candidate.finding_id else []):
             feedback = await worker.call(store.read_feedback, candidate.project_id, identity)
             if feedback.target and feedback.target.kind in {"memory", "preference"}:
                 if (
@@ -308,6 +311,17 @@ class EvolutionResources:
                 if target.kind == "preference":
                     fields.category = "preference"
                     fields.pinned = True
+            evolution_sources = [
+                MemoryEvolutionSource(
+                    project_id=candidate.project_id,
+                    candidate_id=source.candidate_id,
+                    content_revision=source.content_revision,
+                    status=source.candidate_status or "unknown",
+                    comparison_at=source.comparison_at,
+                )
+                for source in candidate.sources
+                if source.candidate_id and source.content_revision
+            ]
 
             def save_memory() -> MemoryEntry | None:
                 """同一写线程内比较后保存，避免排队期间覆盖用户改动。
@@ -332,6 +346,21 @@ class EvolutionResources:
                     return None
                 if automatic and not revert:
                     fields.source_ids = list(dict.fromkeys([*fields.source_ids, *memory_ids]))
+                    for ref in candidate.resource_sources:
+                        if ref.target.identity not in memory_ids:
+                            continue
+                        try:
+                            origin = self.memory.read(ref.target.identity, candidate.project_id)
+                            fields.stale = (
+                                fields.stale
+                                or origin.stale
+                                or not origin.enabled
+                                or (ref.version is not None and str(origin.revision) != ref.version)
+                            )
+                        except AgentError:
+                            # 来源变化只影响经验召回，不阻断候选保存。
+                            # Changed sources affect recall, never candidate persistence.
+                            fields.stale = True
                 return self.memory.save(
                     candidate.project_id,
                     fields,
@@ -342,6 +371,7 @@ class EvolutionResources:
                             (source.session_id, source.seq): source for source in trace_sources
                         }.values()
                     ),
+                    evolution_sources=evolution_sources,
                 )
 
             entry = await worker.call(save_memory)

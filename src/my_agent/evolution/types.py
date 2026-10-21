@@ -35,6 +35,10 @@ class EvolutionSource(ModelData):
     diagnostic_id: EntityId | None = None
     scope: Literal["session", "run", "event"] | None = None
     through_seq: Annotated[int, Field(ge=1)] | None = None
+    candidate_id: EntityId | None = None
+    content_revision: int | None = None
+    comparison_at: str | None = None
+    candidate_status: str | None = None
 
 
 class EvolutionRunsQuery(ModelData):
@@ -155,6 +159,7 @@ class EvolutionQuery(ModelData):
     project_id: EntityId
     origin: EvolutionScope | None = None
     before: str | None = None
+    jobs_before: str | None = None
     limit: Annotated[int, Field(ge=1, le=100)] = 30
 
 
@@ -206,6 +211,7 @@ class SaveEvolutionFeedback(ModelData):
     source: EvolutionSource = Field(default_factory=EvolutionSource)
     sources: list[EvolutionSource] = Field(default_factory=list)
     target: "EvolutionTarget | None" = None
+    origin: EvolutionScope | None = None
 
 
 class EvolutionFeedback(SaveEvolutionFeedback):
@@ -216,6 +222,7 @@ class EvolutionFeedback(SaveEvolutionFeedback):
 
     created_at: str
     review_job_id: EntityId | None = None
+    contextual_sources: list[EvolutionSource] = Field(default_factory=list)
 
 
 class EvolutionTarget(ModelData):
@@ -243,6 +250,16 @@ class EvolutionComparison(ModelData):
     content_revision: Annotated[int, Field(ge=1)] | None = None
 
 
+class EvolutionResourceReference(ModelData):
+    """实际读过的资源身份和版本，不由模型声明阅读事实。
+
+    Identity and version of an actually read resource, supplied by the host.
+    """
+
+    target: EvolutionTarget
+    version: str | None = None
+
+
 class EvolutionCandidate(ModelData):
     """修改版本与采用事实，独立于原业务结果。
 
@@ -260,6 +277,7 @@ class EvolutionCandidate(ModelData):
     after: str
     feedback_ids: list[EntityId] = Field(default_factory=list)
     sources: list[EvolutionSource] = Field(default_factory=list)
+    resource_sources: list[EvolutionResourceReference] = Field(default_factory=list)
     status: Literal["draft", "applied", "reverted", "partial"] = "draft"
     comparisons: list[EvolutionComparison] = Field(default_factory=list)
     revision: int = 1
@@ -289,6 +307,7 @@ class EvolutionFinding(ModelData):
     category: Literal["rule", "preference", "skill", "tool_usage", "implementation", "unknown"]
     targets: list[EvolutionTarget] = Field(default_factory=list)
     sources: list[EvolutionSource] = Field(default_factory=list)
+    resources: list[EvolutionTarget] = Field(default_factory=list)
     unknowns: list[str] = Field(default_factory=list)
 
 
@@ -327,6 +346,8 @@ class EvolutionJob(ModelData):
     # Legacy budgets remain unknown; new jobs freeze them at acceptance.
     budget: EvolutionBudget | None = None
     updated_at: str = ""
+    accepted_at: str = ""
+    request: "GenerateEvolutionCandidate | None" = None
     experiment_directory: str | None = None
     programs: list[ProgramView] = Field(default_factory=list)
     omitted_paths: list[str] = Field(default_factory=list)
@@ -366,6 +387,7 @@ class EvolutionPage(ModelData):
     jobs: list[EvolutionJob] = Field(default_factory=list)
     issues: list[str] = Field(default_factory=list)
     next_cursor: str | None = None
+    jobs_next_cursor: str | None = None
 
 
 class EvolutionResourceQuery(ModelData):
@@ -404,6 +426,7 @@ class GenerateEvolutionCandidate(ModelData):
     review_job_id: EntityId | None = None
     finding_ids: list[str] = Field(default_factory=list)
     feedback_ids: list[EntityId] = Field(default_factory=list)
+    candidate_ids: list[EntityId] = Field(default_factory=list)
     instruction: str = ""
     sources: list[EvolutionSource] = Field(default_factory=list)
 
@@ -414,13 +437,14 @@ class EvolutionMaterial(ModelData):
     One reference with provenance and the exact included content.
     """
 
-    kind: Literal["feedback", "memory", "trace", "diagnostic", "index", "resource"]
+    kind: Literal["feedback", "memory", "trace", "diagnostic", "index", "resource", "improvement"]
     title: str
     source: EvolutionSource = Field(default_factory=EvolutionSource)
     content: str
     total_chars: int
     truncated: bool = False
     offset: int = 0
+    resource: EvolutionResourceReference | None = None
 
 
 class EvolutionInput(ModelData):

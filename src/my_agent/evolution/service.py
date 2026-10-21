@@ -85,9 +85,7 @@ class EvolutionService:
                 page.jobs.insert(0, job)
                 page.issues.append("维护结果尚未落盘：" + job.job_id)
         for job in page.jobs:
-            if job.status == "running" and job.job_id not in self.jobs:
-                job.status = "interrupted"
-                job.message = "上次复盘已中断，未自动重放。"
+            self._normalize_job(job)
         # 列表轮询不反复发送实验输出；详情由用户按需打开。
         # Polling omits experiment output; users open details on demand.
         page.jobs = [
@@ -116,9 +114,20 @@ class EvolutionService:
         item = self.unsaved_jobs.get(params.job_id) or (live[0] if live else None)
         if item is not None and item.project_id == params.project_id:
             return item
-        return await self.sessions.worker.call(self.store.job, params.project_id, params.job_id)
+        item = await self.sessions.worker.call(self.store.job, params.project_id, params.job_id)
+        return self._normalize_job(item)
 
-    async def catalog(self, project_id: str) -> EvolutionCatalog:
+    def _normalize_job(self, job: EvolutionJob) -> EvolutionJob:
+        """列表、详情和接续共用实际活动状态，不重放副作用。
+
+        Normalize live state consistently without replaying side effects.
+        """
+        if job.status == "running" and job.job_id not in self.jobs:
+            job.status = "interrupted"
+            job.message = "上次复盘已中断，未自动重放。"
+        return job
+
+    async def catalog(self, project_id: str, *, include_memory: bool = True) -> EvolutionCatalog:
         """目录只读资源身份，不全量加载正文。
 
         List resource identities without loading their bodies.
@@ -133,7 +142,9 @@ class EvolutionService:
                 )
             ]
         )
-        entries, unavailable = await worker.call(self.resources.memory._entries)
+        entries, unavailable = (
+            await worker.call(self.resources.memory._entries) if include_memory else ([], 0)
+        )
         for entry in entries:
             if entry.project_id not in {None, project_id}:
                 continue
@@ -199,13 +210,23 @@ class EvolutionService:
             existed = await self.sessions.worker.call(
                 self.store.path(params.project_id, "feedback", params.feedback_id).exists
             )
-            result = await self.sessions.worker.call(self.store.feedback, params)
+            sources = []
+            if not existed and params.origin:
+                from my_agent.evolution.scopes import scope_sources
+
+                sources = await scope_sources(self.sessions, params.project_id, params.origin)
+                for source in sources:
+                    if source.session_id:
+                        log = await self.sessions._load(source.session_id)
+                        source.through_seq = max((f.seq for f in log.facts), default=1)
+            result = await self.sessions.worker.call(self.store.feedback, params, sources)
         settings = await self.sessions.worker.call(self.store.settings, params.project_id)
         if not existed and settings.automatic_review:
             try:
                 job = await self.generate(
                     GenerateEvolutionCandidate(
                         project_id=params.project_id,
+                        origin=params.origin,
                         target=params.target,
                         feedback_ids=[params.feedback_id],
                         instruction=params.text,
@@ -267,16 +288,16 @@ class EvolutionService:
 
         Accept investigation or directed proposals under the same stoppable job lifecycle.
         """
-        from my_agent.evolution.investigation import investigate, prepare_investigation
+        from my_agent.evolution.investigation import investigate
 
         if self.sessions.closing:
             raise AgentError("APP_CLOSING", "应用正在退出。")
         settings = await self.sessions.worker.call(self.store.settings, params.project_id)
-        prepared, evidence = await prepare_investigation(self, params)
+        await self.sessions.validate_project(params.project_id)
         origin = params.origin
         if origin is None and params.review_job_id:
-            previous = await self.sessions.worker.call(
-                self.store.job, params.project_id, params.review_job_id
+            previous = await self.job_detail(
+                EvolutionJobControl(project_id=params.project_id, job_id=params.review_job_id)
             )
             origin = previous.origin
         job = EvolutionJob(
@@ -286,13 +307,14 @@ class EvolutionService:
             origin=origin,
             mode=params.mode,
             review_job_id=params.review_job_id,
-            review_input=prepared,
             details_available=True,
-            message="已完成本地筛选，正在按线索调查",
+            message="正在准备范围与筛选线索，可随时停止",
             budget=settings.budget.model_copy(deep=True),
+            accepted_at=utc_now(),
+            request=params.model_copy(deep=True),
         )
         await self.sessions.worker.call(self.store.save_job, job)
-        task = asyncio.create_task(investigate(self, job, params, evidence))
+        task = asyncio.create_task(investigate(self, job, params, accepted_settings=settings))
         self.jobs[job.job_id] = job, task
         return job
 
@@ -445,19 +467,7 @@ class EvolutionService:
             )
             # 已知写入前反馈可以修正；I/O 中断不能冒充完全未写入。
             # Pre-write feedback is repairable; interrupted I/O may have changed the target.
-            prewrite = isinstance(exc, ValidationError) or (
-                isinstance(exc, AgentError)
-                and exc.code
-                in {
-                    "EVOLUTION_TARGET_CHANGED",
-                    "EVOLUTION_TARGET_MISSING",
-                    "INVALID_TOOL_ARGUMENTS",
-                    "SKILL_NAME_MISMATCH",
-                    "FILE_NOT_FOUND",
-                    "FILE_EXISTS",
-                    "FILE_CHANGED",
-                }
-            )
+            prewrite = is_prewrite_feedback(exc)
             if prewrite:
                 candidate.pending_action = None
             else:
@@ -538,3 +548,23 @@ class EvolutionService:
         for job, _ in list(self.jobs.values()):
             job.status, job.message = "cancelled", "应用退出，维护已停止。"
             await self.finish_job(job)
+
+
+def is_prewrite_feedback(exc: Exception) -> bool:
+    """识别资源边界已有的写入前可修正反馈。
+
+    Recognize the resource boundary's existing repairable feedback.
+    """
+    return isinstance(exc, ValidationError) or (
+        isinstance(exc, AgentError)
+        and exc.code
+        in {
+            "EVOLUTION_TARGET_CHANGED",
+            "EVOLUTION_TARGET_MISSING",
+            "INVALID_TOOL_ARGUMENTS",
+            "SKILL_NAME_MISMATCH",
+            "FILE_NOT_FOUND",
+            "FILE_EXISTS",
+            "FILE_CHANGED",
+        }
+    )

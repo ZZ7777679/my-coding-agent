@@ -175,7 +175,8 @@ class ContextService:
             None,
         )
         fixed = request.estimated_fixed_tokens if request else None
-        estimated = estimate_tokens(history) + fixed if fixed is not None else None
+        history_tokens = estimate_tokens(history)
+        estimated = history_tokens + fixed if fixed is not None else None
         job = state.job
         if job and job.status in {"preparing", "receiving"} and session_id not in self.jobs:
             job = job.model_copy(
@@ -188,10 +189,10 @@ class ContextService:
             checkpoint=checkpoint,
             job=job,
             raw_bytes=byte_size(log.context()[0]),
-            window_bytes=byte_size(assemble(log, checkpoint, state.previews)),
+            window_bytes=byte_size(history),
             limit_bytes=limits.max_context_bytes,
             history_through_seq=len(log.facts),
-            estimated_history_tokens=estimate_tokens(history),
+            estimated_history_tokens=history_tokens,
             estimated_input_tokens=estimated,
             estimate_basis="本地历史估计 + 最近请求的系统与工具估计"
             if fixed is not None

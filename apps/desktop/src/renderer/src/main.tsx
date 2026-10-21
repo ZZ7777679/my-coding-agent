@@ -92,6 +92,8 @@ function App() {
   const runGeneration = useRef(0)
   const generation = useRef(0)
   const occupied = useRef(false)
+  const infoPending = useRef(false)
+  const runsPending = useRef(false)
   const mounted = useRef(true)
 
   /**
@@ -99,7 +101,8 @@ function App() {
    * Refresh current state, using generation tickets to prevent stale selection updates.
    */
   const refresh = useCallback(async () => {
-    if (occupied.current) return
+    if (occupied.current || infoPending.current) return
+    infoPending.current = true
     const ticket = ++generation.current
     try {
       const result = await window.agent.getAppInfo()
@@ -116,6 +119,8 @@ function App() {
         setPhase('error')
         setNotice('桌面连接未能初始化，请重新打开应用。')
       }
+    } finally {
+      infoPending.current = false
     }
   }, [])
 
@@ -223,6 +228,8 @@ function App() {
 
   /** 显示所有会话的运行，丢弃过期刷新。 Display all session runs and discard stale refreshes. */
   const refreshRun = useCallback(async () => {
+    if (runsPending.current) return
+    runsPending.current = true
     const ticket = ++runGeneration.current
     try {
       const result = await window.agent.getActiveRuns()
@@ -233,6 +240,8 @@ function App() {
     } catch {
       if (mounted.current && ticket === runGeneration.current)
         setNotice('无法刷新运行状态，请检查后端连接。')
+    } finally {
+      runsPending.current = false
     }
   }, [])
   useEffect(() => {

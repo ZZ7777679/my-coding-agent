@@ -16,6 +16,7 @@ from my_agent.evolution.types import (
     EvolutionQuery,
     EvolutionRecoveryResult,
     EvolutionSettings,
+    EvolutionSource,
     SaveEvolutionFeedback,
 )
 from my_agent.storage import Storage, read_document, utc_now, write_document
@@ -65,7 +66,11 @@ class EvolutionStore:
         write_document(path, settings)
         return settings
 
-    def feedback(self, params: SaveEvolutionFeedback) -> EvolutionFeedback:
+    def feedback(
+        self,
+        params: SaveEvolutionFeedback,
+        contextual_sources: list[EvolutionSource] | None = None,
+    ) -> EvolutionFeedback:
         """同一 ID 重试不复制反馈，也不静默覆盖不同文字。
 
         Idempotent feedback preserves original content.
@@ -74,10 +79,15 @@ class EvolutionStore:
         path = self.path(params.project_id, "feedback", params.feedback_id)
         if path.exists():
             current = read_document(path, EvolutionFeedback)
-            if current.model_dump(exclude={"created_at", "review_job_id"}) != params.model_dump():
+            if (
+                current.model_dump(exclude={"created_at", "review_job_id", "contextual_sources"})
+                != params.model_dump()
+            ):
                 raise AgentError("OPERATION_CONFLICT", "该反馈身份已用于不同内容。")
             return current
-        result = EvolutionFeedback(**params.model_dump(), created_at=utc_now())
+        result = EvolutionFeedback(
+            **params.model_dump(), created_at=utc_now(), contextual_sources=contextual_sources or []
+        )
         path.parent.mkdir(parents=True, exist_ok=True)
         write_document(path, result)
         return result
@@ -204,9 +214,16 @@ class EvolutionStore:
         for path in (root / "jobs").glob("*.json"):
             try:
                 job = read_document(path, EvolutionJob)
-                if query.origin is None or job.origin == query.origin:
+                cursor = job.updated_at + "|" + job.job_id
+                if (query.origin is None or job.origin == query.origin) and (
+                    query.jobs_before is None or cursor < query.jobs_before
+                ):
                     page.jobs.append(job)
             except AgentError as exc:
                 page.issues.append(path.name + ": " + exc.code)
-        page.jobs = sorted(page.jobs, key=lambda job: job.updated_at, reverse=True)[: query.limit]
+        page.jobs.sort(key=lambda job: (job.updated_at, job.job_id), reverse=True)
+        if len(page.jobs) > query.limit:
+            last = page.jobs[query.limit - 1]
+            page.jobs_next_cursor = last.updated_at + "|" + last.job_id
+        page.jobs = page.jobs[: query.limit]
         return page

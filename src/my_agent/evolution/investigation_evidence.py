@@ -3,8 +3,10 @@
 Index explicitly selected traces and read bodies on demand without a second log.
 """
 
+import asyncio
 import json
 import re
+import threading
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -97,20 +99,30 @@ class InvestigationEvidence:
         self._rows: dict[tuple[str, int], _EvidenceRow] = {}
         self.focus = ""
         self.episodes: list[EvolutionEpisode] = []
+        self.stop = threading.Event()
 
     @classmethod
     async def build(
-        cls, sessions: InvestigationSessions, sources: list[EvolutionSource]
+        cls,
+        sessions: InvestigationSessions,
+        sources: list[EvolutionSource],
+        *,
+        accepted_at: str | None = None,
+        stop: threading.Event | None = None,
     ) -> "InvestigationEvidence":
         """跨项目展开明确选择，按真实身份去重并冻结配对结果截止点。
 
         Expand selections across projects, deduplicate identities and freeze result cutoffs.
         """
         result = cls(sessions)
+        if stop is not None:
+            result.stop = stop
         logs: dict[str, SessionLog] = {}
         snapshots: dict[tuple[str, int], tuple[SessionLog, list[tuple[TraceItem, str]]]] = {}
         seen: set[str] = set()
         for source in sources:
+            await asyncio.sleep(0)
+            result._check_stopped()
             if source.session_id is None:
                 continue
             scope = source.scope or ("event" if source.seq else "run" if source.run_id else None)
@@ -122,7 +134,15 @@ class InvestigationEvidence:
             if source.session_id not in logs:
                 logs[source.session_id] = await sessions._load(source.session_id)
             original = logs[source.session_id]
-            summary = await sessions.worker.call(summarize, original)
+            if accepted_at and source.through_seq is None:
+                original = SessionLog(
+                    original.session_id,
+                    [f for f in original.facts if f.at <= accepted_at],
+                    original.issue,
+                )
+                if not original.facts:
+                    continue
+            summary = await asyncio.to_thread(summarize, original)
             if original.issue and original.issue not in result.issues:
                 result.issues.append(original.issue)
             current_end = max((f.seq for f in original.facts), default=0)
@@ -139,7 +159,7 @@ class InvestigationEvidence:
                     [f for f in original.facts if f.seq <= through],
                     original.issue,
                 )
-                snapshots[snapshot_key] = log, await sessions.worker.call(trace_search_records, log)
+                snapshots[snapshot_key] = log, await asyncio.to_thread(trace_search_records, log)
             log, records = snapshots[snapshot_key]
             bodies = {item.seq: body for item, body in records}
             selected = [
@@ -166,7 +186,10 @@ class InvestigationEvidence:
                 )
             )
             finished = {f.run_id: f.data for f in log.facts if isinstance(f.data, RunFinished)}
-            for item in selected:
+            for index, item in enumerate(selected):
+                if index % 256 == 0:
+                    await asyncio.sleep(0)
+                    result._check_stopped()
                 identity = source.session_id, item.seq
                 existing = result._rows.get(identity)
                 # 重叠选择取实际授权的较晚截止点，不能把整会话的范围扩到其他行。
@@ -193,6 +216,14 @@ class InvestigationEvidence:
                     searchable=bodies[item.seq],
                 )
         return result
+
+    def _check_stopped(self) -> None:
+        """停止纯读取计算，不占用业务写入线程。
+
+        Stop read-only computation without occupying the business writer.
+        """
+        if self.stop.is_set():
+            raise asyncio.CancelledError
 
     @property
     def selected_count(self) -> int:
@@ -271,7 +302,7 @@ class InvestigationEvidence:
         Search the entire compact index and page it without changing selection or body coverage.
         """
         _validate_page(offset, limit)
-        return await self.sessions.worker.call(self._index, query, offset, limit, failed_only)
+        return await asyncio.to_thread(self._index, query, offset, limit, failed_only)
 
     def _index(self, query: str, offset: int, limit: int, failed_only: bool) -> JsonObject:
         """在工作线程检索正文，排序不改变原始范围。
@@ -286,6 +317,7 @@ class InvestigationEvidence:
         )
         matched = []
         for row in rows:
+            self._check_stopped()
             haystack = " ".join(
                 (
                     row.project_id,
@@ -330,7 +362,7 @@ class InvestigationEvidence:
         Group focus hits, user corrections and actual failures while retaining every source.
         """
         self.focus = focus
-        self.episodes = await self.sessions.worker.call(self._screen, focus)
+        self.episodes = await asyncio.to_thread(self._screen, focus)
 
     def _screen(self, focus: str) -> list[EvolutionEpisode]:
         """线索按代表事件展示，成功对照与相邻证据仍限于原选择。
@@ -340,6 +372,7 @@ class InvestigationEvidence:
         groups: dict[tuple[str, str, str], list[_EvidenceRow]] = {}
         rows = sorted(self._rows.values(), key=lambda r: (r.item.at, r.item.seq))
         for row in rows:
+            self._check_stopped()
             # 相同错误码只在同一项目和工具内合并；没有错误码时保留消息差异。
             # Merge error codes only within a project/tool; otherwise preserve message differences.
             signature = row.error_code or self._error_signature(row)
@@ -370,6 +403,7 @@ class InvestigationEvidence:
         for row in rows:
             by_run.setdefault((row.log.session_id, row.item.run_id), []).append(row)
         for group in ordered:
+            self._check_stopped()
             row = max(group, key=lambda r: (self._priority(r, focus), r.item.at, r.item.seq))
             reasons = []
             priority = self._priority(row, focus)
@@ -498,7 +532,8 @@ class InvestigationEvidence:
             raise AgentError("TRACE_NOT_FOUND", "该轨迹未被本次调查选中。")
         cursor, parts = offset, []
         while cursor < offset + limit:
-            detail = await self.sessions.worker.call(
+            self._check_stopped()
+            detail = await asyncio.to_thread(
                 trace_detail,
                 row.log,
                 TraceDetailParams(session_id=session_id, seq=seq, offset=cursor),

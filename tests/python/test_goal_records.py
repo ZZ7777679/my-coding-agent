@@ -53,7 +53,7 @@ def records(tmp_path):
         task = tasks.create(
             CreateTaskParams(
                 operation_id=str(uuid4()),
-                project_id="project",
+                project_id=str(uuid4()),
                 model_id="glm-5.3-flash",
                 fields=TaskFields(title="Task", goal="Build a page"),
             )

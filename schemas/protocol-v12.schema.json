@@ -4660,6 +4660,13 @@
           "default": null,
           "title": "Recovery Directory"
         },
+        "resource_sources": {
+          "items": {
+            "$ref": "#/$defs/EvolutionResourceReference"
+          },
+          "title": "Resource Sources",
+          "type": "array"
+        },
         "review_job_id": {
           "anyOf": [
             {
@@ -5044,6 +5051,13 @@
       "additionalProperties": false,
       "description": "保留原反馈及时间，候选不改写用户意见。\n\nPreserve feedback and time independently of candidates.",
       "properties": {
+        "contextual_sources": {
+          "items": {
+            "$ref": "#/$defs/EvolutionSource"
+          },
+          "title": "Contextual Sources",
+          "type": "array"
+        },
         "created_at": {
           "title": "Created At",
           "type": "string"
@@ -5062,6 +5076,17 @@
           ],
           "title": "Kind",
           "type": "string"
+        },
+        "origin": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvolutionScope"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "project_id": {
           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
@@ -5140,6 +5165,13 @@
         "finding_id": {
           "title": "Finding Id",
           "type": "string"
+        },
+        "resources": {
+          "items": {
+            "$ref": "#/$defs/EvolutionTarget"
+          },
+          "title": "Resources",
+          "type": "array"
         },
         "sources": {
           "items": {
@@ -5267,6 +5299,11 @@
       "additionalProperties": false,
       "description": "后台改进任务有独立状态和成本。\n\nBackground improvement has independent state and cost.",
       "properties": {
+        "accepted_at": {
+          "default": "",
+          "title": "Accepted At",
+          "type": "string"
+        },
         "budget": {
           "anyOf": [
             {
@@ -5372,6 +5409,17 @@
           "title": "Project Id",
           "type": "string"
         },
+        "request": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GenerateEvolutionCandidate"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "requests": {
           "default": 0,
           "title": "Requests",
@@ -5476,7 +5524,8 @@
             "trace",
             "diagnostic",
             "index",
-            "resource"
+            "resource",
+            "improvement"
           ],
           "title": "Kind",
           "type": "string"
@@ -5485,6 +5534,17 @@
           "default": 0,
           "title": "Offset",
           "type": "integer"
+        },
+        "resource": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvolutionResourceReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "source": {
           "$ref": "#/$defs/EvolutionSource"
@@ -5551,6 +5611,18 @@
           "title": "Jobs",
           "type": "array"
         },
+        "jobs_next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Jobs Next Cursor"
+        },
         "next_cursor": {
           "anyOf": [
             {
@@ -5588,6 +5660,18 @@
           ],
           "default": null,
           "title": "Before"
+        },
+        "jobs_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Jobs Before"
         },
         "limit": {
           "default": 30,
@@ -5692,6 +5776,32 @@
         "target"
       ],
       "title": "EvolutionResourceQuery",
+      "type": "object"
+    },
+    "EvolutionResourceReference": {
+      "additionalProperties": false,
+      "description": "实际读过的资源身份和版本，不由模型声明阅读事实。\n\nIdentity and version of an actually read resource, supplied by the host.",
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/EvolutionTarget"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "title": "EvolutionResourceReference",
       "type": "object"
     },
     "EvolutionRunItem": {
@@ -5963,6 +6073,55 @@
       "additionalProperties": false,
       "description": "关联用户选择的事实，不复制整个会话。\n\nReference selected facts without copying a session.",
       "properties": {
+        "candidate_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidate Id"
+        },
+        "candidate_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidate Status"
+        },
+        "comparison_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Comparison At"
+        },
+        "content_revision": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content Revision"
+        },
         "diagnostic_id": {
           "anyOf": [
             {
@@ -6319,6 +6478,14 @@
       "additionalProperties": false,
       "description": "从问题与证据开始调查，或对明确资源生成候选。\n\nInvestigate evidence first, or propose changes to an explicit resource.",
       "properties": {
+        "candidate_ids": {
+          "items": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "title": "Candidate Ids",
+          "type": "array"
+        },
         "feedback_ids": {
           "items": {
             "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
@@ -9332,6 +9499,13 @@
           "title": "Enabled",
           "type": "boolean"
         },
+        "evolution_sources": {
+          "items": {
+            "$ref": "#/$defs/MemoryEvolutionSource"
+          },
+          "title": "Evolution Sources",
+          "type": "array"
+        },
         "memory_id": {
           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
           "title": "Memory Id",
@@ -9496,6 +9670,50 @@
         "updated_at"
       ],
       "title": "MemoryEntry",
+      "type": "object"
+    },
+    "MemoryEvolutionSource": {
+      "additionalProperties": false,
+      "description": "宿主读过的改进版本与效果记录；采用不等于改善。\n\nHost-read improvement revision and outcome record; adoption does not imply improvement.",
+      "properties": {
+        "candidate_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "comparison_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Comparison At"
+        },
+        "content_revision": {
+          "title": "Content Revision",
+          "type": "integer"
+        },
+        "project_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "candidate_id",
+        "content_revision",
+        "status"
+      ],
+      "title": "MemoryEvolutionSource",
       "type": "object"
     },
     "MemoryFields": {
@@ -12687,6 +12905,17 @@
           ],
           "title": "Kind",
           "type": "string"
+        },
+        "origin": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvolutionScope"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "project_id": {
           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",

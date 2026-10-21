@@ -5,8 +5,10 @@ Single-writer JSONL storage with preserved corrupt tails.
 
 import json
 import os
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
+from threading import RLock
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -233,6 +235,44 @@ class SessionStore:
         """
         self.storage = storage
         self.root = storage.root / "sessions"
+        from my_agent.config import DEFAULTS
+
+        self._cache_limit: int = DEFAULTS["session_read_cache_bytes"]
+        self._read_cache: OrderedDict[str, tuple[tuple[int, ...], SessionLog]] = OrderedDict()
+        self._cache_bytes = 0
+        self._cache_lock = RLock()
+
+    @staticmethod
+    def _stamp(stat: os.stat_result) -> tuple[int, ...]:
+        """以文件身份和修改时间刷新只读缓存，不生成编辑 hash 门槛。
+
+        Invalidate read caches by file identity and timestamps, without edit hashes.
+        """
+        return stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size
+
+    def _forget_cached(self, session_id: str) -> None:
+        """移除派生缓存，不修改持久历史。 Drop derived cache without changing history."""
+        with self._cache_lock:
+            previous = self._read_cache.pop(session_id, None)
+            if previous:
+                self._cache_bytes -= previous[0][-1]
+
+    def _remember(self, stamp: tuple[int, ...], log: SessionLog) -> None:
+        """按最近访问保留解析结果；容量只影响缓存命中，不限制会话读取。
+
+        Retain recently parsed logs; capacity affects cache hits, never session access.
+        """
+        with self._cache_lock:
+            self._forget_cached(log.session_id)
+            size = stamp[-1]
+            if size > self._cache_limit or log.issue:
+                return
+            while self._read_cache and self._cache_bytes + size > self._cache_limit:
+                self._forget_cached(next(iter(self._read_cache)))
+            # 缓存独立列表，避免调用方追加污染旧快照；事实对象按只读历史使用。
+            # Isolate lists from caller appends; fact objects remain read-only history.
+            self._read_cache[log.session_id] = (stamp, SessionLog(log.session_id, list(log.facts)))
+            self._cache_bytes += size
 
     def path(self, session_id: str) -> Path:
         """严格验证文件标识并拒绝存储目录链接。
@@ -258,6 +298,13 @@ class SessionStore:
         log = SessionLog(session_id, [])
         try:
             with path.open("rb") as stream:
+                stamp = self._stamp(os.fstat(stream.fileno()))
+                with self._cache_lock:
+                    cached = self._read_cache.get(session_id)
+                    if cached and cached[0] == stamp:
+                        self._read_cache.move_to_end(session_id)
+                        return SessionLog(session_id, list(cached[1].facts), cached[1].issue)
+                self._forget_cached(session_id)
                 while raw := stream.readline(MAX_FACT_BYTES + 1):
                     if len(raw) > MAX_FACT_BYTES or not raw.endswith(b"\n"):
                         log.issue = "SESSION_DAMAGED_OR_TOO_LARGE"
@@ -269,8 +316,10 @@ class SessionStore:
                         log.issue = "SESSION_DAMAGED"
                         break
                     log.facts.append(fact)
-            if not log.facts:
-                log.issue = log.issue or "SESSION_EMPTY"
+                if not log.facts:
+                    log.issue = log.issue or "SESSION_EMPTY"
+                if stamp == self._stamp(os.fstat(stream.fileno())):
+                    self._remember(stamp, log)
             return log
         except FileNotFoundError as exc:
             raise AgentError("SESSION_NOT_FOUND", "会话记录不存在。") from exc
@@ -594,6 +643,7 @@ class SessionStore:
         if len(raw) > MAX_FACT_BYTES:
             raise AgentError("SESSION_RECORD_LIMIT", "会话单条记录超过存储容量。")
         path = self.path(log.session_id)
+        self._forget_cached(log.session_id)
         try:
             if not log.facts:
                 # 先前创建仅留下空目录时可接续；xb 仍拒绝覆盖任何已有日志。

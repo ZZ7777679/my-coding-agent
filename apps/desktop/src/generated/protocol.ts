@@ -339,6 +339,10 @@ export type SessionId11 = string;
 export type CandidateId = string;
 export type Outcome2 = "improved" | "unchanged" | "regressed" | "inconclusive";
 export type ProjectId5 = string;
+export type CandidateId1 = string | null;
+export type CandidateStatus = string | null;
+export type ComparisonAt = string | null;
+export type ContentRevision = number | null;
 export type DiagnosticId = string | null;
 export type RunId8 = string | null;
 export type Scope6 = ("session" | "run" | "event") | null;
@@ -681,15 +685,15 @@ export type Remediation2 = string;
 export type After3 = string;
 export type AppliedAt = string | null;
 export type Before2 = string | null;
-export type CandidateId1 = string;
+export type CandidateId2 = string;
 export type ChangeIds = string[];
 export type At1 = string;
-export type ContentRevision = number | null;
+export type ContentRevision1 = number | null;
 export type Method3 = "user" | "model" | "execution";
 export type Outcome4 = "not_checked" | "improved" | "unchanged" | "regressed" | "inconclusive";
 export type Summary3 = string;
 export type Comparisons = EvolutionComparison[];
-export type ContentRevision1 = number;
+export type ContentRevision2 = number;
 export type CreatedAt7 = string;
 export type FeedbackIds1 = string[];
 export type FindingId = string | null;
@@ -699,21 +703,23 @@ export type PendingAction = ("apply" | "revert") | null;
 export type ProjectId15 = string;
 export type Rationale1 = string;
 export type RecoveryDirectory = string | null;
+export type Version1 = string | null;
+export type ResourceSources = EvolutionResourceReference[];
 export type ReviewJobId = string | null;
 export type Revision4 = number;
 export type Sources = EvolutionSource[];
 export type Status13 = "draft" | "applied" | "reverted" | "partial";
 export type Title6 = string;
 export type UpdatedAt9 = string;
-export type CandidateId2 = string;
+export type CandidateId3 = string;
 export type ProjectId16 = string;
 export type Issues1 = string[];
 export type Label1 = string;
 export type Items1 = EvolutionCatalogItem[];
 export type Action4 = "apply" | "revert";
-export type CandidateId3 = string;
-export type ProjectId17 = string;
 export type CandidateId4 = string;
+export type ProjectId17 = string;
+export type CandidateId5 = string;
 export type Command = ProgramCommand | ShellCommand;
 export type Arguments = string[];
 export type Kind13 = "program";
@@ -724,9 +730,12 @@ export type Cwd = string;
 export type TimeoutSeconds1 = number | null;
 export type Exclude = string[];
 export type ProjectId18 = string;
+export type ContextualSources = EvolutionSource[];
 export type CreatedAt8 = string;
 export type FeedbackId = string;
 export type Kind15 = "problem" | "success" | "instruction";
+export type Identity1 = string;
+export type Kind16 = "project" | "task" | "session";
 export type ProjectId19 = string;
 export type ReviewJobId1 = string | null;
 export type Sources1 = EvolutionSource[];
@@ -740,7 +749,7 @@ export type IncludedChars = number;
 export type InputChars = number | null;
 export type Instruction = string;
 export type Content3 = string;
-export type Kind16 = "feedback" | "memory" | "trace" | "diagnostic" | "index" | "resource";
+export type Kind17 = "feedback" | "memory" | "trace" | "diagnostic" | "index" | "resource" | "improvement";
 export type Offset1 = number;
 export type Title7 = string;
 export type TotalChars = number;
@@ -751,7 +760,7 @@ export type PreparedAt = string;
 export type Content4 = string | null;
 export type Label2 = string;
 export type ReferenceContent = string | null;
-export type Version1 = string | null;
+export type Version2 = string | null;
 export type Count = number;
 export type Excerpt = string;
 export type Reasons = string[];
@@ -762,6 +771,7 @@ export type EventCount = number;
 export type Title9 = string;
 export type Selections = EvolutionSelection[];
 export type TraceCount = number;
+export type AcceptedAt = string;
 export type MaxContextBytes1 = number | null;
 export type MaxOutputTokens1 = number | null;
 export type MaxRequests2 = number | null;
@@ -769,13 +779,14 @@ export type MaxResponseBytes1 = number | null;
 export type MaxSeconds1 = number | null;
 export type MaxTools2 = number | null;
 export type RequestTimeoutSeconds1 = number | null;
-export type CandidateId5 = string | null;
+export type CandidateId6 = string | null;
 export type CandidateIds = string[];
 export type DetailsAvailable = boolean;
 export type ExperimentDirectory = string | null;
 export type Category = "rule" | "preference" | "skill" | "tool_usage" | "implementation" | "unknown";
 export type Explanation1 = string;
 export type FindingId1 = string;
+export type Resources = EvolutionTarget[];
 export type Sources2 = EvolutionSource[];
 export type Targets = EvolutionTarget[];
 export type Title10 = string;
@@ -785,8 +796,6 @@ export type JobId1 = string;
 export type Message6 = string;
 export type Mode9 = "investigate" | "propose";
 export type OmittedPaths = string[];
-export type Identity1 = string;
-export type Kind17 = "project" | "task" | "session";
 export type ArchiveId = string | null;
 export type ArchiveRead = string | null;
 export type NextSeq = number;
@@ -821,16 +830,24 @@ export type Url = string | null;
 export type Truncated3 = boolean;
 export type Programs = ProgramView[];
 export type ProjectId21 = string;
+export type CandidateIds1 = string[];
+export type FeedbackIds2 = string[];
+export type FindingIds = string[];
+export type Instruction1 = string;
+export type Mode11 = "investigate" | "propose";
+export type ProjectId22 = string;
+export type ReviewJobId2 = string | null;
+export type Sources3 = EvolutionSource[];
 export type Requests5 = number;
 export type ResponseText = string;
-export type ReviewJobId2 = string | null;
+export type ReviewJobId3 = string | null;
 export type Status15 = "running" | "completed" | "failed" | "cancelled" | "interrupted";
 export type Summary4 = string;
 export type UpdatedAt10 = string;
 export type JobId2 = string;
-export type ProjectId22 = string;
-export type CandidateId6 = string;
-export type ContentRevision2 = number;
+export type ProjectId23 = string;
+export type CandidateId7 = string;
+export type ContentRevision3 = number;
 export type Message8 = string;
 export type Status16 = string;
 export type Title11 = string;
@@ -849,21 +866,23 @@ export type Frames = DiagnosticFrame[];
 export type Level = "warning" | "error";
 export type Message9 = string;
 export type Phase1 = string | null;
-export type ProjectId23 = string | null;
+export type ProjectId24 = string | null;
 export type Diagnostics = DiagnosticEvent[];
 export type Feedback = EvolutionFeedback[];
 export type Issues2 = string[];
 export type Jobs = EvolutionJob[];
+export type JobsNextCursor = string | null;
 export type NextCursor2 = string | null;
 export type AutoApply = ("preference" | "memory" | "project_rule" | "skill" | "tool_guidance" | "workstyle" | "code")[];
 export type AutomaticReview = boolean;
 export type InputChars1 = number | null;
 export type ModelId11 = "glm-5.3-flash" | "deepseek-v4.1-flash";
-export type ProjectId24 = string;
-export type Before3 = string | null;
-export type Limit4 = number;
 export type ProjectId25 = string;
+export type Before3 = string | null;
+export type JobsBefore = string | null;
+export type Limit4 = number;
 export type ProjectId26 = string;
+export type ProjectId27 = string;
 export type BeforeSeq2 = number | null;
 export type MatchedRuns = number;
 export type At3 = string;
@@ -881,7 +900,7 @@ export type TotalEvents = number;
 export type TotalRuns = number;
 export type BeforeSeq3 = number | null;
 export type Limit5 = number;
-export type ProjectId27 = string;
+export type ProjectId28 = string;
 export type Query2 = string;
 export type SessionId32 = string;
 export type ProbeCount = number;
@@ -890,13 +909,6 @@ export type Kind19 = "config" | "projects" | "diagnostics";
 export type Path7 = string | null;
 export type MemoryId = string;
 export type SessionId33 = string;
-export type FeedbackIds2 = string[];
-export type FindingIds = string[];
-export type Instruction1 = string;
-export type Mode11 = "investigate" | "propose";
-export type ProjectId28 = string;
-export type ReviewJobId3 = string | null;
-export type Sources3 = EvolutionSource[];
 export type Objective4 = string;
 export type OperationId11 = string;
 export type Organisation1 = "central" | "hierarchical" | "peer";
@@ -1169,7 +1181,7 @@ export type Line3 = number;
 export type NewName = string | null;
 export type Path13 = string;
 export type ProjectId41 = string;
-export type Version2 = number;
+export type Version3 = number;
 export type Action6 = string;
 export type Content8 = string;
 export type ObservedAt = string;
@@ -1179,11 +1191,11 @@ export type Content9 = string | null;
 export type Error2 = string | null;
 export type Path15 = string;
 export type Source4 = "disk" | "draft";
-export type Version3 = number | null;
+export type Version4 = number | null;
 export type RenameDocuments = LanguageDocumentSnapshot[];
 export type ServerId = string;
 export type Source5 = "disk" | "draft";
-export type Version4 = number;
+export type Version5 = number;
 export type ProjectId43 = string;
 export type Arguments1 = string[];
 export type Enabled7 = boolean;
@@ -1295,9 +1307,15 @@ export type Category2 = string;
 export type Content10 = string;
 export type CreatedAt10 = string;
 export type Enabled9 = boolean;
+export type CandidateId8 = string;
+export type ComparisonAt1 = string | null;
+export type ContentRevision4 = number;
+export type ProjectId50 = string;
+export type Status22 = string;
+export type EvolutionSources = MemoryEvolutionSource[];
 export type MemoryId1 = string;
 export type Pinned = boolean;
-export type ProjectId50 = string | null;
+export type ProjectId51 = string | null;
 export type RelatedIds = string[];
 export type Revision5 = number;
 export type Scope16 = "project" | "user";
@@ -1324,7 +1342,7 @@ export type Message13 = string;
 export type ModelId13 = "glm-5.3-flash" | "deepseek-v4.1-flash";
 export type Requests6 = number;
 export type StartedAt1 = string;
-export type Status22 = "running" | "completed" | "failed" | "cancelled" | "interrupted";
+export type Status23 = "running" | "completed" | "failed" | "cancelled" | "interrupted";
 export type ThroughSeq7 = number;
 export type PendingOffset = number;
 export type PendingSeq = number | null;
@@ -1349,7 +1367,7 @@ export type Source8 = string;
 export type TimeoutSeconds5 = number;
 export type Path17 = string;
 export type PreviewId = string;
-export type ProjectId51 = string | null;
+export type ProjectId52 = string | null;
 export type Scope17 = "user" | "project";
 export type Path18 = string;
 export type PreviewId1 = string;
@@ -1376,7 +1394,7 @@ export type ResourceBase = string;
 export type ShadowedBy = string | null;
 export type SkillId1 = string;
 export type Source10 = "builtin" | "user" | "project";
-export type Version5 = string;
+export type Version6 = string;
 export type Message14 = string;
 export type OperationId13 = string;
 export type Issues4 = string[];
@@ -1389,7 +1407,7 @@ export type Path20 = string;
 export type Skills1 = OnlineSkillCandidate[];
 export type Total = number;
 export type Query6 = string;
-export type Status23 = "idle" | "running" | "ready" | "installed" | "failed" | "cancelled";
+export type Status24 = "idle" | "running" | "ready" | "installed" | "failed" | "cancelled";
 /**
  * 路径与已有标识二选一，禁止同时提交两种定位方式。
  *
@@ -1400,12 +1418,12 @@ export type Status23 = "idle" | "running" | "ready" | "installed" | "failed" | "
  */
 export type OpenProjectParams = OpenProjectByPath | OpenProjectById;
 export type Path21 = string;
-export type ProjectId52 = string;
+export type ProjectId53 = string;
 export type Cols = number;
 export type Command3 = ProgramCommand | ShellCommand;
 export type Cwd2 = string;
 export type MemberId2 = string | null;
-export type ProjectId53 = string;
+export type ProjectId54 = string;
 export type Rows = number;
 export type SessionId51 = string | null;
 export type Url3 = string;
@@ -1416,7 +1434,7 @@ export type ChangeId4 = string | null;
 export type Code11 = string | null;
 export type Message16 = string | null;
 export type Path22 = string;
-export type Status24 = "applied" | "failed";
+export type Status25 = "applied" | "failed";
 export type Items3 = OperationItem[];
 export type Partial = boolean;
 export type Unattempted = number;
@@ -1451,10 +1469,10 @@ export type ProgramId2 = string;
 export type AfterSeq3 = number;
 export type TerminalId = string;
 export type Path24 = string;
-export type ProjectId54 = string;
+export type ProjectId55 = string;
 export type EnvironmentId5 = string;
 export type ExpectedRevision5 = number;
-export type ProjectId55 = string | null;
+export type ProjectId56 = string | null;
 export type TemplateId3 = string;
 export type Id1 = string;
 export type Kind22 = "project" | "task" | "session";
@@ -1473,7 +1491,7 @@ export type Diff1 = string;
 export type Message17 = string;
 export type Path25 = string;
 export type Source11 = "agent" | "observed" | "other_session";
-export type Status25 = "ready" | "unchanged" | "conflict" | "restored" | "failed" | "skipped";
+export type Status26 = "ready" | "unchanged" | "conflict" | "restored" | "failed" | "skipped";
 export type Files3 = RestoreFile[];
 export type Issues5 = string[];
 export type Files4 = RestoreFile[];
@@ -1509,26 +1527,26 @@ export type Definition1 = SystemEnvironment | PythonEnvironment | CondaEnvironme
 export type EnvironmentId6 = string | null;
 export type ExpectedRevision6 = number;
 export type Name18 = string;
-export type ProjectId56 = string | null;
+export type ProjectId57 = string | null;
 export type After4 = string;
-export type CandidateId7 = string;
-export type ProjectId57 = string;
+export type CandidateId9 = string;
+export type ProjectId58 = string;
 export type Rationale2 = string;
 export type Revision7 = number;
 export type Title16 = string;
 export type FeedbackId1 = string;
 export type Kind23 = "problem" | "success" | "instruction";
-export type ProjectId58 = string;
+export type ProjectId59 = string;
 export type Sources4 = EvolutionSource[];
 export type Text9 = string;
 export type ExpectedRevision7 = number;
-export type ProjectId59 = string | null;
-export type ProjectId60 = string;
+export type ProjectId60 = string | null;
+export type ProjectId61 = string;
 export type Servers2 = LanguageServer[];
 export type TimeoutSeconds7 = number;
 export type ClearCredential = boolean;
 export type CredentialValue = string | null;
-export type ProjectId61 = string | null;
+export type ProjectId62 = string | null;
 export type SessionId56 = string | null;
 export type Category3 = string;
 export type Content16 = string;
@@ -1550,7 +1568,7 @@ export type Content17 = string;
 export type ImportDirectory = string | null;
 export type Name19 = string;
 export type Overwrite = boolean;
-export type ProjectId62 = string | null;
+export type ProjectId63 = string | null;
 export type Scope19 = "user" | "project";
 export type SessionId58 = string | null;
 export type GraphOpen = boolean;
@@ -1571,7 +1589,7 @@ export type TaskId14 = string;
 export type ModelId15 = "glm-5.3-flash" | "deepseek-v4.1-flash";
 export type OperationId18 = string;
 export type SessionId59 = string;
-export type ProjectId63 = string | null;
+export type ProjectId64 = string | null;
 export type Selected1 = string[];
 export type SessionId60 = string | null;
 export type Jsonrpc4 = "2.0";
@@ -1656,9 +1674,9 @@ export type RulePaths = string[];
 export type Selected2 = string[];
 export type UserDirectory = string;
 export type Content20 = string;
-export type ProjectId64 = string | null;
-export type SessionId63 = string | null;
 export type ProjectId65 = string | null;
+export type SessionId63 = string | null;
+export type ProjectId66 = string | null;
 export type SessionId64 = string | null;
 export type SkillId2 = string;
 export type Action9 = "navigate" | "back" | "forward" | "reload" | "stop" | "status";
@@ -1718,7 +1736,7 @@ export type ProcessEpoch2 = string | null;
 export type RunId16 = string | null;
 export type Seq9 = number | null;
 export type SessionId66 = string;
-export type Status26 = string;
+export type Status27 = string;
 export type Streaming = boolean;
 export type Text12 = string;
 export type WaitingFor1 = string | null;
@@ -1739,7 +1757,7 @@ export type SessionIds = string[];
 export type Bindings = SpaceBinding[];
 export type CreatedAt15 = string;
 export type Error10 = string | null;
-export type ProjectId66 = string;
+export type ProjectId67 = string;
 export type Revision8 = number;
 export type TaskId19 = string;
 export type UpdatedAt13 = string;
@@ -1774,9 +1792,9 @@ export type MemberId7 = string | null;
 export type RoundId1 = string | null;
 export type TaskId23 = string;
 export type NextCursor7 = string | null;
-export type ProjectId67 = string;
+export type ProjectId68 = string;
 export type Revision9 = number;
-export type Status27 = "active" | "completed" | "archived";
+export type Status28 = "active" | "completed" | "archived";
 export type TaskId24 = string;
 export type Title21 = string;
 export type Tasks = TaskSummary[];
@@ -1811,11 +1829,11 @@ export type MemberId9 = string | null;
 export type Message21 = string | null;
 export type Mode16 = "direct" | "sandbox";
 export type Pid1 = number | null;
-export type ProjectId68 = string;
+export type ProjectId69 = string;
 export type Rows2 = number;
 export type RunId17 = string | null;
 export type SessionId70 = string | null;
-export type Status28 = "starting" | "running" | "stopping" | "exited" | "stopped" | "failed" | "interrupted";
+export type Status29 = "starting" | "running" | "stopping" | "exited" | "stopped" | "failed" | "interrupted";
 export type TerminalId3 = string;
 export type ToolCallId5 = string | null;
 export type Terminals = TerminalSummary[];
@@ -1834,7 +1852,7 @@ export type Kind28 = string;
 export type RequestId3 = string | null;
 export type RunId18 = string | null;
 export type Seq11 = number;
-export type Status29 = string;
+export type Status30 = string;
 export type Title22 = string;
 export type ToolCallId6 = string | null;
 export type ToolName1 = string | null;
@@ -1873,7 +1891,7 @@ export type MemberId10 = string | null;
 export type OperationId24 = string;
 export type Result3 = string | null;
 export type RunId20 = string | null;
-export type Status30 = ("planned" | "in_progress" | "completed" | "waiting") | null;
+export type Status31 = ("planned" | "in_progress" | "completed" | "waiting") | null;
 export type TaskId26 = string;
 export type WorkId3 = string;
 export type ExpectedRevision11 = number;
@@ -1889,9 +1907,9 @@ export type SuggestedItems = WorkItem[];
 export type DefaultStyleId = string | null;
 export type Issues8 = string[];
 export type Styles = WorkStyle[];
-export type ProjectId69 = string;
+export type ProjectId70 = string;
 export type StyleId3 = string | null;
-export type ProjectId70 = string | null;
+export type ProjectId71 = string | null;
 export type Action11 = "stop" | "continue";
 export type Prompt4 = string;
 export type SessionId73 = string;
@@ -1913,7 +1931,7 @@ export type Requests7 = number;
 export type Result4 = string;
 export type RunId21 = string | null;
 export type SessionId74 = string;
-export type Status31 = "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted";
+export type Status32 = "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted";
 export type Tools3 = number;
 export type UpdatedAt15 = string;
 export type WorkerId1 = string;
@@ -3161,6 +3179,10 @@ export interface CompareEvolutionCandidate {
  * via the `definition` "EvolutionSource".
  */
 export interface EvolutionSource {
+  candidate_id?: CandidateId1;
+  candidate_status?: CandidateStatus;
+  comparison_at?: ComparisonAt;
+  content_revision?: ContentRevision;
   diagnostic_id?: DiagnosticId;
   run_id?: RunId8;
   scope?: Scope6;
@@ -4230,10 +4252,10 @@ export interface EvolutionCandidate {
   after: After3;
   applied_at?: AppliedAt;
   before?: Before2;
-  candidate_id: CandidateId1;
+  candidate_id: CandidateId2;
   change_ids?: ChangeIds;
   comparisons?: Comparisons;
-  content_revision?: ContentRevision1;
+  content_revision?: ContentRevision2;
   created_at: CreatedAt7;
   feedback_ids?: FeedbackIds1;
   finding_id?: FindingId;
@@ -4243,6 +4265,7 @@ export interface EvolutionCandidate {
   project_id: ProjectId15;
   rationale: Rationale1;
   recovery_directory?: RecoveryDirectory;
+  resource_sources?: ResourceSources;
   review_job_id?: ReviewJobId;
   revision?: Revision4;
   sources?: Sources;
@@ -4262,11 +4285,23 @@ export interface EvolutionCandidate {
  */
 export interface EvolutionComparison {
   at: At1;
-  content_revision?: ContentRevision;
+  content_revision?: ContentRevision1;
   method?: Method3;
   outcome: Outcome4;
   source?: EvolutionSource;
   summary: Summary3;
+}
+/**
+ * 实际读过的资源身份和版本，不由模型声明阅读事实。
+ *
+ * Identity and version of an actually read resource, supplied by the host.
+ *
+ * This interface was referenced by `ProtocolV12`'s JSON-Schema
+ * via the `definition` "EvolutionResourceReference".
+ */
+export interface EvolutionResourceReference {
+  target: EvolutionTarget;
+  version?: Version1;
 }
 /**
  * 读取单个候选，详情按需加载。
@@ -4277,7 +4312,7 @@ export interface EvolutionComparison {
  * via the `definition` "EvolutionCandidateParams".
  */
 export interface EvolutionCandidateParams {
-  candidate_id: CandidateId2;
+  candidate_id: CandidateId3;
   project_id: ProjectId16;
 }
 /**
@@ -4314,7 +4349,7 @@ export interface EvolutionCatalogItem {
  */
 export interface EvolutionControl {
   action: Action4;
-  candidate_id: CandidateId3;
+  candidate_id: CandidateId4;
   project_id: ProjectId17;
 }
 /**
@@ -4326,7 +4361,7 @@ export interface EvolutionControl {
  * via the `definition` "EvolutionExperimentParams".
  */
 export interface EvolutionExperimentParams {
-  candidate_id: CandidateId4;
+  candidate_id: CandidateId5;
   command: RunCommandArgs;
   exclude?: Exclude;
   project_id: ProjectId18;
@@ -4378,15 +4413,29 @@ export interface ShellCommand {
  * via the `definition` "EvolutionFeedback".
  */
 export interface EvolutionFeedback {
+  contextual_sources?: ContextualSources;
   created_at: CreatedAt8;
   feedback_id: FeedbackId;
   kind?: Kind15;
+  origin?: EvolutionScope | null;
   project_id: ProjectId19;
   review_job_id?: ReviewJobId1;
   source?: EvolutionSource;
   sources?: Sources1;
   target?: EvolutionTarget | null;
   text: Text5;
+}
+/**
+ * 现场入口的范围身份，接纳时展开并冻结会话记录。
+ *
+ * Contextual scope identity, expanded and frozen when a review is accepted.
+ *
+ * This interface was referenced by `ProtocolV12`'s JSON-Schema
+ * via the `definition` "EvolutionScope".
+ */
+export interface EvolutionScope {
+  identity: Identity1;
+  kind: Kind16;
 }
 /**
  * 预览与复盘共用的材料结构；作业保存接纳时的快照。
@@ -4434,8 +4483,9 @@ export interface EvolutionCoverage {
  */
 export interface EvolutionMaterial {
   content: Content3;
-  kind: Kind16;
+  kind: Kind17;
   offset?: Offset1;
+  resource?: EvolutionResourceReference | null;
   source?: EvolutionSource;
   title: Title7;
   total_chars: TotalChars;
@@ -4454,7 +4504,7 @@ export interface EvolutionResource {
   label: Label2;
   reference_content?: ReferenceContent;
   target: EvolutionTarget;
-  version?: Version1;
+  version?: Version2;
 }
 /**
  * 本地筛选线索，不将排序或重复现象冒充模型结论。
@@ -4494,8 +4544,9 @@ export interface EvolutionSelection {
  * via the `definition` "EvolutionJob".
  */
 export interface EvolutionJob {
+  accepted_at?: AcceptedAt;
   budget?: EvolutionBudget | null;
-  candidate_id?: CandidateId5;
+  candidate_id?: CandidateId6;
   candidate_ids?: CandidateIds;
   details_available?: DetailsAvailable;
   experiment_directory?: ExperimentDirectory;
@@ -4507,10 +4558,11 @@ export interface EvolutionJob {
   origin?: EvolutionScope | null;
   programs?: Programs;
   project_id: ProjectId21;
+  request?: GenerateEvolutionCandidate | null;
   requests?: Requests5;
   response_text?: ResponseText;
   review_input?: EvolutionInput | null;
-  review_job_id?: ReviewJobId2;
+  review_job_id?: ReviewJobId3;
   status: Status15;
   summary?: Summary4;
   updated_at?: UpdatedAt10;
@@ -4545,22 +4597,11 @@ export interface EvolutionFinding {
   category: Category;
   explanation: Explanation1;
   finding_id: FindingId1;
+  resources?: Resources;
   sources?: Sources2;
   targets?: Targets;
   title: Title10;
   unknowns?: Unknowns;
-}
-/**
- * 现场入口的范围身份，接纳时展开并冻结会话记录。
- *
- * Contextual scope identity, expanded and frozen when a review is accepted.
- *
- * This interface was referenced by `ProtocolV12`'s JSON-Schema
- * via the `definition` "EvolutionScope".
- */
-export interface EvolutionScope {
-  identity: Identity1;
-  kind: Kind17;
 }
 /**
  * 有界输出页与实际状态。
@@ -4626,6 +4667,26 @@ export interface ProgramSummary {
   url: Url;
 }
 /**
+ * 从问题与证据开始调查，或对明确资源生成候选。
+ *
+ * Investigate evidence first, or propose changes to an explicit resource.
+ *
+ * This interface was referenced by `ProtocolV12`'s JSON-Schema
+ * via the `definition` "GenerateEvolutionCandidate".
+ */
+export interface GenerateEvolutionCandidate {
+  candidate_ids?: CandidateIds1;
+  feedback_ids?: FeedbackIds2;
+  finding_ids?: FindingIds;
+  instruction?: Instruction1;
+  mode?: Mode11;
+  origin?: EvolutionScope | null;
+  project_id: ProjectId22;
+  review_job_id?: ReviewJobId2;
+  sources?: Sources3;
+  target?: EvolutionTarget | null;
+}
+/**
  * 停止一个明确维护任务。
  *
  * Stop one explicit maintenance job.
@@ -4635,7 +4696,7 @@ export interface ProgramSummary {
  */
 export interface EvolutionJobControl {
   job_id: JobId2;
-  project_id: ProjectId22;
+  project_id: ProjectId23;
 }
 /**
  * 桌面概览保留局部读取问题。
@@ -4651,6 +4712,7 @@ export interface EvolutionPage {
   feedback?: Feedback;
   issues?: Issues2;
   jobs?: Jobs;
+  jobs_next_cursor?: JobsNextCursor;
   next_cursor?: NextCursor2;
   settings: EvolutionSettings;
 }
@@ -4663,9 +4725,9 @@ export interface EvolutionPage {
  * via the `definition` "EvolutionCandidateSummary".
  */
 export interface EvolutionCandidateSummary {
-  candidate_id: CandidateId6;
+  candidate_id: CandidateId7;
   comparison?: EvolutionComparison | null;
-  content_revision?: ContentRevision2;
+  content_revision?: ContentRevision3;
   message: Message8;
   status: Status16;
   target: EvolutionTarget;
@@ -4691,7 +4753,7 @@ export interface DiagnosticEvent {
   level: Level;
   message: Message9;
   phase?: Phase1;
-  project_id?: ProjectId23;
+  project_id?: ProjectId24;
   source?: EvolutionSource;
 }
 /**
@@ -4721,7 +4783,7 @@ export interface EvolutionSettings {
   budget?: EvolutionBudget;
   input_chars?: InputChars1;
   model_id?: ModelId11;
-  project_id: ProjectId24;
+  project_id: ProjectId25;
 }
 /**
  * 按项目与游标读取轻量记录。
@@ -4733,9 +4795,10 @@ export interface EvolutionSettings {
  */
 export interface EvolutionQuery {
   before?: Before3;
+  jobs_before?: JobsBefore;
   limit?: Limit4;
   origin?: EvolutionScope | null;
-  project_id: ProjectId25;
+  project_id: ProjectId26;
 }
 /**
  * 读取当前资源或准备新资源。
@@ -4746,7 +4809,7 @@ export interface EvolutionQuery {
  * via the `definition` "EvolutionResourceQuery".
  */
 export interface EvolutionResourceQuery {
-  project_id: ProjectId26;
+  project_id: ProjectId27;
   target: EvolutionTarget;
 }
 /**
@@ -4795,7 +4858,7 @@ export interface EvolutionRunItem {
 export interface EvolutionRunsQuery {
   before_seq?: BeforeSeq3;
   limit?: Limit5;
-  project_id: ProjectId27;
+  project_id: ProjectId28;
   query?: Query2;
   session_id: SessionId32;
 }
@@ -4844,25 +4907,6 @@ export interface ExportResult {
 export interface ForgetMemoryParams {
   memory_id: MemoryId;
   session_id: SessionId33;
-}
-/**
- * 从问题与证据开始调查，或对明确资源生成候选。
- *
- * Investigate evidence first, or propose changes to an explicit resource.
- *
- * This interface was referenced by `ProtocolV12`'s JSON-Schema
- * via the `definition` "GenerateEvolutionCandidate".
- */
-export interface GenerateEvolutionCandidate {
-  feedback_ids?: FeedbackIds2;
-  finding_ids?: FindingIds;
-  instruction?: Instruction1;
-  mode?: Mode11;
-  origin?: EvolutionScope | null;
-  project_id: ProjectId28;
-  review_job_id?: ReviewJobId3;
-  sources?: Sources3;
-  target?: EvolutionTarget | null;
 }
 /**
  * 在用户选择的现有会话执行只读生成。
@@ -5308,7 +5352,7 @@ export interface LanguageQuery {
   new_name?: NewName;
   path: Path13;
   project_id: ProjectId41;
-  version?: Version2;
+  version?: Version3;
 }
 /**
  * 返回服务原生资料及所用材料，不将诊断当成测试。
@@ -5328,7 +5372,7 @@ export interface LanguageResult {
   result: JsonValue;
   server_id: ServerId;
   source: Source5;
-  version: Version4;
+  version: Version5;
 }
 /**
  * 重命名建议所用正文；无法读取时保留局部错误。
@@ -5343,7 +5387,7 @@ export interface LanguageDocumentSnapshot {
   error?: Error2;
   path: Path15;
   source: Source4;
-  version: Version3;
+  version: Version4;
 }
 /**
  * 配置与实际状态分开显示。
@@ -5717,9 +5761,10 @@ export interface MemoryEntry {
   content: Content10;
   created_at: CreatedAt10;
   enabled?: Enabled9;
+  evolution_sources?: EvolutionSources;
   memory_id: MemoryId1;
   pinned?: Pinned;
-  project_id: ProjectId50;
+  project_id: ProjectId51;
   related_ids?: RelatedIds;
   revision: Revision5;
   scope?: Scope16;
@@ -5736,6 +5781,21 @@ export interface MemoryEntry {
   updated_at: UpdatedAt12;
   valid_from?: ValidFrom;
   valid_until?: ValidUntil;
+}
+/**
+ * 宿主读过的改进版本与效果记录；采用不等于改善。
+ *
+ * Host-read improvement revision and outcome record; adoption does not imply improvement.
+ *
+ * This interface was referenced by `ProtocolV12`'s JSON-Schema
+ * via the `definition` "MemoryEvolutionSource".
+ */
+export interface MemoryEvolutionSource {
+  candidate_id: CandidateId8;
+  comparison_at?: ComparisonAt1;
+  content_revision: ContentRevision4;
+  project_id: ProjectId50;
+  status: Status22;
 }
 /**
  * 宿主实际读取的会话事实，不由模型填写。
@@ -5780,7 +5840,7 @@ export interface MemoryJob {
   model_id: ModelId13;
   requests?: Requests6;
   started_at: StartedAt1;
-  status: Status22;
+  status: Status23;
   through_seq: ThroughSeq7;
   usage?: TokenUsage;
 }
@@ -5865,7 +5925,7 @@ export interface OnlineSkillInspect {
 export interface OnlineSkillInstall {
   path: Path17;
   preview_id: PreviewId;
-  project_id?: ProjectId51;
+  project_id?: ProjectId52;
   scope?: Scope17;
 }
 /**
@@ -5910,7 +5970,7 @@ export interface OnlineSkillStatus {
   operation_id?: OperationId13;
   preview?: OnlineSkillPreview | null;
   query?: Query6;
-  status?: Status23;
+  status?: Status24;
 }
 /**
  * 网站的搜索条目，正文以仓库快照为准。
@@ -5942,7 +6002,7 @@ export interface SkillItem {
   shadowed_by?: ShadowedBy;
   skill_id: SkillId1;
   source: Source10;
-  version: Version5;
+  version: Version6;
 }
 /**
  * 记录下载来源，不作为执行门槛。 Record download provenance without an execution gate.
@@ -6003,7 +6063,7 @@ export interface OpenProjectByPath {
  * via the `definition` "OpenProjectById".
  */
 export interface OpenProjectById {
-  project_id: ProjectId52;
+  project_id: ProjectId53;
 }
 /**
  * 明确程序、项目与可选成员归属。
@@ -6018,7 +6078,7 @@ export interface OpenTerminalParams {
   command: Command3;
   cwd?: Cwd2;
   member_id?: MemberId2;
-  project_id: ProjectId53;
+  project_id: ProjectId54;
   rows?: Rows;
   session_id?: SessionId51;
 }
@@ -6072,7 +6132,7 @@ export interface OperationItem {
   code?: Code11;
   message?: Message16;
   path: Path22;
-  status: Status24;
+  status: Status25;
 }
 /**
  * 导入仅解析预览，不隐式安装资源。 Parse imported text without installing resources.
@@ -6213,7 +6273,7 @@ export interface ReadTerminalParams {
  */
 export interface RelocateProjectParams {
   path: Path24;
-  project_id: ProjectId54;
+  project_id: ProjectId55;
 }
 /**
  * 删除登记而不卸载环境。
@@ -6226,7 +6286,7 @@ export interface RelocateProjectParams {
 export interface RemoveEnvironmentParams {
   environment_id: EnvironmentId5;
   expected_revision: ExpectedRevision5;
-  project_id: ProjectId55;
+  project_id: ProjectId56;
 }
 /**
  * 移除模板不修改既有任务。
@@ -6304,7 +6364,7 @@ export interface RestoreFile {
   message?: Message17;
   path: Path25;
   source: Source11;
-  status: Status25;
+  status: Status26;
 }
 /**
  * 逐文件结果与反向检查点，对话未成功回退时如实显示。 Per-file outcomes and undo checkpoint.
@@ -6418,7 +6478,7 @@ export interface SaveEnvironmentParams {
   environment_id: EnvironmentId6;
   expected_revision: ExpectedRevision6;
   name: Name18;
-  project_id: ProjectId56;
+  project_id: ProjectId57;
 }
 /**
  * 保存用户可编辑的候选正文。
@@ -6430,8 +6490,8 @@ export interface SaveEnvironmentParams {
  */
 export interface SaveEvolutionCandidate {
   after: After4;
-  candidate_id: CandidateId7;
-  project_id: ProjectId57;
+  candidate_id: CandidateId9;
+  project_id: ProjectId58;
   rationale: Rationale2;
   revision: Revision7;
   title: Title16;
@@ -6447,7 +6507,8 @@ export interface SaveEvolutionCandidate {
 export interface SaveEvolutionFeedback {
   feedback_id: FeedbackId1;
   kind?: Kind23;
-  project_id: ProjectId58;
+  origin?: EvolutionScope | null;
+  project_id: ProjectId59;
   source?: EvolutionSource;
   sources?: Sources4;
   target?: EvolutionTarget | null;
@@ -6463,7 +6524,7 @@ export interface SaveEvolutionFeedback {
  */
 export interface SaveExecutionSettings {
   expected_revision: ExpectedRevision7;
-  project_id: ProjectId59;
+  project_id: ProjectId60;
   settings: ExecutionSettings;
 }
 /**
@@ -6475,7 +6536,7 @@ export interface SaveExecutionSettings {
  * via the `definition` "SaveLanguageServers".
  */
 export interface SaveLanguageServers {
-  project_id: ProjectId60;
+  project_id: ProjectId61;
   servers: Servers2;
   timeout_seconds?: TimeoutSeconds7;
 }
@@ -6490,7 +6551,7 @@ export interface SaveLanguageServers {
 export interface SaveMcpParams {
   clear_credential?: ClearCredential;
   credential_value?: CredentialValue;
-  project_id?: ProjectId61;
+  project_id?: ProjectId62;
   server: McpServer;
   session_id?: SessionId56;
 }
@@ -6542,7 +6603,7 @@ export interface SaveSkillParams {
   import_directory?: ImportDirectory;
   name: Name19;
   overwrite?: Overwrite;
-  project_id?: ProjectId62;
+  project_id?: ProjectId63;
   scope?: Scope19;
   session_id?: SessionId58;
 }
@@ -6682,7 +6743,7 @@ export interface SelectSessionModelParams {
  * via the `definition` "SelectSkillsParams".
  */
 export interface SelectSkillsParams {
-  project_id?: ProjectId63;
+  project_id?: ProjectId64;
   selected: Selected1;
   session_id?: SessionId60;
 }
@@ -6899,7 +6960,7 @@ export interface SkillDocument {
  * via the `definition` "SkillParams".
  */
 export interface SkillParams {
-  project_id?: ProjectId64;
+  project_id?: ProjectId65;
   session_id?: SessionId63;
 }
 /**
@@ -6909,7 +6970,7 @@ export interface SkillParams {
  * via the `definition` "SkillReadParams".
  */
 export interface SkillReadParams {
-  project_id?: ProjectId65;
+  project_id?: ProjectId66;
   session_id?: SessionId64;
   skill_id: SkillId2;
 }
@@ -7086,7 +7147,7 @@ export interface SpacePublicOutput {
   run_id: RunId16;
   seq?: Seq9;
   session_id: SessionId66;
-  status: Status26;
+  status: Status27;
   streaming?: Streaming;
   text?: Text12;
   waiting_for?: WaitingFor1;
@@ -7145,7 +7206,7 @@ export interface SpaceView {
   created_at: CreatedAt15;
   error?: Error10;
   layout?: SpaceLayout;
-  project_id: ProjectId66;
+  project_id: ProjectId67;
   revision: Revision8;
   task_id: TaskId19;
   updated_at: UpdatedAt13;
@@ -7287,9 +7348,9 @@ export interface TaskPage {
  * via the `definition` "TaskSummary".
  */
 export interface TaskSummary {
-  project_id: ProjectId67;
+  project_id: ProjectId68;
   revision: Revision9;
-  status: Status27;
+  status: Status28;
   task_id: TaskId24;
   title: Title21;
 }
@@ -7399,11 +7460,11 @@ export interface TerminalSummary {
   message?: Message21;
   mode?: Mode16;
   pid: Pid1;
-  project_id: ProjectId68;
+  project_id: ProjectId69;
   rows: Rows2;
   run_id: RunId17;
   session_id: SessionId70;
-  status: Status28;
+  status: Status29;
   terminal_id: TerminalId3;
   tool_call_id: ToolCallId5;
 }
@@ -7470,7 +7531,7 @@ export interface TraceItem {
   request_id?: RequestId3;
   run_id: RunId18;
   seq: Seq11;
-  status: Status29;
+  status: Status30;
   title: Title22;
   tool_call_id?: ToolCallId6;
   tool_name?: ToolName1;
@@ -7557,7 +7618,7 @@ export interface UpdateSpaceWorkParams {
   operation_id: OperationId24;
   result?: Result3;
   run_id?: RunId20;
-  status?: Status30;
+  status?: Status31;
   task_id: TaskId26;
   work_id: WorkId3;
 }
@@ -7623,7 +7684,7 @@ export interface WorkStyleCatalog {
  * via the `definition` "WorkStyleDefault".
  */
 export interface WorkStyleDefault {
-  project_id: ProjectId69;
+  project_id: ProjectId70;
   style_id: StyleId3;
 }
 /**
@@ -7633,7 +7694,7 @@ export interface WorkStyleDefault {
  * via the `definition` "WorkStyleQuery".
  */
 export interface WorkStyleQuery {
-  project_id?: ProjectId70;
+  project_id?: ProjectId71;
 }
 /**
  * 按已知身份停止或继续内部工作。
@@ -7683,7 +7744,7 @@ export interface WorkerRecord {
   result?: Result4;
   run_id?: RunId21;
   session_id: SessionId74;
-  status: Status31;
+  status: Status32;
   tools?: Tools3;
   updated_at: UpdatedAt15;
   worker_id: WorkerId1;

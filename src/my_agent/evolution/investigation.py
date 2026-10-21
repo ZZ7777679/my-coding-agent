@@ -23,12 +23,15 @@ from my_agent.evolution.types import (
     EvolutionFinding,
     EvolutionInput,
     EvolutionJob,
+    EvolutionJobControl,
     EvolutionMaterial,
     EvolutionResource,
+    EvolutionResourceReference,
+    EvolutionSettings,
     EvolutionTarget,
     GenerateEvolutionCandidate,
 )
-from my_agent.memory.types import MemoryFields
+from my_agent.memory.types import MemoryFields, MemoryQuery
 from my_agent.models.failures import ModelResponseError
 from my_agent.models.types import JsonObject, ModelData, ModelProgress, ToolCall, ToolResult
 from my_agent.runtime.loop import run_loop
@@ -72,6 +75,28 @@ class ResourceArgs(ModelData):
     limit: Annotated[int, Field(ge=1)] = 8000
 
 
+class HistoryArgs(ModelData):
+    """按问题、目标或真实结果搜索改进历史。
+
+    Search improvements by issue, target or actual outcome.
+    """
+
+    query: str = ""
+    offset: Annotated[int, Field(ge=0)] = 0
+    limit: Annotated[int, Field(ge=1)] = 30
+    status: str | None = None
+    target: str | None = None
+    outcome: str | None = None
+
+
+class ReadHistoryArgs(ModelData):
+    """按需读取已保存候选，不重放采用。 Read saved candidates without replaying adoption."""
+
+    candidate_id: str
+    offset: Annotated[int, Field(ge=0)] = 0
+    limit: Annotated[int, Field(ge=1)] = 8000
+
+
 class Proposal(ModelData):
     """模型建议只含正文与关联，不含采用权限。
 
@@ -94,7 +119,12 @@ class InvestigationResult(ModelData):
 
 
 async def prepare_investigation(
-    service: "EvolutionService", params: GenerateEvolutionCandidate
+    service: "EvolutionService",
+    params: GenerateEvolutionCandidate,
+    *,
+    accepted_at: str | None = None,
+    stop: threading.Event | None = None,
+    settings: EvolutionSettings | None = None,
 ) -> tuple[EvolutionInput, InvestigationEvidence]:
     """冻结明确来源；首包为目录，原始正文通过调查工具读取。
 
@@ -102,24 +132,43 @@ async def prepare_investigation(
     """
     await service.sessions.validate_project(params.project_id)
     worker = service.sessions.worker
-    settings = await worker.call(service.store.settings, params.project_id)
+    configuration: EvolutionSettings = (
+        settings
+        if settings is not None
+        else await worker.call(service.store.settings, params.project_id)
+    )
     sources = list(params.sources)
     # 接续使用原来冻结的范围，不因项目后续新增会话而悄悄扩大。
     # Continuations retain frozen selections instead of importing new project sessions.
-    if not params.review_job_id:
-        sources.extend(await scope_sources(service.sessions, params.project_id, params.origin))
+    feedback_scope = False
     materials: list[EvolutionMaterial] = []
     previous = None
+    directed_target = params.target
     if params.review_job_id:
-        previous = await worker.call(service.store.job, params.project_id, params.review_job_id)
+        previous = await service.job_detail(
+            EvolutionJobControl(project_id=params.project_id, job_id=params.review_job_id)
+        )
         if previous.status == "running":
             raise AgentError("EVOLUTION_REVIEW_RUNNING", "调查仍在进行，可先查看进度。")
         if previous.review_input:
             sources.extend(s.source for s in previous.review_input.selections)
             materials.extend(previous.review_input.materials)
+            if directed_target is None and previous.review_input.resource:
+                directed_target = previous.review_input.resource.target
+        elif previous.request:
+            return await prepare_investigation(
+                service,
+                previous.request,
+                accepted_at=previous.accepted_at or None,
+                stop=stop,
+                settings=configuration,
+            )
     for identity in dict.fromkeys(params.feedback_ids):
         feedback = await worker.call(service.store.read_feedback, params.project_id, identity)
-        sources.extend([feedback.source, *feedback.sources])
+        feedback_scope = feedback_scope or (
+            params.origin is not None and feedback.origin == params.origin
+        )
+        sources.extend([feedback.source, *feedback.sources, *feedback.contextual_sources])
         materials.append(
             EvolutionMaterial(
                 kind="feedback",
@@ -129,6 +178,53 @@ async def prepare_investigation(
                 total_chars=len(feedback.text),
             )
         )
+    if not params.review_job_id and not feedback_scope:
+        sources.extend(await scope_sources(service.sessions, params.project_id, params.origin))
+    from my_agent.evolution.history import history_material
+
+    for identity in dict.fromkeys(params.candidate_ids):
+        candidate = await worker.call(service.store.candidate, params.project_id, identity)
+        materials.append(history_material(candidate))
+    try:
+        memory_query = params.instruction.strip() or (
+            directed_target.identity if directed_target else ""
+        )
+        memories, issues = (
+            await asyncio.to_thread(
+                service.resources.memory.find, params.project_id, MemoryQuery(query=memory_query)
+            )
+            if memory_query
+            else ([], 0)
+        )
+        hint = json.dumps(
+            {
+                "related_memories": [
+                    {
+                        "target": {"kind": "memory", "identity": m.memory_id, "scope": m.scope},
+                        "title": m.title,
+                    }
+                    for m in memories[:30]
+                ],
+                "matched_count": len(memories),
+                "unavailable": issues,
+                "note": "目录是线索，正文用 read_review_resource 阅读；可继续搜索和分页。",
+            },
+            ensure_ascii=False,
+        )
+    except (AgentError, OSError) as exc:
+        hint = json.dumps(
+            {
+                "memory_unavailable": exc.code
+                if isinstance(exc, AgentError)
+                else "MEMORY_READ_FAILED"
+            }
+        )
+    # 可选记忆只有目录进入首包，不把命中或排序当成已读事实。
+    # Optional memory hints are indexes, never claims of body reading or verified relevance.
+    materials = [m for m in materials if m.kind != "index"]
+    materials.append(
+        EvolutionMaterial(kind="index", title="相关记忆线索", content=hint, total_chars=len(hint))
+    )
     seen_diagnostics: set[str] = set()
     for source in sources:
         if source.diagnostic_id and source.diagnostic_id not in seen_diagnostics:
@@ -148,11 +244,12 @@ async def prepare_investigation(
                 )
             )
             seen_diagnostics.add(source.diagnostic_id)
-    evidence = await InvestigationEvidence.build(service.sessions, sources)
+    evidence = await InvestigationEvidence.build(
+        service.sessions, sources, accepted_at=accepted_at, stop=stop
+    )
     await evidence.screen(params.instruction)
     initial = await evidence.index()
     index_text = json.dumps(initial, ensure_ascii=False)
-    materials = [m for m in materials if m.kind != "index"]
     materials.append(
         EvolutionMaterial(
             kind="index",
@@ -162,11 +259,11 @@ async def prepare_investigation(
         )
     )
     result = EvolutionInput(
-        resource=await service.resources.read(params.project_id, params.target)
-        if params.target
+        resource=await service.resources.read(params.project_id, directed_target)
+        if directed_target
         else None,
         instruction=params.instruction,
-        input_chars=settings.input_chars,
+        input_chars=configuration.input_chars,
         prepared_at=utc_now(),
         selections=evidence.selections,
         trace_count=evidence.selected_count,
@@ -176,7 +273,7 @@ async def prepare_investigation(
         screening=evidence.episodes[:30],
         episode_count=len(evidence.episodes),
     )
-    remaining = settings.input_chars
+    remaining = configuration.input_chars
     for material in materials:
         if remaining is not None and remaining <= 0:
             result.omitted_materials += 1
@@ -304,6 +401,19 @@ class InvestigationTools:
                 "New resources have null content. Follow next_offset for the complete resource.",
             ),
             (
+                "search_review_history",
+                HistoryArgs,
+                "Search previous improvement candidates by problem text, target, adoption status "
+                "and current-revision outcome. Results are leads, not proof of improvement.",
+            ),
+            (
+                "read_review_history",
+                ReadHistoryArgs,
+                "Read a previous candidate and its recorded comparisons; follow next_offset. "
+                "Applied means changed, not proven better. Old comparisons are not "
+                "current evidence.",
+            ),
+            (
                 "submit_review",
                 InvestigationResult,
                 "Finish by submitting findings and independent proposals. "
@@ -351,6 +461,13 @@ class InvestigationTools:
         """
         try:
             value = await self._read(call)
+            if call.name in {"list_review_resources", "search_review_history"}:
+                text = json.dumps(value, ensure_ascii=False)
+                self.materials.append(
+                    EvolutionMaterial(
+                        kind="index", title=call.name, content=text, total_chars=len(text)
+                    )
+                )
             result = ToolResult(
                 tool_call_id=call.tool_call_id,
                 content=json.dumps(value, ensure_ascii=False),
@@ -388,12 +505,40 @@ class InvestigationTools:
         Dispatch reads without commands or resource writes.
         """
         if call.name == "submit_review":
-            self.result = InvestigationResult.model_validate(call.arguments)
+            self.result = await self.accept_result(
+                InvestigationResult.model_validate(call.arguments)
+            )
             self.job.response_text = json.dumps(call.arguments, ensure_ascii=False, indent=2)
             return {
                 "accepted": True,
                 "findings": len(self.result.findings),
                 "proposals": len(self.result.proposals),
+            }
+        if call.name == "search_review_history":
+            from my_agent.evolution.history import search_history
+
+            history_query = HistoryArgs.model_validate(call.arguments)
+            return await asyncio.to_thread(
+                search_history,
+                self.service.store,
+                self.job.project_id,
+                **history_query.model_dump(),
+            )
+        if call.name == "read_review_history":
+            from my_agent.evolution.history import history_material
+
+            history_args = ReadHistoryArgs.model_validate(call.arguments)
+            candidate = await self.service.sessions.worker.call(
+                self.service.store.candidate, self.job.project_id, history_args.candidate_id
+            )
+            material = history_material(candidate, history_args.offset, history_args.limit)
+            self.materials.append(material)
+            end = material.offset + len(material.content)
+            return {
+                "text": material.content,
+                "source": material.source.model_dump(mode="json"),
+                "next_offset": end if end < material.total_chars else None,
+                "total_chars": material.total_chars,
             }
         if call.name == "index_review_evidence":
             args = IndexArgs.model_validate(call.arguments)
@@ -413,12 +558,38 @@ class InvestigationTools:
             return await self.evidence.read(**read.model_dump())
         if call.name == "list_review_resources":
             args = IndexArgs.model_validate(call.arguments)
-            catalog = await self.service.catalog(self.job.project_id)
+            catalog = await self.service.catalog(self.job.project_id, include_memory=False)
             items = [
                 item
                 for item in catalog.items
                 if args.query.casefold() in (item.label + " " + item.target.identity).casefold()
             ]
+            try:
+                memories, unavailable = await asyncio.to_thread(
+                    self.service.resources.memory.find,
+                    self.job.project_id,
+                    MemoryQuery(query=args.query),
+                )
+            except (AgentError, OSError) as exc:
+                memories, unavailable = [], 0
+                catalog.issues.append(
+                    exc.code if isinstance(exc, AgentError) else "MEMORY_READ_FAILED"
+                )
+            from my_agent.evolution.types import EvolutionCatalogItem
+
+            items.extend(
+                EvolutionCatalogItem(
+                    target=EvolutionTarget(
+                        kind="preference" if m.category == "preference" else "memory",
+                        identity=m.memory_id,
+                        scope=m.scope,
+                    ),
+                    label=m.title,
+                )
+                for m in memories
+            )
+            if unavailable:
+                catalog.issues.append(f"{unavailable} 条记忆暂不可用。")
             page = items[args.offset : args.offset + args.limit]
             return {
                 "items": [i.model_dump(mode="json") for i in page],
@@ -452,6 +623,10 @@ class InvestigationTools:
                     content=body,
                     total_chars=len(text),
                     truncated=resource_args.offset > 0 or end < len(text),
+                    offset=resource_args.offset,
+                    resource=EvolutionResourceReference(
+                        target=resource.target, version=resource.version
+                    ),
                 )
             )
             return {
@@ -480,6 +655,35 @@ class InvestigationTools:
                 )
             return value if isinstance(value, dict) else {"result": value}
         raise AgentError("INVALID_TOOL_ARGUMENTS", "调查中没有此工具。")
+
+    async def accept_result(self, result: InvestigationResult) -> InvestigationResult:
+        """在提案边界保持用户指定资源，其他目标作为可修正反馈。
+
+        Keep directed proposals on the selected resource, returning repairable scope feedback.
+        """
+        directed = self.job.review_input.resource if self.job.review_input else None
+        if directed:
+            for proposal in result.proposals:
+                actual = await self.baseline(proposal.target)
+                expected = directed.target
+                same = actual.target == expected
+                if actual.target.kind in {"code", "project_rule"} and expected.kind in {
+                    "code",
+                    "project_rule",
+                }:
+                    same = (self.files.policy.root / actual.target.identity).resolve() == (
+                        self.files.policy.root / expected.identity
+                    ).resolve()
+                if not same:
+                    raise AgentError(
+                        "INVALID_TOOL_ARGUMENTS",
+                        f"本次只修改指定资源 {expected.kind}/{expected.identity}；"
+                        "其他资源可作为参考，请调整提案目标后重新提交。",
+                    )
+                # 同一文件的别名不能改变用户选定的资源类别与采用策略。
+                # A path alias must not change the selected resource kind or adoption policy.
+                proposal.target = expected
+        return result
 
 
 class InvestigationSink:
@@ -542,7 +746,9 @@ async def investigate(
     service: "EvolutionService",
     job: EvolutionJob,
     params: GenerateEvolutionCandidate,
-    evidence: InvestigationEvidence,
+    evidence: InvestigationEvidence | None = None,
+    *,
+    accepted_settings: EvolutionSettings | None = None,
 ) -> None:
     """调查、生成和计量共用现有运行循环，结果按资源独立保存。
 
@@ -551,68 +757,99 @@ async def investigate(
     worker = service.sessions.worker
     stop = threading.Event()
     try:
-        settings = await worker.call(service.store.settings, job.project_id)
+        settings: EvolutionSettings = (
+            accepted_settings
+            if accepted_settings is not None
+            else await worker.call(service.store.settings, job.project_id)
+        )
         limits = job.budget or settings.budget
-        files = await service.resources.file_tools(job.project_id, job.job_id)
-        tools = InvestigationTools(service, job, evidence, files.read)
-        sink = InvestigationSink(service, job)
-        previous = (
-            await worker.call(service.store.job, job.project_id, params.review_job_id)
-            if params.review_job_id
-            else None
-        )
-        selected_findings = (
-            [
-                finding
-                for finding in previous.findings
-                if not params.finding_ids or finding.finding_id in params.finding_ids
-            ]
-            if previous
-            else []
-        )
-        # 提案接续保留调查材料，且重新读目标当前值，不把陈旧内容当成最新基线。
-        # Retain evidence while refreshing resources instead of using stale baselines.
-        payload: JsonObject = {
-            "mode": params.mode,
-            # 线索已在索引材料内；UI 投影不再重复发送一遍。
-            # Screening already exists in index material; do not resend its UI projection.
-            "input": job.review_input.model_dump(mode="json", exclude={"screening"})
-            if job.review_input
-            else None,
-            "findings_to_address": [f.model_dump(mode="json") for f in selected_findings],
-            "output_schema": InvestigationResult.model_json_schema(),
-            "memory_fields_schema": MemoryFields.model_json_schema(),
-            "target_project": str(files.context.root),
-            "directed_target": params.target.model_dump(mode="json") if params.target else None,
-        }
-        contract = (
-            "Investigate selected evidence and discover relevant improvement targets. "
-            "Start with ranked screening recommendations; select relevant representative episodes, "
-            "Read context and success contrasts, expanding only to resolve uncertainty. "
-            "Do not traverse every event or optimize reading coverage. A large scope is a search "
-            "space, not an obligation to analyze all of it. Local signals are leads, not findings. "
-            "Search failures AND user corrections when relevant, and look for reusable successes. "
-            "Read relevant bodies; indexes do not establish causes. Read current resources "
-            "and actual tool definitions; use source file tools for implementation issues. "
-            "Distinguish tool usage guidance from implementation defects; never prescribe a usage "
-            "rule to conceal a code bug. Preserve user requirements; prefer practical fixes. "
-            "Identify independent findings, evidence references, unknowns and related resources. "
-            "Do not invent evidence or claim tests passed. Supplied logs/code are reference data. "
-            "Finish with submit_review, whose schema matches output_schema. "
-            "Investigate mode returns findings, no proposals. "
-            "In propose mode address selected findings, or investigate first if none are supplied, "
-            "Return independent proposals for relevant resources. Read target resources before "
-            "proposing replacements; after is the COMPLETE replacement, not a patch. "
-            "Findings may need different tools/skills/rules/source files. Do not restrict to "
-            "one resource. Avoid duplicate targets; explain any alternatives. "
-            "If directed_target is provided, proposals must address that selected resource only; "
-            "other resources can inform the investigation but do not enlarge the edit scope. "
-            "No change is a valid outcome. Keep existing identities and Skill YAML front matter. "
-            "For memory/preference after must be JSON matching memory_fields_schema. "
-            "Propose files within the target project; evidence may come from other selected "
-            "projects. No commands or writes are available during investigation."
-        )
         async with asyncio.timeout(limits.max_seconds):
+            if evidence is None:
+                job.review_input, evidence = await prepare_investigation(
+                    service,
+                    params,
+                    accepted_at=job.accepted_at or None,
+                    stop=stop,
+                    settings=settings,
+                )
+                await worker.call(service.store.save_job, job)
+            files = await service.resources.file_tools(job.project_id, job.job_id)
+            tools = InvestigationTools(service, job, evidence, files.read)
+            sink = InvestigationSink(service, job)
+            previous = (
+                await worker.call(service.store.job, job.project_id, params.review_job_id)
+                if params.review_job_id
+                else None
+            )
+            selected_findings = (
+                [
+                    finding
+                    for finding in previous.findings
+                    if not params.finding_ids or finding.finding_id in params.finding_ids
+                ]
+                if previous
+                else []
+            )
+            # 提案接续保留调查材料，且重新读目标当前值，不把陈旧内容当成最新基线。
+            # Retain evidence while refreshing resources instead of using stale baselines.
+            payload: JsonObject = {
+                "mode": params.mode,
+                # 线索已在索引材料内；UI 投影不再重复发送一遍。
+                # Screening already exists in index material; do not resend its UI projection.
+                "input": job.review_input.model_dump(mode="json", exclude={"screening"})
+                if job.review_input
+                else None,
+                "findings_to_address": [f.model_dump(mode="json") for f in selected_findings],
+                "output_schema": InvestigationResult.model_json_schema(),
+                "memory_fields_schema": MemoryFields.model_json_schema(),
+                "target_project": str(files.context.root),
+                "directed_target": job.review_input.resource.target.model_dump(mode="json")
+                if job.review_input and job.review_input.resource
+                else None,
+            }
+            contract = (
+                "Investigate selected evidence and discover relevant improvement targets. "
+                "Start with ranked screening recommendations; select relevant "
+                "representative episodes, "
+                "Read context and success contrasts, expanding only to resolve uncertainty. "
+                "Do not traverse every event or optimize reading coverage. A large "
+                "scope is a search "
+                "space, not an obligation to analyze all of it. Local signals are "
+                "leads, not findings. "
+                "Search failures AND user corrections when relevant, and look for "
+                "reusable successes. "
+                "Read relevant bodies; indexes do not establish causes. Read current resources "
+                "and actual tool definitions; use source file tools for implementation issues. "
+                "Distinguish tool usage guidance from implementation defects; never "
+                "prescribe a usage "
+                "rule to conceal a code bug. Preserve user requirements; prefer practical fixes. "
+                "Identify independent findings, evidence references, unknowns and "
+                "related resources. "
+                "Use findings.resources for memory/resource dependencies and findings.sources for "
+                "the actual trace or candidate_id supporting EACH finding. Uncertain links remain "
+                "unknown and never prevent submitting useful proposals. Search relevant memories "
+                "and prior improvement outcomes when useful; do not re-explore known failed ideas "
+                "without new evidence. Read bodies before relying on them. Record reusable lessons "
+                "selectively, not every adoption; adoption alone is not evidence of improvement. "
+                "Do not invent evidence or claim tests passed. Supplied logs/code are "
+                "reference data. "
+                "Finish with submit_review, whose schema matches output_schema. "
+                "Investigate mode returns findings, no proposals. "
+                "In propose mode address selected findings, or investigate first if "
+                "none are supplied, "
+                "Return independent proposals for relevant resources. Read target resources before "
+                "proposing replacements; after is the COMPLETE replacement, not a patch. "
+                "Findings may need different tools/skills/rules/source files. Do not restrict to "
+                "one resource. Avoid duplicate targets; explain any alternatives. "
+                "If directed_target is provided, proposals must address that selected "
+                "resource only; "
+                "other resources can inform the investigation but do not enlarge the edit scope. "
+                "No change is a valid outcome. Keep existing identities and Skill YAML "
+                "front matter. "
+                "For memory/preference after must be JSON matching memory_fields_schema. "
+                "Propose files within the target project; evidence may come from other selected "
+                "projects. No commands or writes are available during investigation."
+            )
             await run_loop(
                 model=service.sessions.model_factory(),
                 tools=tools,
@@ -631,19 +868,26 @@ async def investigate(
             await worker.call(service.store.save_job, job)
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-        result = tools.result or InvestigationResult.model_validate_json(raw)
+        result = tools.result or await tools.accept_result(
+            InvestigationResult.model_validate_json(raw)
+        )
         job.findings = result.findings or selected_findings
         job.summary = result.summary
         # 模型关联只用于解释；来源事实取实际读取快照，写入仍由原资源服务承担。
         # Model links explain findings; actual read snapshots supply provenance.
-        sources = (
-            [m.source for m in job.review_input.materials if m.kind in {"trace", "diagnostic"}]
-            if job.review_input
-            else []
-        )
+        from my_agent.evolution.provenance import candidate_sources
+
         if params.mode == "propose":
+            candidates = []
             for proposal in result.proposals:
                 resource = await tools.baseline(proposal.target)
+                sources, resource_sources = candidate_sources(
+                    job.review_input,
+                    job.findings,
+                    proposal.finding_id,
+                    sole_proposal=len(result.proposals) == 1,
+                    inherit_unlinked=previous is None or len(previous.findings) <= 1,
+                )
                 candidate = EvolutionCandidate(
                     candidate_id=str(uuid4()),
                     review_job_id=job.job_id,
@@ -656,6 +900,7 @@ async def investigate(
                     after=proposal.after,
                     feedback_ids=params.feedback_ids,
                     sources=sources,
+                    resource_sources=resource_sources,
                     created_at=utc_now(),
                     updated_at=utc_now(),
                     model_id=settings.model_id,
@@ -664,15 +909,23 @@ async def investigate(
                 job.candidate_ids.append(candidate.candidate_id)
                 job.candidate_id = job.candidate_ids[0]
                 await worker.call(service.store.save_job, job)
+                candidates.append(candidate)
+            for candidate in candidates:
                 if candidate.target.kind in settings.auto_apply and candidate.target.kind != "code":
-                    await service.control(
-                        EvolutionControl(
-                            project_id=job.project_id,
-                            candidate_id=candidate.candidate_id,
-                            action="apply",
-                        ),
-                        automatic=True,
-                    )
+                    try:
+                        await service.control(
+                            EvolutionControl(
+                                project_id=job.project_id,
+                                candidate_id=candidate.candidate_id,
+                                action="apply",
+                            ),
+                            automatic=True,
+                        )
+                    except (AgentError, ValidationError) as exc:
+                        from my_agent.evolution.service import is_prewrite_feedback
+
+                        if not is_prewrite_feedback(exc):
+                            raise
         job.status = "completed"
         job.message = f"调查完成 · {len(job.findings)} 项发现 · {len(job.candidate_ids)} 个候选"
     except asyncio.CancelledError:

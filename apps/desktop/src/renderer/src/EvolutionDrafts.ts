@@ -22,6 +22,7 @@ export interface EvolutionDraft {
   directed: boolean
   generation: { key: string; jobId: string } | null
   proposalJobs: Record<string, string>
+  findingSelections: Record<string, string[]>
 }
 
 export type EvolutionDraftCache = Map<string, EvolutionDraft>

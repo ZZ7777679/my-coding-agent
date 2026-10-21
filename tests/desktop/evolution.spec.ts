@@ -1,5 +1,6 @@
 /** M7 真实桌面资源采用和恢复，不调用模型。 Real M7 resource adoption/restoration without model calls. */
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { electron, expect, test } from './runtime'
 import { artifacts, choose, launch, python, sentinel } from './helpers'
@@ -457,7 +458,7 @@ test('evolution selects a named run and exposes the actual review materials', as
     await expect(job).toBeVisible()
     await job.locator('summary').first().click()
     await job.getByRole('button', { name: '查看候选', exact: true }).click()
-    await page.getByRole('button', { name: '查看候选实际参考材料', exact: true }).click()
+    await page.getByRole('button', { name: '查看所属调查的全部材料', exact: true }).click()
     await expect(page.locator('.evolution-input')).toHaveCount(1)
     const actual = page.locator('.evolution-input').last()
     await actual.getByText('你的本次要求', { exact: true }).click()
@@ -553,6 +554,18 @@ test('evolution investigates cross-project evidence and keeps independent candid
     await expect(
       investigation.getByRole('checkbox', { name: 'Correct answer implementation', exact: true })
     ).toBeChecked()
+    await investigation
+      .getByRole('checkbox', { name: 'Correct answer implementation', exact: true })
+      .uncheck()
+    await page.getByRole('button', { name: '项目工作台', exact: true }).click()
+    await page.getByRole('button', { name: '经验与改进', exact: true }).click()
+    await page.getByRole('button', { name: '查看本次改进进度', exact: true }).click()
+    await expect(
+      investigation.getByRole('checkbox', { name: 'Correct answer implementation', exact: true })
+    ).not.toBeChecked()
+    await investigation
+      .getByRole('checkbox', { name: 'Correct answer implementation', exact: true })
+      .check()
     await investigation.getByRole('button', { name: '查看实际参考材料', exact: true }).click()
     const evidencePanel = page.getByRole('dialog', { name: '改进证据', exact: true })
     await expect(evidencePanel).toBeInViewport({ ratio: 1 })
@@ -621,6 +634,49 @@ test('evolution investigates cross-project evidence and keeps independent candid
     const before = await count()
     await page.getByRole('button', { name: '查看本次改进进度', exact: true }).click()
     expect(await count()).toBe(before)
+    // 原调查可以再次生成，导航不会把候选入口永久锁在旧作业。
+    // Regenerate from the original investigation instead of trapping the entry on its old job.
+    await investigation.locator('summary').first().click()
+    await investigation.getByRole('button', { name: '沿原调查重新生成候选', exact: true }).click()
+    await expect.poll(count).toBe(before + 1)
+    await expect(
+      page.getByRole('button', { name: '提炼为经验候选', exact: true }).first()
+    ).toBeVisible()
+    const history = await page.evaluate(async () => {
+      const projects = await window.agent.listProjects()
+      if (!projects.ok || !projects.data.active_project) throw new Error('Target missing')
+      const pid = projects.data.active_project.project_id
+      const result = await window.agent.evolutionList({ project_id: pid })
+      if (!result.ok) throw new Error(result.error.message)
+      return { pid, job: result.data.jobs!.find((job) => job.status === 'completed')! }
+    })
+    const originalId = await investigation.getAttribute('id')
+    for (let index = 0; index < 33; index++) {
+      const id = randomUUID()
+      await writeFile(
+        path.join(root, 'data', 'evolution', history.pid, 'jobs', `${id}.json`),
+        JSON.stringify({
+          ...history.job,
+          job_id: id,
+          updated_at: '2099-01-01T00:00:00Z',
+          message: `History fixture ${index}`,
+          findings: [],
+          candidate_ids: [],
+          candidate_id: null,
+          review_input: null,
+          request: null
+        })
+      )
+    }
+    await page.getByRole('button', { name: '项目工作台', exact: true }).click()
+    await page.getByRole('button', { name: '经验与改进', exact: true }).click()
+    await page.getByRole('button', { name: '查看本次改进进度', exact: true }).click()
+    await expect(page.locator('details[id^="evolution-job-"][open]')).toHaveCount(1)
+    await page.getByRole('button', { name: '更早的调查与候选生成', exact: true }).click()
+    await expect(page.locator(`#${originalId}`)).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: '更早的调查与候选生成', exact: true })
+    ).toHaveCount(0)
     await page.screenshot({ path: path.join(root, 'investigation.png'), fullPage: true })
   } finally {
     await app.close()

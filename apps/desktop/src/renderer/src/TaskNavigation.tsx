@@ -8,6 +8,7 @@ import type {
 } from '../../generated/protocol'
 import { NavigationMenu, type NavigationPopup, type NavigationTarget } from './NavigationMenu'
 import type { KeyboardEvent, MouseEvent } from 'react'
+import { useLatestRefresh } from './useLatestRefresh'
 
 export type WorkspaceSelection = {
   projectId: string
@@ -134,8 +135,14 @@ function ProjectBranch({
     [projectId]
   )
 
+  useLatestRefresh(
+    async () => {
+      await load('all')
+    },
+    [revision, load],
+    expanded && connected
+  )
   useEffect(() => {
-    if (expanded && connected) void load('all')
     return () => {
       ++epoch.current
     }

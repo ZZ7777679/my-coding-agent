@@ -183,6 +183,7 @@ export function Chat({
     })
   }
   const [error, setError] = useState('')
+  const [historyError, setHistoryError] = useState('')
   const [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<'normal' | 'plan' | 'goal'>('plan')
   const [goal, setGoal] = useState<GoalView | null>(null)
@@ -214,6 +215,7 @@ export function Chat({
     setTraceSeq(null)
     setPrompt('')
     setError('')
+    setHistoryError('')
     setPlanDocument('')
     setGoal(null)
     setCriteria('')
@@ -311,9 +313,10 @@ export function Chat({
         })
         if (disposed || ticket !== generation.current) return
         if (!result.ok) {
-          setError(result.error.message)
+          setHistoryError(result.error.message)
           return
         }
+        setHistoryError('')
         attached = true
         value = result.data
         let needsRefresh = overflow
@@ -323,7 +326,7 @@ export function Chat({
         setSnapshot(value)
         if (needsRefresh) schedule()
       } catch {
-        if (!disposed) setError('会话连接中断。已保存的历史可在重新打开后查看。')
+        if (!disposed) setHistoryError('会话连接中断。已保存的历史可在重新打开后查看。')
       } finally {
         fetching = false
       }
@@ -567,9 +570,9 @@ export function Chat({
     >
       <section className="chat-panel" aria-label="代码对话">
         {review}
-        {error && (
+        {(error || historyError) && (
           <div className="notice" role="alert">
-            {error}
+            {error || historyError}
           </div>
         )}
         {snapshot?.summary.issue ? (
@@ -758,7 +761,7 @@ export function Chat({
             )}
             {selected && snapshot && (
               <ContextMemory
-                key={selected}
+                key={`context:${selected}`}
                 sessionId={selected}
                 revision={snapshot.watermark}
                 connected={connected}
@@ -776,7 +779,7 @@ export function Chat({
             )}
             {selected && snapshot && (
               <Workers
-                key={selected}
+                key={`workers:${selected}`}
                 sessionId={selected}
                 revision={snapshot.watermark}
                 connected={connected}
@@ -1085,7 +1088,7 @@ export function Chat({
       </section>
       {selected && showCheckpoints && (
         <Checkpoints
-          key={selected}
+          key={`checkpoints:${selected}`}
           sessionId={selected}
           running={Boolean(
             snapshot?.summary.run && ['running', 'stopping'].includes(snapshot.summary.run.status)
@@ -1103,7 +1106,7 @@ export function Chat({
       )}
       {selected && project && showTrace && (
         <Trace
-          key={selected}
+          key={`trace:${selected}`}
           sessionId={selected}
           projectId={project.project_id}
           revision={snapshot?.watermark ?? 0}
@@ -1112,7 +1115,11 @@ export function Chat({
         />
       )}
       {selected && showChanges && !showTrace && (
-        <Changes key={selected} sessionId={selected} revision={snapshot?.watermark ?? 0} />
+        <Changes
+          key={`changes:${selected}`}
+          sessionId={selected}
+          revision={snapshot?.watermark ?? 0}
+        />
       )}
     </div>
   )

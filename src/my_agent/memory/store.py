@@ -13,6 +13,7 @@ from my_agent.context.accounting import record_usage
 from my_agent.errors import AgentError
 from my_agent.memory.types import (
     MemoryEntry,
+    MemoryEvolutionSource,
     MemoryFields,
     MemoryQuery,
     MemoryState,
@@ -192,6 +193,24 @@ class MemoryStore:
                 # 多条 Trace 是共同输入；记忆来源不能使已回退的实际材料重新有效。
                 # Trace facts are joint input; memory links cannot revive rolled-back evidence.
                 invalid = (invalid or not valid_source) if entry.trace_sources else not valid_source
+            if entry.evolution_sources:
+                from my_agent.evolution.store import EvolutionStore
+
+                for origin in entry.evolution_sources:
+                    candidate = EvolutionStore(self.storage).candidate(
+                        origin.project_id, origin.candidate_id
+                    )
+                    comparisons = [
+                        c
+                        for c in candidate.comparisons
+                        if c.content_revision == candidate.content_revision
+                    ]
+                    last_at = comparisons[-1].at if comparisons else None
+                    invalid = invalid or (
+                        candidate.content_revision != origin.content_revision
+                        or candidate.status != origin.status
+                        or last_at != origin.comparison_at
+                    )
             visiting.remove(entry.memory_id)
             memo[entry.memory_id] = invalid
             return invalid
@@ -302,6 +321,7 @@ class MemoryStore:
         session_id: str | None = None,
         source_seq: int | None = None,
         trace_sources: list[MemoryTraceSource] | None = None,
+        evolution_sources: list[MemoryEvolutionSource] | None = None,
         expected_revision: int | None = None,
     ) -> MemoryEntry:
         """保存独立知识；后台不覆盖用户编辑，冲突仅跳过该候选。
@@ -330,6 +350,9 @@ class MemoryStore:
                 "session_id": session_id,
                 "source_seq": source_seq,
                 "trace_sources": trace_sources or [],
+                "evolution_sources": evolution_sources
+                if evolution_sources is not None
+                else (current.evolution_sources if current else []),
                 "created_at": current.created_at if current else now,
                 "updated_at": now,
             }

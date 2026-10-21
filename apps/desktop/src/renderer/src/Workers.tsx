@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { WorkerPage, SessionView } from '../../generated/protocol'
+import { useLatestRefresh } from './useLatestRefresh'
 
 /** 子任务入口贴近输入区，结果各自折叠；不增加侧栏用户会话。
  * Keep worker controls beside the composer and results in collapsible cards. */
@@ -28,17 +29,22 @@ export function Workers({
       }),
     [sessionId]
   )
-  useEffect(() => {
-    let disposed = false
-    void window.agent.listWorkers({ session_id: sessionId }).then((result) => {
-      if (disposed) return
-      if (result.ok) setPage(result.data)
-      else setError(result.error.message)
-    })
-    return () => {
-      disposed = true
-    }
-  }, [sessionId, revision, refresh])
+  useLatestRefresh(
+    async (isCurrent) => {
+      try {
+        const result = await window.agent.listWorkers({ session_id: sessionId })
+        if (!isCurrent()) return
+        if (result.ok) {
+          setPage(result.data)
+          setError('')
+        } else setError(result.error.message)
+      } catch {
+        if (isCurrent()) setError('无法读取子任务状态，请检查连接。')
+      }
+    },
+    [sessionId, revision, refresh],
+    connected
+  )
 
   /** 显式保存能力开关，正在运行的孩子可分别停止。
    * Save delegation settings; existing children retain individual stop controls. */
