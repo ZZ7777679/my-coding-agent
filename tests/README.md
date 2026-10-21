@@ -265,6 +265,10 @@ M2 收尾复用该文件中的三条定向检查：`::test_bidirectional_deliver
 
 ## 数据与产物
 
+### 用户指南截图（显式运行，不纳入回归）
+
+`node tests/desktop/guide-capture.mjs <core|resources|workbench|team|learning>` 使用已构建的实际 Electron 页面、既有离线模型和隔离示例数据，输出到新的 `.artifacts/tests/guide-<分组>-*/`，包含 PNG 和 `capture.json`。首次使用或产品改动后先 `npm.cmd --prefix apps/desktop run build`。不读取个人会话、不请求真实模型、不修改系统网络；workbench 组仅在隔离项目初始化本地 Git 并启动终端，resources 组只连接本地 MCP 样本，沙箱只展示配置。逐张检查后将选用 PNG 复制到 `docs/guide/images/` 并更新[截图说明](../docs/guide/screenshots.md)；不将演示状态记成真实模型验收。
+
 ### Skill 在线发现增量
 
 - `.venv/Scripts/python.exe -X utf8 -m pytest tests/python/test_skills.py -q`：覆盖九项预装资源来源 / 许可证、旧方法身份与版本、按需正文、用户覆盖、归档及完整附件复制，不访问网络。桌面构建后 `npm.cmd --prefix apps/desktop run test:desktop -- bundled-skills.spec.ts` 验证预装来源、复制后编辑、附件导入与原版保持不变，产物在 `.artifacts/tests/desktop-bundled-skills-*/`。

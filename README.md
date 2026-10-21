@@ -8,6 +8,8 @@
 >
 > 当前提供源码启动方式，尚未交付安装包、自动更新或跨平台执行后端。
 
+按功能查看操作步骤与应用截图：**[用户指南](docs/guide/README.md)**。首次使用从启动、创建任务、对话与 Goal 开始；合作空间、Skill / MCP、上下文和经验与改进各有独立篇目。
+
 ## 快速开始
 
 ### 1. 准备开发环境
@@ -256,6 +258,7 @@ scripts/           启动、协议生成、聚合工程检查
 tests/             集中测试、契约样本、桌面及模型验收入口
 docs/plan/         方案与验收定义
 docs/progress/     实际进度、证据、剩余限制和接续点
+docs/guide/        分功能使用说明与应用截图
 docs/research/     上游调研与取舍依据
 examples/          独立评测样本
 ```
@@ -289,6 +292,7 @@ uv run --locked python scripts/check.py --desktop
 
 | 文档 | 用途 |
 | --- | --- |
+| [用户指南](docs/guide/README.md) | 12 篇功能操作说明、26 张应用截图与常见问题 |
 | [进度总览](docs/progress/README.md) | 当前真实状态与下一步 |
 | [总规划](docs/plan/coding-agent-from-zero-plan.md) | 产品方向与阶段依赖 |
 | [M7 方案](docs/plan/m7-self-evolution.md) / [进度](docs/progress/m7.md) | 经验与改进的设计、实现和验证 |
