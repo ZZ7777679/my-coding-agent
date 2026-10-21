@@ -934,7 +934,7 @@ OpenCode Go 的真实接入检查分别覆盖 `glm-5.3-flash` 与 `deepseek-v4.1
 | M4 Skill、工作流、MCP 浏览器与 Trace | 首版、资源管理 / 在线导入、MCP 认证及后续定向实施已推送；实际验证与剩余限制保留 | [M4 方案](m4-implementation-plan.md)、[M4 进度](../progress/m4.md) |
 | M5 智能体合作空间与完整编码工作台 | A–F 首次实现及后续增量已推送 origin/dev；双模型图片和 DeepSeek 协作闭环通过，GLM 长业务失败保留 | [M5 方案](m5-implementation-plan.md)、[M5 进度](../progress/m5.md) |
 | M6 沙箱、回退、能力发现与重点优化 | 本轮收尾并推送 origin/dev，代码 `0597f94`，协议 v11；未实测规模及环境兼容边界保留 | [实施方案](m6-sandbox-rollback-and-capabilities.md)、[M6 进度](../progress/m6.md) |
-| M7 自进化与运行经验体系 | 首次实现及定向联合验收完成；资源采用／恢复、诊断、独立代码实验和桌面入口；本地未提交 | [实施方案](m7-self-evolution.md)、[M7 进度](../progress/m7.md) |
+| M7 自进化与运行经验体系 | 首次实现及后续增量已同步 dev / main；资源采用／恢复、诊断、代码比较、选择性调查与现场入口；代码 `22c2caf` | [实施方案](m7-self-evolution.md)、[M7 进度](../progress/m7.md) |
 
 **下表为历史路线，非当前阶段安排。** 编辑和执行已经组合进入 M2，当前 M3–M5 分别按上表实施；原 M3 / M5 / M6 等编号不再作为当前新增阶段的执行指令。原安装验收要求仍保留，但不属于本次 M5 功能阶段。
 
