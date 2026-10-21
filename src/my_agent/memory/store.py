@@ -11,7 +11,13 @@ from pydantic import Field
 
 from my_agent.context.accounting import record_usage
 from my_agent.errors import AgentError
-from my_agent.memory.types import MemoryEntry, MemoryFields, MemoryQuery, MemoryState
+from my_agent.memory.types import (
+    MemoryEntry,
+    MemoryFields,
+    MemoryQuery,
+    MemoryState,
+    MemoryTraceSource,
+)
 from my_agent.models.types import ModelData
 from my_agent.sessions.store import SessionStore
 from my_agent.storage import Storage, atomic_write, read_document, utc_now, write_document
@@ -154,19 +160,23 @@ class MemoryStore:
                 return True
             visiting.add(entry.memory_id)
             invalid = False
+            trace_sources = list(entry.trace_sources)
             if entry.session_id and entry.source_seq is not None:
-                if entry.session_id not in ranges:
-                    path = self.sessions.path(entry.session_id).with_name(
+                trace_sources.append(
+                    MemoryTraceSource(session_id=entry.session_id, seq=entry.source_seq)
+                )
+            for source in trace_sources:
+                if source.session_id not in ranges:
+                    path = self.sessions.path(source.session_id).with_name(
                         "memory-invalidations.json"
                     )
-                    ranges[entry.session_id] = (
+                    ranges[source.session_id] = (
                         read_document(path, SourceInvalidations)
                         if path.exists()
                         else SourceInvalidations()
                     )
-                invalid = any(
-                    start <= entry.source_seq <= end
-                    for start, end in ranges[entry.session_id].ranges
+                invalid = invalid or any(
+                    start <= source.seq <= end for start, end in ranges[source.session_id].ranges
                 )
             if entry.source_ids:
                 valid_source = False
@@ -179,7 +189,9 @@ class MemoryStore:
                     if not stale(by_id[identity]):
                         valid_source = True
                         break
-                invalid = not valid_source
+                # 多条 Trace 是共同输入；记忆来源不能使已回退的实际材料重新有效。
+                # Trace facts are joint input; memory links cannot revive rolled-back evidence.
+                invalid = (invalid or not valid_source) if entry.trace_sources else not valid_source
             visiting.remove(entry.memory_id)
             memo[entry.memory_id] = invalid
             return invalid
@@ -289,6 +301,7 @@ class MemoryStore:
         source: str = "user",
         session_id: str | None = None,
         source_seq: int | None = None,
+        trace_sources: list[MemoryTraceSource] | None = None,
         expected_revision: int | None = None,
     ) -> MemoryEntry:
         """保存独立知识；后台不覆盖用户编辑，冲突仅跳过该候选。
@@ -316,6 +329,7 @@ class MemoryStore:
                 "source": source,
                 "session_id": session_id,
                 "source_seq": source_seq,
+                "trace_sources": trace_sources or [],
                 "created_at": current.created_at if current else now,
                 "updated_at": now,
             }

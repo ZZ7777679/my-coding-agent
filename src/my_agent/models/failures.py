@@ -17,15 +17,23 @@ class ModelResponseError(AgentError):
     """
 
     def __init__(
-        self, code: str, message: str, usage: TokenUsage, finish_reason: str | None
+        self,
+        code: str,
+        message: str,
+        usage: TokenUsage,
+        finish_reason: str | None,
+        *,
+        phase: str | None = None,
     ) -> None:
         """向调用方交付已观察到的统计。 Pass observed statistics to the caller."""
-        super().__init__(code, message)
+        super().__init__(code, message, phase=phase)
         self.usage = usage
         self.finish_reason = finish_reason
 
 
-def request_failure(error: BaseException, timing: RequestTiming, timeout: float) -> AgentError:
+def request_failure(
+    error: BaseException, timing: RequestTiming, timeout: float | None
+) -> AgentError:
     """区分总时限、网络等待与传输失败，仅公开时间和稳定类别。
 
     Distinguish deadlines, network waits and transport failures using public timing and categories.
@@ -45,7 +53,11 @@ def request_failure(error: BaseException, timing: RequestTiming, timeout: float)
         code, message = "MODEL_POOL_TIMEOUT", "等待可用模型连接超时。"
     elif isinstance(error, TimeoutError):
         code = "MODEL_REQUEST_TIMEOUT"
-        message = f"模型请求达到设定的 {timeout:g} 秒总时限，未收到完整回合。"
+        message = (
+            f"模型请求达到设定的 {timeout:g} 秒总时限，未收到完整回合。"
+            if timeout is not None
+            else "模型连接或传输发生超时，当前未设宿主请求总时限。"
+        )
     elif isinstance(error, httpx.ProxyError):
         code, message = "MODEL_PROXY_ERROR", "模型请求的代理连接失败。"
     elif isinstance(error, httpx.ConnectError):
@@ -69,4 +81,17 @@ def request_failure(error: BaseException, timing: RequestTiming, timeout: float)
         )
     else:
         message += "尚未收到响应正文数据。"
-    return AgentError(code, message + " 未自动重试。")
+    failure_phase = {
+        "MODEL_CONNECT_TIMEOUT": "connecting",
+        "MODEL_CONNECT_ERROR": "connecting",
+        "MODEL_PROXY_ERROR": "proxy",
+        "MODEL_POOL_TIMEOUT": "pool",
+        "MODEL_WRITE_TIMEOUT": "sending",
+        "MODEL_WRITE_ERROR": "sending",
+        "MODEL_READ_TIMEOUT": "response_headers"
+        if timing.progress.response_headers_ms is None
+        else "response_stream",
+        "MODEL_STREAM_ERROR": "response_stream",
+        "MODEL_REQUEST_TIMEOUT": "request_deadline",
+    }.get(code, "transport")
+    return AgentError(code, message + " 未自动重试。", phase=failure_phase)

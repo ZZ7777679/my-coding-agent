@@ -12,9 +12,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(path.join(root, 'apps/desktop/package.json'))
 const { compile } = require('json-schema-to-typescript')
 const schema = JSON.parse(
-  await readFile(path.join(root, 'schemas/protocol-v11.schema.json'), 'utf8')
+  await readFile(path.join(root, 'schemas/protocol-v12.schema.json'), 'utf8')
 )
-const generated = await compile(schema, 'ProtocolV11', {
+const generated = await compile(schema, 'ProtocolV12', {
   bannerComment: '/* Generated from Python DTOs. Do not edit by hand. */',
   unreachableDefinitions: true,
   additionalProperties: false

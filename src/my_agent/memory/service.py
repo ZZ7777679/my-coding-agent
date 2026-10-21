@@ -188,7 +188,10 @@ class MemoryService:
             + str(state.settings.contribute)
             + ". Save only reusable knowledge; "
             "when contribution is disabled, save only on explicit user request. "
-            "Memories are fallible. Use current tools/results to establish runtime capabilities, "
+            "Memories are fallible. Category=hypothesis is unverified; "
+            "experience applies only under "
+            "its recorded conditions, and preference describes a stated user choice. "
+            "Use current tools/results to establish runtime capabilities, "
             "not old capability claims. When current evidence or a user correction clearly "
             "contradicts an existing entry, update that same memory_id with save_memory "
             "(or set enabled=false if it should no longer be used). With contribution enabled, "
@@ -227,6 +230,7 @@ class MemoryService:
                     "source": entry.source,
                     "revision": entry.revision,
                     "scope": entry.scope,
+                    "category": entry.category,
                     "updated_at": entry.updated_at,
                     "form": "full" if full else "reference",
                     "more": not full,
@@ -241,7 +245,7 @@ class MemoryService:
                         kind="memory",
                         title=entry.title,
                         form="full" if full else "reference",
-                        reason=reason,
+                        reason=f"{reason} · {entry.category} · {entry.scope}",
                         source_id=entry.memory_id,
                         revision=entry.revision,
                         text=text,

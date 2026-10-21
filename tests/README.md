@@ -1,5 +1,7 @@
 # 测试与回归
 
+M7 独立改进预算：`pytest tests/python/test_evolution_budget.py -q` 通过真实服务和离线模型检查调查／提案／指定资源生成的独立预算、接纳快照、持久化、旧记录兼容、有限／不限与取消。`test_go.py -k 'unlimited_model_budget or frame_limits or failure_cause'` 覆盖真实客户端的省略 token 参数、HTTP 超时关闭、300K 大帧／取消及原数值限制；`test_evolution.py -k review_evidence` 包含不限选材的 Trace 分页。桌面构建后 `npm.cmd --prefix apps/desktop run test:desktop -- evolution.spec.ts -g "independent budgets"` 检查首屏入口、八项有限／不限切换、普通配置不变、重启和恢复单项限额；截图／隔离数据在 `.artifacts/tests/desktop-m7-budget-*/`。预算正反字段沿用共享契约 `-k m7-budget`／`--test-name-pattern=m7-budget`。不访问网络、个人历史或真实模型，按相关改动选择执行。
+
 M6 独立审查修复：`test_checkpoints.py -k unignored` 覆盖取消忽略的既有文件、目录／Windows 大小写和旧快照；`test_workstyles.py` 覆盖套用后的负责人／报告／删除标记、其它工作保留、幂等与重启。`test_sandbox_usability.py -k 'ancestor_denial or cleanup_without'` 检查祖先拒绝与无 ACE 清理；按既有隔离运行时配置执行 `test_sandbox_stability.py -k 'system_volume_project or required_grant_denial'` 实测系统卷项目的 Python／PowerShell／终端与清理。系统卷兼容样本仅在用户临时目录创建唯一临时项目，结束删除并核对祖先 DACL 恢复；数据根和报告仍归 `.artifacts/tests/`，不提权、不操作个人项目。桌面 `m6-workstyles-rollback.spec.ts` 同时覆盖真实 Run 的 Trace 与 `RUN_BUSY` 接纳失败卡片不可打开无关轨迹。
 
 沙箱可用性修复：`pytest tests/python/test_sandbox_usability.py -q` 验证变量筛选／显式名称保存、发现兼容性、未派发 MCP 反馈后接续及坏租约不跳过其他记录；无外网、真实模型或系统授权。沿下述隔离运行时配置，`test_sandbox_stability.py::test_sandbox_local_git_and_python_inspection` 实测普通权限 Git 初始化／暂存／提交／差异／历史与 Python 探测、退出清理。构建桌面后 `npm.cmd --prefix apps/desktop run test:desktop -- sandbox-settings.spec.ts` 验证名称保存／重新加载及本地 MCP 兼容提示，不启动项目进程。`m6-environment-*` 共用契约样本检查只传名称的协议；既有 `bind-environment*` 保持兼容。
@@ -285,3 +287,16 @@ M2 收尾复用该文件中的三条定向检查：`::test_bidirectional_deliver
 `python -X utf8 -m tests.models.m5_space_demo` 使用项目 `.venv` 准备隔离的两成员计数器演示；脚本本身不调用模型。输出的 `demo.json` 记录数据根，桌面以该根启动后可实际发送合作请求。演示过程与真实请求结果另记于 M5 进度。
 
 用户明确选择官方直连时，关闭占用此演示数据根的桌面后，用 `.venv/Scripts/python.exe -X utf8 -m tests.models.m5_space_direct --root <演示根绝对路径> --enable-real-models` 运行。只读取 `DEEPSEEK_API_KEY`，请求官方 `deepseek-flash`，复用真实文件、群聊与协作服务；默认最多 24 请求 / 600 秒，可通过参数调整。报告 `direct-report.json` 标注实际 provider 与 API 模型名；不修改产品默认 Go 配置。结束后桌面可查看持久历史，桌面新请求仍沿用 Go，并非增加了完整 provider 设置。已有报告不会自动重放。
+
+## M7 自进化定向验证
+
+- 选择性筛选与现场入口：`pytest tests/python/test_evolution_screening.py -q` 覆盖长正文检索、重复归组、准确阅读计量、任务／项目完整分页、冻结接续及模型工具与桌面同一作业。桌面 `evolution.spec.ts -g 'contextual entry'` 检查三种现场范围、启动与原地进度、跳转同一作业、线索／实际阅读及清除继承范围。离线模型，产物 `.artifacts/tests/desktop-m7-contextual-*/`。指定资源与普通调查现在共用筛选／按需读取，预览不再默认铺入 Trace 全文。
+
+- `.venv/Scripts/python.exe -m pytest tests/python/test_evolution_reliability.py tests/python/test_evolution_investigation_evidence.py tests/python/test_evolution_investigation.py -q`：在途采用取消后收回、自动记忆多 Trace 来源失效、候选正文版本比较；索引搜索／后段正文分页／冻结范围与恢复；跨项目调查→多候选→分别采用、外部修改后保留读取基线、活动作业去重与反馈关联。真实服务与存储，模型离线，不读个人历史。
+- 桌面 `evolution.spec.ts -g 'investigates cross-project'`：首屏输入／“开始改进”可见且无需保存反馈、同入口查看进度；业务项目证据与 Harness 写入项目分离、两发现两候选、按需材料／最终返回、导航和候选切换草稿、采用与恢复、自动作业关联；调查结束工具的缺项反馈由离线模型修正后继续，不把参数错误当作业务故障。原资源场景另覆盖实验后继续编辑及旧版本效果标记。
+- `tests/models/m7_investigation_live.py --enable-real-models`：显式联网的调查／多候选闭环，使用人工 Trace、独立业务与源码目录、生产 Go 客户端；不发送个人历史。可用脚本帮助调整本次实验总预算、选模型或接续先前隔离报告，预算不是产品限制。报告及公开模型结果保存在 `.artifacts/tests/m7-investigation-live-*/`，原失败与补测分别保留。
+
+- `.venv/Scripts/python.exe -m pytest tests/python/test_evolution.py -q`：真实服务、隔离数据，候选／规范／Skill／偏好采用与恢复、外部修改保留、诊断不保存原始秘密、Plan 草稿、工具说明装配、即时取消、代码原版／候选运行和独立恢复。选材专项可用 `-k review_evidence`：覆盖单轮超过 40 条事件时的运行分页／全历史搜索、整个会话／整轮／单事件、截止范围、合并 Trace／去重／预算、实际模型输入与持久快照一致。包括 Windows PowerShell / Python 进程，模型使用离线替身。
+- `.venv/Scripts/python.exe -m pytest tests/python/test_diagnostics_contracts.py -q -k m7` 与 `node --test --test-name-pattern=m7 tests/contracts/schema.test.mjs`：共用正反 DTO 样本，检查 v12 新入口。
+- 构建后 `npm.cmd --prefix apps/desktop run test:desktop -- evolution.spec.ts`：实际 Electron / RPC，规范及偏好编辑、采用／恢复、反馈、实验详情关闭与重启；选材场景可用 `-g 'selects a named run'`：离线模型生成 22 轮真实运行，翻页保留旧轮、多选、切换整个会话／单事件、预览、跳转 Trace、生成并回查实际材料。证据浮层检查完整位于视窗、材料→Trace→材料、关闭后页面滚动与焦点保持，以及窄窗口直接查看和 Esc 关闭。实际启动本机 Python 检查，产物 `.artifacts/tests/desktop-m7-*/`、`.artifacts/tests/desktop-m7-evidence-*/`；不调用外部模型。
+- `.venv/Scripts/python.exe tests/models/m7_evolution_live.py --enable-real-models`：明确启用网络后使用生产 OpenCode Go 客户端。GLM 和 DeepSeek 各生成规范／代码候选并接续一次，通常共 6 请求；隔离试验上限 8 请求／600 秒、单请求 90 秒，不写产品预算。真实代码检查及采用／恢复，报告 `.artifacts/tests/m7-live-*/report.json`。只发送隔离样本，不读取个人会话；不是每次开发必跑项。

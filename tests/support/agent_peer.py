@@ -40,6 +40,8 @@ class DesktopModel:
         Read fixtures, then stream or wait for cancel.
         """
         messages = kwargs["messages"]
+        if messages[0]["content"].startswith("Investigate selected evidence"):
+            return evolution_turn(messages)
         if messages[0]["content"].startswith("Write one concise continuation brief"):
             return response(
                 text="Earlier task: use Python standard library; keep the page offline."
@@ -135,6 +137,114 @@ class DesktopModel:
             },
             usage=TokenUsage(input_tokens=25, output_tokens=16),
         )
+
+
+def evolution_turn(messages):
+    """用真实调查工具读取跨项目证据和两个不同目标；不调用真实模型。
+
+    Read cross-project evidence and two targets through real investigation tools without a model.
+    """
+    payload = json.loads(next(m["content"] for m in messages if m["role"] == "user"))
+    results = [json.loads(m["content"]) for m in messages if m["role"] == "tool"]
+    index = next((r for r in results if "search_scope" in r), None)
+    if index is None:
+        return response("index_review_evidence", {"query": "read_file"})
+    body = next((r for r in results if "text" in r and "session_id" in r), None)
+    if body is None and index["items"]:
+        row = index["items"][0]
+        return response(
+            "read_review_evidence",
+            {
+                "session_id": row["session_id"],
+                "seq": row["seq"],
+                "limit": 32000,
+            },
+        )
+    if payload.get("directed_target"):
+        return response(
+            "submit_review",
+            {
+                "summary": "Selected representative reviewed.",
+                "proposals": [
+                    {
+                        "finding_id": "directed",
+                        "title": "Focused project guidance",
+                        "rationale": "Use selected evidence.",
+                        "target": payload["directed_target"],
+                        "after": "Read relevant files and explain results briefly.\n",
+                    }
+                ],
+            },
+        )
+    guidance = {"kind": "tool_guidance", "identity": "read_file", "scope": "project"}
+    code = {"kind": "code", "identity": "answer.py", "scope": "project"}
+    for target in (guidance, code):
+        if not any(r.get("target") == target for r in results):
+            return response("read_review_resource", {"target": target})
+    sources = (
+        [
+            {
+                "session_id": body["session_id"],
+                "run_id": body["run_id"],
+                "seq": body["seq"],
+                "scope": "event",
+                "through_seq": body["through_seq"],
+            }
+        ]
+        if body
+        else []
+    )
+    findings = [
+        {
+            "finding_id": "reading-guidance",
+            "title": "Clarify reading usage",
+            "explanation": "The selected read trace supports a focused tool usage clarification.",
+            "category": "tool_usage",
+            "targets": [guidance],
+            "sources": sources,
+            "unknowns": [],
+        },
+        {
+            "finding_id": "answer-implementation",
+            "title": "Correct answer implementation",
+            "explanation": "The target fixture implementation is a separate code proposal.",
+            "category": "implementation",
+            "targets": [code],
+            "sources": sources,
+            "unknowns": ["This fixture does not establish improvement on real tasks."],
+        },
+    ]
+    selected = payload.get("findings_to_address") or findings
+    after = {
+        "reading-guidance": "Read relevant files before proposing changes.\n",
+        "answer-implementation": "value = 2\n",
+    }
+    proposals = (
+        [
+            {
+                "finding_id": finding["finding_id"],
+                "title": finding["title"],
+                "rationale": finding["explanation"],
+                "target": finding["targets"][0],
+                "after": after[finding["finding_id"]],
+            }
+            for finding in selected
+        ]
+        if payload["mode"] == "propose"
+        else []
+    )
+    report = {
+        "summary": "Selected evidence reviewed; usage and implementation are separate findings.",
+        "findings": selected,
+        "proposals": proposals,
+    }
+    # 故意省略必填字段一次，真实工具反馈后修正，不让格式问题中止调查。
+    # Omit one required field once, then repair actual tool feedback without failing the review.
+    if not any("INVALID_TOOL_ARGUMENTS" in json.dumps(result) for result in results):
+        return response(
+            "submit_review", {key: value for key, value in report.items() if key != "summary"}
+        )
+    return response("submit_review", report)
 
 
 async def file_turn(prompt, **kwargs):

@@ -5,10 +5,28 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class RunLimits(BaseModel):
-    """受信设置中的可调整限额，不代表模型能力。 Adjustable limits, not model capabilities."""
+class ModelLimits(BaseModel):
+    """模型循环的预算；None 关闭对应宿主上限，不改变服务商容量。
+
+    Model-loop budgets; None disables a host cap, not provider capacity.
+    """
 
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    max_requests: Annotated[int, Field(ge=1)] | None
+    max_tools: Annotated[int, Field(ge=1)] | None
+    max_seconds: Annotated[int, Field(ge=1)] | None
+    request_timeout_seconds: Annotated[int, Field(ge=1)] | None
+    max_output_tokens: Annotated[int, Field(ge=1)] | None
+    max_context_bytes: Annotated[int, Field(ge=4096)] | None
+    max_response_bytes: Annotated[int, Field(ge=1024)] | None
+
+
+class RunLimits(ModelLimits):
+    """普通任务保持既有数值配置与文件读取规则。
+
+    Ordinary tasks retain their numeric settings and file-reading rules.
+    """
+
     max_requests: Annotated[int, Field(ge=1)]
     max_tools: Annotated[int, Field(ge=1)]
     max_seconds: Annotated[int, Field(ge=1)]

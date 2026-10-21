@@ -4,6 +4,7 @@ RPC composition separating control from long runs.
 """
 
 import asyncio
+import logging
 from contextlib import ExitStack
 
 from pydantic import BaseModel
@@ -32,6 +33,7 @@ from my_agent.delegation.types import (
 )
 from my_agent.diagnostics import diagnose
 from my_agent.errors import AgentError
+from my_agent.evolution.diagnostics import DiagnosticHandler
 from my_agent.execution.environments import EnvironmentStore
 from my_agent.execution.sandbox import SandboxLease
 from my_agent.execution.service import ProgramService
@@ -96,6 +98,7 @@ from my_agent.rpc.dto import (
 )
 from my_agent.rpc.m5_routes import M5_METHODS, dispatch_m5
 from my_agent.rpc.m6_routes import M6_METHODS, dispatch_m6
+from my_agent.rpc.m7_routes import M7_METHODS, dispatch_m7
 from my_agent.runtime.tools import ToolContext
 from my_agent.sessions.trace import TraceDetailParams, TraceParams, trace_detail, trace_page
 from my_agent.skills.online import OnlineSkills
@@ -187,6 +190,7 @@ class RpcApplication:
         self.changes = ChangeStore(self.storage)
         self.initialized = False
         self.stopping = False
+        self.diagnostic_handler: DiagnosticHandler | None = None
         self.subscriptions: set[str] = set()
         self.diagnostic_lock = asyncio.Lock()
         self.connection_probe_lock = asyncio.Lock()
@@ -224,6 +228,13 @@ class RpcApplication:
 
         Validate and dispatch short control operations.
         """
+        if self.initialized and self.diagnostic_handler is None and self.sessions.diagnostics:
+            self.diagnostic_handler = DiagnosticHandler(self.sessions.diagnostics)
+            logging.getLogger("my_agent").addHandler(self.diagnostic_handler)
+        if method in M7_METHODS:
+            if not self.initialized:
+                raise AgentError("NOT_INITIALIZED", "请先初始化应用。")
+            return await dispatch_m7(self, method, params)
         if method in M6_METHODS:
             if not self.initialized:
                 raise AgentError("NOT_INITIALIZED", "请先初始化应用。")
@@ -266,8 +277,8 @@ class RpcApplication:
                     app=AppInfo(
                         name=DEFAULTS["app_name"],
                         app_version=__version__,
-                        protocol_version=11,
-                        stage="M6",
+                        protocol_version=12,
+                        stage="M7",
                     ),
                     storage=self.storage.info(),
                     config=config.public(self.credential.info),
@@ -939,6 +950,9 @@ class RpcApplication:
                     )
         finally:
             try:
+                if self.diagnostic_handler:
+                    logging.getLogger("my_agent").removeHandler(self.diagnostic_handler)
+                    await asyncio.to_thread(self.diagnostic_handler.close)
                 await self.worker.call(self.stack.close)
             finally:
                 self.worker.close()

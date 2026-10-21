@@ -1,4 +1,4 @@
-"""OpenCode Go 的有界 Chat Completions 流。 Bounded OpenCode Go chat streaming."""
+"""OpenCode Go 的可配置预算流。 OpenCode Go streaming with configurable budgets."""
 
 import asyncio
 import json
@@ -23,7 +23,7 @@ from my_agent.models.types import (
     TokenUsage,
     ToolCall,
 )
-from my_agent.runtime.settings import RunLimits
+from my_agent.runtime.settings import ModelLimits
 
 JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
 
@@ -47,7 +47,10 @@ class CallBuffer:
 
 @dataclass
 class TurnBuffer:
-    """有界回合缓存，保留实际续接字段。 Bounded turn buffer retaining continuation fields."""
+    """按可选预算缓存回合并保留实际续接字段。
+
+    Buffer turns with optional budgets and continuation fields.
+    """
 
     text: str = ""
     native_extra: JsonObject = field(default_factory=dict)
@@ -58,7 +61,11 @@ class TurnBuffer:
     )
 
     async def accept(
-        self, value: JsonObject, on_text: TextSink, limit: int, on_reasoning: TextSink | None = None
+        self,
+        value: JsonObject,
+        on_text: TextSink,
+        limit: int | None,
+        on_reasoning: TextSink | None = None,
     ) -> Literal["text", "reasoning", "tool_arguments"] | None:
         """先校验累计边界，再发布文本；工具只缓冲。
 
@@ -150,15 +157,16 @@ class TurnBuffer:
             # 先读完尾部 usage；重复的相同标记不代表回答不完整。
             # Consume trailing usage first; identical repeated stop markers are harmless.
             self.finish_reason = reason
-        payload_size = len(self.text.encode("utf-8")) + len(
-            json.dumps(self.native_extra, ensure_ascii=False).encode("utf-8")
-        )
-        payload_size += sum(
-            len((call.identifier + call.name + call.arguments).encode("utf-8"))
-            for call in self.calls.values()
-        )
-        if payload_size > limit:
-            raise AgentError("MODEL_OUTPUT_LIMIT", "模型累计内容超过输出容量。")
+        if limit is not None:
+            payload_size = len(self.text.encode("utf-8")) + len(
+                json.dumps(self.native_extra, ensure_ascii=False).encode("utf-8")
+            )
+            payload_size += sum(
+                len((call.identifier + call.name + call.arguments).encode("utf-8"))
+                for call in self.calls.values()
+            )
+            if payload_size > limit:
+                raise AgentError("MODEL_OUTPUT_LIMIT", "模型累计内容超过输出容量。")
         if incoming:
             return "tool_arguments"
         if content:
@@ -167,12 +175,12 @@ class TurnBuffer:
             return "reasoning"
         return None
 
-    def failure(self, code: str, message: str) -> ModelResponseError:
+    def failure(self, code: str, message: str, *, phase: str | None = None) -> ModelResponseError:
         """仅携带原因和统计，正文 / 思考不进入异常。
 
         Carry reasons and statistics, never answer or reasoning text, in failures.
         """
-        return ModelResponseError(code, message, self.usage, self.finish_reason)
+        return ModelResponseError(code, message, self.usage, self.finish_reason, phase=phase)
 
     def finish(self) -> ModelTurn:
         """完整结束标记与参数校验通过后才返回回合。 Return only a fully validated finished turn."""
@@ -288,7 +296,7 @@ class GoClient:
         session_id: str,
         messages: list[JsonObject],
         tools: list[JsonObject],
-        limits: RunLimits,
+        limits: ModelLimits,
         on_text: TextSink,
         on_progress: ProgressSink | None = None,
         on_reasoning: TextSink | None = None,
@@ -304,8 +312,11 @@ class GoClient:
             "messages": messages,
             "stream": True,
             "stream_options": {"include_usage": True},
-            "max_tokens": limits.max_output_tokens,
         }
+        # 不限输出时不发送人为上限；服务商仍决定实际支持的生成长度。
+        # Omit the host output cap when unlimited; the provider determines supported length.
+        if limits.max_output_tokens is not None:
+            body["max_tokens"] = limits.max_output_tokens
         # Go 的 DeepSeek 路由会挂起空 tools 数组；无工具时省略可选字段。
         # Go's DeepSeek route stalls on an empty tools array; omit the optional field when unused.
         if tools:
@@ -359,14 +370,16 @@ class GoClient:
         except (TimeoutError, httpx.HTTPError) as exc:
             failure = request_failure(exc, timing, limits.request_timeout_seconds)
             code = failure.code
-            raise buffered_turn.failure(failure.code, failure.message) from exc
+            raise buffered_turn.failure(failure.code, failure.message, phase=failure.phase) from exc
         except (ValidationError, ValueError, UnicodeError) as exc:
             code = "MODEL_PROTOCOL"
-            raise buffered_turn.failure(code, "模型返回了无法可靠解析的流。") from exc
+            raise buffered_turn.failure(
+                code, "模型返回了无法可靠解析的流。", phase="response_stream"
+            ) from exc
         except AgentError as exc:
             code = exc.code
             if not isinstance(exc, ModelResponseError) and code.startswith("MODEL_"):
-                raise buffered_turn.failure(code, exc.message) from exc
+                raise buffered_turn.failure(code, exc.message, phase=exc.phase) from exc
             raise
         except asyncio.CancelledError:
             code = "CANCELLED"
@@ -423,15 +436,15 @@ class GoClient:
     async def _stream(
         self,
         response: httpx.Response,
-        limits: RunLimits,
+        limits: ModelLimits,
         on_text: TextSink,
         timing: RequestTiming,
         on_reasoning: TextSink | None = None,
         turn: TurnBuffer | None = None,
     ) -> ModelTurn:
-        """按字节有界组 SSE 帧，要求 DONE 与完整回合。
+        """按可选字节预算组 SSE 帧，要求 DONE 与完整回合。
 
-        Frame bounded SSE bytes and require completion.
+        Frame SSE bytes under an optional budget and require completion.
         """
         buffer = bytearray()
         data_lines: list[str] = []
@@ -447,7 +460,10 @@ class GoClient:
             while offset < len(chunk):
                 newline = chunk.find(b"\n", offset)
                 end = len(chunk) if newline < 0 else newline + 1
-                if len(buffer) + end - offset > limits.max_response_bytes:
+                if (
+                    limits.max_response_bytes is not None
+                    and len(buffer) + end - offset > limits.max_response_bytes
+                ):
                     raise AgentError("MODEL_OUTPUT_LIMIT", "模型单帧超过容量限制。")
                 buffer.extend(chunk[offset:end])
                 offset = end
@@ -458,7 +474,8 @@ class GoClient:
                 if line.startswith("data:"):
                     data_lines.append(line[5:].lstrip(" "))
                     if (
-                        sum(len(part.encode("utf-8")) for part in data_lines)
+                        limits.max_response_bytes is not None
+                        and sum(len(part.encode("utf-8")) for part in data_lines)
                         > limits.max_response_bytes
                     ):
                         raise AgentError("MODEL_OUTPUT_LIMIT", "模型单事件超过容量限制。")
@@ -489,7 +506,10 @@ class GoClient:
                 tail_size = 0
                 async for chunk in chunks:
                     tail_size += len(chunk)
-                    if tail_size > limits.max_response_bytes:
+                    if (
+                        limits.max_response_bytes is not None
+                        and tail_size > limits.max_response_bytes
+                    ):
                         break
                 else:
                     timing.progress = timing.progress.model_copy(update={"response_complete": True})

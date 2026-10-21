@@ -12,7 +12,15 @@ class AgentError(Exception):
     Carry a stable code, public message and remediation for an expected failure.
     """
 
-    def __init__(self, code: str, message: str, remediation: str = "") -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        remediation: str = "",
+        *,
+        cause_code: str | None = None,
+        phase: str | None = None,
+    ) -> None:
         """保存经过调用方筛选的公开错误字段。
 
         Store public error fields selected by the caller.
@@ -22,6 +30,8 @@ class AgentError(Exception):
         self.code = code
         self.message = message
         self.remediation = remediation
+        self.cause_code = cause_code
+        self.phase = phase
 
 
 def http_error_code(status: int, error_kind: str | None = None) -> str:

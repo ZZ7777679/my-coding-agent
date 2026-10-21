@@ -8,7 +8,7 @@ from typing import Annotated, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from my_agent.runtime.settings import RunLimits
+from my_agent.runtime.settings import ModelLimits
 
 ModelId = Literal["glm-5.3-flash", "deepseek-v4.1-flash"]
 type JsonObject = dict[str, JsonValue]
@@ -99,7 +99,7 @@ class ModelClient(Protocol):
         session_id: str,
         messages: list[JsonObject],
         tools: list[JsonObject],
-        limits: RunLimits,
+        limits: ModelLimits,
         on_text: TextSink,
         on_progress: ProgressSink | None = None,
         on_reasoning: TextSink | None = None,

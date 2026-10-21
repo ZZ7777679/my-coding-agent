@@ -28,7 +28,7 @@ from my_agent.runtime.context import (
 )
 from my_agent.runtime.events import RunSink
 from my_agent.runtime.messages import tool_result_message
-from my_agent.runtime.settings import RunLimits
+from my_agent.runtime.settings import ModelLimits
 from my_agent.runtime.tools import ToolExecutor
 from my_agent.sessions.types import (
     AssistantCommitted,
@@ -47,7 +47,7 @@ async def run_loop(
     model_id: ModelId,
     session_id: str,
     messages: list[JsonObject],
-    limits: RunLimits,
+    limits: ModelLimits,
     stop: threading.Event,
     system_prompt: str,
     context_provider: Callable[[], Awaitable[SharedContext | None]] | None = None,
@@ -75,7 +75,7 @@ async def run_loop(
             raise asyncio.CancelledError
         if yield_requested is not None and yield_requested():
             return "yielded"
-        if requests >= limits.max_requests:
+        if limits.max_requests is not None and requests >= limits.max_requests:
             raise AgentError("BUDGET_REQUESTS", "已达到模型请求预算，可调整预算后继续。")
         shared = await context_provider() if context_provider else None
         context[0] = {
@@ -115,7 +115,11 @@ async def run_loop(
         context_bytes = len(json.dumps([context, definitions], ensure_ascii=False).encode("utf-8"))
         # CLI 和桌面共用 token 上下文服务；仅未注入窗口服务的底层调用沿用字节预算。
         # CLI and desktop share token policy; only calls without a window provider use byte limits.
-        if window_provider is None and context_bytes > limits.max_context_bytes:
+        if (
+            window_provider is None
+            and limits.max_context_bytes is not None
+            and context_bytes > limits.max_context_bytes
+        ):
             raise AgentError("BUDGET_CONTEXT", "请求上下文超过字节预算，可在设置中调整后继续。")
         model.check_available()
         message_id = str(uuid4())
@@ -192,7 +196,7 @@ async def run_loop(
         for index, call in enumerate(turn.tool_calls):
             if stop.is_set():
                 raise asyncio.CancelledError
-            if calls >= limits.max_tools:
+            if limits.max_tools is not None and calls >= limits.max_tools:
                 raise AgentError("BUDGET_TOOLS", "已达到工具预算，可调整预算后继续。")
             await sink.commit(ToolStarted(call=call))
             if stop.is_set():
@@ -294,7 +298,12 @@ def tool_failure(call: ToolCall, result: ToolResult) -> AgentError:
     message = f"工具 {call.name} 失败{reason}"
     if isinstance(detail, str) and detail:
         message += f"：{detail}"
-    return AgentError("TOOL_FAILED", message + " 运行已停止，可在处理原因后接续。")
+    return AgentError(
+        "TOOL_FAILED",
+        message + " 运行已停止，可在处理原因后接续。",
+        cause_code=code if isinstance(code, str) else None,
+        phase="tool",
+    )
 
 
 async def skip_calls(sink: RunSink, calls: list[ToolCall], reason: str) -> None:

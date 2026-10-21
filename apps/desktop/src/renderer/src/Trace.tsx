@@ -1,5 +1,6 @@
 /** 执行事实的按需视图，不参与运行控制。 On-demand facts, independent of execution control. */
 import { useEffect, useRef, useState } from 'react'
+import { EvolutionFeedbackButton } from './EvolutionFeedback'
 import type {
   ChatEntry,
   TraceItem,
@@ -227,6 +228,10 @@ function TraceRow({
           <small>
             {item.at} · 请求 {item.request_id ?? '无'} · #{item.seq}
           </small>
+          <EvolutionFeedbackButton
+            projectId={projectId}
+            source={{ session_id: sessionId, run_id: item.run_id, seq: item.seq }}
+          />
           {item.kind === 'request.started' && (
             <p className="muted">
               Token 输入 {item.usage?.input_tokens ?? '未知'} / 输出{' '}
@@ -298,13 +303,16 @@ function TraceRow({
   )
 }
 
-/** 右侧轨迹分页与筛选；关闭只改变显示。 Trace paging and filtering; closing affects display only. */
+/** 轨迹分页与筛选；嵌入证据浮层时由宿主提供标题与关闭入口。
+ * Page and filter Trace; an embedding evidence panel can supply its own header and close action.
+ */
 export function Trace({
   sessionId,
   projectId,
   revision,
   focusSeq,
   focusRun,
+  showHeader = true,
   onClose
 }: {
   sessionId: string
@@ -312,6 +320,7 @@ export function Trace({
   revision: number
   focusSeq: number | null
   focusRun?: string | null
+  showHeader?: boolean
   onClose: () => void
 }) {
   const [items, setItems] = useState<TraceItem[]>([])
@@ -470,10 +479,12 @@ export function Trace({
   }
   return (
     <aside className="trace-panel" aria-label="执行轨迹">
-      <header>
-        <strong>Trace · 执行轨迹</strong>
-        <button onClick={onClose}>关闭 Trace</button>
-      </header>
+      {showHeader && (
+        <header>
+          <strong>Trace · 执行轨迹</strong>
+          <button onClick={onClose}>关闭 Trace</button>
+        </header>
+      )}
       {focusRun && <p className="muted">当前运行：{focusRun}</p>}
       <div className="trace-filters">
         <input

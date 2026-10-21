@@ -10,6 +10,7 @@ from pydantic import SecretStr
 from my_agent.config import DEFAULTS
 from my_agent.credentials import ResolvedCredential
 from my_agent.errors import AgentError
+from my_agent.evolution.types import EvolutionBudget
 from my_agent.models.failures import ModelResponseError
 from my_agent.models.go import GoClient
 from my_agent.models.http import ModelHttpPool
@@ -42,6 +43,86 @@ def sse(delta, finish=None, usage=None):
     if usage:
         packet["usage"] = usage
     return ("data: " + json.dumps(packet, ensure_ascii=False) + "\n\n").encode("utf-8")
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+def test_unlimited_model_budget_omits_output_cap_and_preserves_cancel(cancel):
+    """不限不发送 token 上限、不启用 HTTP 超时，长帧可完成且可取消。
+
+    Unlimited requests omit token/time caps, accept large frames and remain cancellable.
+    """
+
+    async def scenario():
+        delivered = asyncio.Event()
+        content = "x" * 300000
+
+        class LargeStream(ChunkStream):
+            """大于原容量的完整帧，以及可手动取消的等待。
+
+            A frame beyond former limits followed by an optionally cancellable wait.
+            """
+
+            async def __aiter__(self):
+                """由客户端实际流解析，不走预算替身。 Exercise actual client stream parsing."""
+                yield sse({"content": content})
+                if cancel:
+                    await asyncio.Event().wait()
+                yield sse({}, "stop") + b"data: [DONE]\n\n"
+
+        stream = LargeStream(b"")
+
+        def handler(request):
+            """断言实际请求体与 HTTPX 四项超时。
+
+            Inspect request JSON and all four HTTPX timeouts.
+            """
+            assert "max_tokens" not in json.loads(request.content)
+            assert all(value is None for value in request.extensions["timeout"].values())
+            return httpx.Response(200, stream=stream)
+
+        async def text(delta):
+            """确认真实大帧已到达。 Confirm delivery of the actual large frame."""
+            assert delta == content
+            delivered.set()
+
+        pool = ModelHttpPool(
+            reuse_enabled=True,
+            keepalive_expiry=None,
+            drain_timeout_seconds=0.1,
+            transport=httpx.MockTransport(handler),
+        )
+        client = GoClient(
+            ResolvedCredential(
+                SecretStr("sentinel"),
+                CredentialInfo(env_var="OPENCODE_API_KEY", source="process", present=True),
+            ),
+            "https://opencode.ai/inference/go/openai/v1",
+            pool,
+        )
+        budget = EvolutionBudget.model_validate({key: None for key in EvolutionBudget.model_fields})
+        try:
+            task = asyncio.create_task(
+                client.complete(
+                    model_id="glm-5.3-flash",
+                    session_id="test",
+                    messages=[],
+                    tools=[],
+                    limits=budget,
+                    on_text=text,
+                )
+            )
+            await asyncio.wait_for(delivered.wait(), 5)
+            if cancel:
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+            else:
+                assert (await task).text == content
+            assert stream.closed
+        finally:
+            await pool.close()
+
+    asyncio.run(scenario())
 
 
 def test_reasoning_stream_does_not_publish_duplicate_phase_per_delta():
@@ -619,6 +700,15 @@ def test_failure_cause_is_separate_from_last_reasoning_phase(failure, expected):
                     on_progress=observe,
                 )
             assert error.value.code == expected and calls == 1
+            assert (
+                error.value.phase
+                == {
+                    "connect": "connecting",
+                    "read": "response_stream",
+                    "deadline": "request_deadline",
+                    "disconnected": "response_stream",
+                }[failure]
+            )
             assert "sentinel" not in error.value.message
             final = progress[-1]
             if failure == "connect":

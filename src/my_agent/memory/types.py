@@ -34,6 +34,16 @@ class MemoryFields(ModelData):
     enabled: bool = True
 
 
+class MemoryTraceSource(ModelData):
+    """宿主实际读取的会话事实，不由模型填写。
+
+    A session fact actually read by the host, never authored by the model.
+    """
+
+    session_id: EntityId
+    seq: Annotated[int, Field(ge=1)]
+
+
 class MemoryEntry(MemoryFields):
     """带作用域和修订来源的独立记忆。
 
@@ -46,6 +56,7 @@ class MemoryEntry(MemoryFields):
     source: Literal["user", "agent", "maintenance"]
     session_id: EntityId | None
     source_seq: int | None
+    trace_sources: list[MemoryTraceSource] = Field(default_factory=list)
     created_at: str
     updated_at: str
 

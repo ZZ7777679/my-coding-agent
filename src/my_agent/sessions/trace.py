@@ -173,7 +173,9 @@ def _rows(log: SessionLog) -> list[tuple[TraceItem, list[Fact]]]:
             goal_id=goals.get(fact.run_id),
         )
         members = [fact]
-        if isinstance(data, ToolStarted):
+        if isinstance(data, RunAccepted):
+            item.title = "用户请求 · " + data.prompt[:160]
+        elif isinstance(data, ToolStarted):
             item.tool_call_id = data.call.tool_call_id
             item.tool_name = data.call.name
             target = next(
@@ -267,6 +269,14 @@ def _rows(log: SessionLog) -> list[tuple[TraceItem, list[Fact]]]:
             item.is_error = data.status in {"failed", "interrupted"}
         rows.append((item, members))
     return rows
+
+
+def trace_items(log: SessionLog) -> list[TraceItem]:
+    """投影一次公开事件目录，不读取正文或独立作业。
+
+    Project public event summaries once, excluding bodies and independent jobs.
+    """
+    return [item for item, _ in _rows(log)]
 
 
 def trace_page(log: SessionLog, params: TraceParams, directory: Path | None = None) -> TracePage:
@@ -371,6 +381,17 @@ def _links(facts: list[Fact]) -> list[TraceLink]:
                             kind="image", identity=identity, title=identity
                         )
     return list(links.values())
+
+
+def trace_search_records(log: SessionLog) -> list[tuple[TraceItem, str]]:
+    """一次投影公开正文用于本地检索；不包含 provider 续接对象。
+
+    Project public text once for local search, excluding provider continuation objects.
+    """
+    return [
+        (item, json.dumps([_public(f) for f in facts], ensure_ascii=False))
+        for item, facts in _rows(log)
+    ]
 
 
 def trace_detail(log: SessionLog, params: TraceDetailParams) -> TraceDetail:

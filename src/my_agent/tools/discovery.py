@@ -91,7 +91,7 @@ class CapabilityTools:
                         "Search available tools by name/description (space-separated keywords). "
                         "Capabilities include files, execution, terminals, Git, code intelligence, "
                         "web, browser/MCP, context/history, memory, tasks, collaboration "
-                        "and workers. "
+                        "workers, feedback and improvement proposals. "
                         "Empty query lists a paged catalog; query or exact names loads matching "
                         "schemas for the next request. Use unload to drop unused schemas. "
                         "execution_compatible describes the execution mode, not installation. "

@@ -44,6 +44,7 @@ from my_agent.delegation.types import (
     WorkerSessionParams,
 )
 from my_agent.errors import DataSource
+from my_agent.evolution.types import EVOLUTION_TYPES
 from my_agent.execution.types import (
     BindEnvironmentParams,
     ChooseEnvironmentPathParams,
@@ -299,8 +300,8 @@ class AppInfo(DTO):
 
     name: Text
     app_version: Text
-    protocol_version: Literal[11]
-    stage: Literal["M6"]
+    protocol_version: Literal[12]
+    stage: Literal["M7"]
 
 
 class StorageInfo(DTO):
@@ -380,7 +381,7 @@ class InitializeParams(DTO):
     """
 
     app_version: Text
-    protocol_version: Literal[11]
+    protocol_version: Literal[12]
     data_schema_version: Literal[1]
 
 
@@ -775,6 +776,7 @@ PUBLIC_TYPES: dict[str, type[BaseModel]] = {
     for model in (
         *M5_TYPES,
         *M6_TYPES,
+        *EVOLUTION_TYPES,
         SpaceParams,
         SaveSpaceParams,
         SaveSpaceLayoutParams,

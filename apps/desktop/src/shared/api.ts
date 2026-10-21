@@ -4,6 +4,7 @@
  */
 
 import type { M5DesktopAPI } from './m5-api'
+import type { M7DesktopAPI } from './m7-api'
 import type {
   BindSpaceMemberParams,
   SaveSpaceParams,
@@ -142,7 +143,7 @@ export type Result<T> = { ok: true; data: T } | { ok: false; error: OperationErr
  * renderer 唯一受信入口；不暴露文件系统、密钥或任意命令。
  * The renderer's trusted entry point, without filesystem, secret or arbitrary-command access.
  */
-export interface DesktopAPI extends M5DesktopAPI {
+export interface DesktopAPI extends M5DesktopAPI, M7DesktopAPI {
   /** 读取任务空间，旧任务返回未创建状态。 Read a task space, absent for legacy tasks. */
   getSpace(taskId: string): Promise<Result<SpaceResult>>
   /** 保存团队与图草稿，不开始执行。 Save a team and graph draft without execution. */

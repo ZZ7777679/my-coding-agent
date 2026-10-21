@@ -220,6 +220,9 @@ class RunFinished(ModelData):
     status: Literal["completed", "failed", "cancelled", "budget_exceeded", "interrupted"]
     code: str | None
     message: str | None
+    cause_code: str | None = None
+    failure_phase: str | None = None
+    diagnostic_id: SessionId | None = None
     model_progress: ModelProgress | None = None
     # 仅记录宿主单调时钟测得的活跃耗时，旧日志 / 崩溃未知时保留 None。
     # Record host-measured monotonic active time; old logs and crashes remain unknown.

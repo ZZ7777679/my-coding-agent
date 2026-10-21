@@ -19,6 +19,7 @@ from uuid import uuid4
 from my_agent.config import load_config
 from my_agent.delegation.types import DelegatedUsage
 from my_agent.errors import AgentError
+from my_agent.evolution.types import EvolutionSource
 from my_agent.goals.ledger import check_budget, usage
 from my_agent.goals.state import states
 from my_agent.goals.types import GoalInputQueued, GoalRunBinding
@@ -63,6 +64,8 @@ if TYPE_CHECKING:
     from my_agent.context.service import ContextService
     from my_agent.delegation.service import DelegationService
     from my_agent.documents.service import DocumentService
+    from my_agent.evolution.diagnostics import DiagnosticStore
+    from my_agent.evolution.service import EvolutionService
     from my_agent.goals.service import GoalService
     from my_agent.intelligence.service import IntelligenceService
     from my_agent.local_git.service import LocalGitService
@@ -202,6 +205,8 @@ class SessionService:
         self.intelligence: IntelligenceService | None = None
         self.terminals: TerminalService | None = None
         self.local_git: LocalGitService | None = None
+        self.diagnostics: DiagnosticStore | None = None
+        self.evolution: EvolutionService | None = None
         self.closing = False
 
     def active_for(self, session_id: str) -> ActiveRun | None:
@@ -1041,10 +1046,26 @@ class SessionService:
                 )
             )
         except AgentError as exc:
+            diagnostic_id = (
+                await self.worker.call(
+                    self.diagnostics.record,
+                    exc.code,
+                    exc.message,
+                    component="runtime",
+                    exception=exc,
+                    project_id=summarize(active.log).project_id,
+                    source=EvolutionSource(session_id=active.log.session_id, run_id=active.run_id),
+                )
+                if self.diagnostics and not exc.code.startswith("BUDGET_")
+                else None
+            )
             finished = RunFinished(
                 status="budget_exceeded" if exc.code.startswith("BUDGET_") else "failed",
                 code=exc.code,
                 message=exc.message,
+                cause_code=exc.cause_code,
+                failure_phase=exc.phase,
+                diagnostic_id=diagnostic_id,
                 failed_request_id=active.message_id
                 if isinstance(exc, ModelResponseError)
                 else None,
@@ -1055,13 +1076,24 @@ class SessionService:
         except Exception as exc:
             # 保留异常类别与运行关联，不记录可能含秘密的原始异常消息。
             # Retain exception class and run correlation without potentially secret messages.
-            logging.getLogger(__name__).error(
-                "RUN_INTERNAL_ERROR type=%s run=%s", type(exc).__name__, active.run_id
+            diagnostic_id = (
+                await self.worker.call(
+                    self.diagnostics.record,
+                    "RUN_INTERNAL_ERROR",
+                    "运行发生内部错误。",
+                    component="runtime",
+                    exception=exc,
+                    project_id=summarize(active.log).project_id,
+                    source=EvolutionSource(session_id=active.log.session_id, run_id=active.run_id),
+                )
+                if self.diagnostics
+                else None
             )
             finished = RunFinished(
                 status="failed",
                 code="RUN_INTERNAL_ERROR",
-                message="运行发生内部错误，请查看状态并新建会话。",
+                message="运行发生内部错误，已保留进度；可查看诊断，处理后继续。",
+                diagnostic_id=diagnostic_id,
             )
         finally:
             active.stop.set()
@@ -1135,6 +1167,8 @@ class SessionService:
         """
         try:
             self.closing = True
+            if self.evolution is not None:
+                await self.evolution.close()
             if self.delegations is not None:
                 await self.delegations.close()
             if self.memory is not None:

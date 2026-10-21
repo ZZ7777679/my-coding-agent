@@ -1,5 +1,5 @@
 /** 项目对话：模式、快照、流式预览与工具证据。 Project chat with modes, snapshots and tool evidence. */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ContextMemory, type KnowledgeUi } from './ContextMemory'
 import { Markdown } from './Markdown'
 import {
@@ -34,6 +34,7 @@ import { Trace, toolCaption } from './Trace'
 import type { WorkspaceSelection } from './TaskNavigation'
 
 type Props = {
+  review?: ReactNode
   project: ProjectSummary | null
   selected: string | null
   connected: boolean
@@ -138,6 +139,7 @@ function HistoryEntry({
 
 /** 管理会话归属、快照交接与有界事件缓冲。 Manage session ownership and bounded snapshot handoff. */
 export function Chat({
+  review,
   project,
   selected,
   connected,
@@ -564,6 +566,7 @@ export function Chat({
       }
     >
       <section className="chat-panel" aria-label="代码对话">
+        {review}
         {error && (
           <div className="notice" role="alert">
             {error}

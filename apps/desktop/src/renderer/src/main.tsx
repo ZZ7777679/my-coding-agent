@@ -25,6 +25,9 @@ import { ProgramCards } from './ProgramCards'
 import { Resources } from './Resources'
 import { Workflows } from './Workflows'
 import { WorkStyles } from './WorkStyles'
+import { Evolution } from './Evolution'
+import { EvolutionQuick, type EvolutionEntry } from './EvolutionQuick'
+import type { EvolutionDraftCache } from './EvolutionDrafts'
 import './style.css'
 
 /**
@@ -58,6 +61,13 @@ function FolderIcon({ size = 22 }: { size?: number }) {
  * Display project and settings state, serialize actions and discard stale async responses.
  */
 function App() {
+  const evolutionDraftCache = useRef<EvolutionDraftCache>(new Map())
+  const [evolutionEntry, setEvolutionEntry] = useState<EvolutionEntry | null>(null)
+  /** 将现场范围或现有作业带到同一改进页。 Carry a contextual scope or job into the shared page. */
+  function openEvolution(entry: EvolutionEntry) {
+    setEvolutionEntry(entry)
+    setView('evolution')
+  }
   const knowledgeCache = useRef(new Map<string, KnowledgeUi>())
   const materialCache = useRef(new Map<string, QuestionMaterial[]>())
   const [info, setInfo] = useState<InitializeResult | null>(null)
@@ -65,7 +75,15 @@ function App() {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [view, setView] = useState<
-    'projects' | 'settings' | 'chat' | 'task' | 'skills' | 'mcp' | 'code' | 'workflows'
+    | 'projects'
+    | 'settings'
+    | 'chat'
+    | 'task'
+    | 'skills'
+    | 'mcp'
+    | 'code'
+    | 'workflows'
+    | 'evolution'
   >('projects')
   const [selection, setSelection] = useState<WorkspaceSelection | null>(null)
   const [treeRevision, setTreeRevision] = useState(0)
@@ -303,6 +321,16 @@ function App() {
           <span aria-hidden="true">⇢</span>
           <span>工作流管理</span>
         </button>
+        <button
+          className={'nav-item ' + (view === 'evolution' ? 'nav-current' : '')}
+          onClick={() => {
+            setEvolutionEntry(null)
+            setView('evolution')
+          }}
+        >
+          <span aria-hidden="true">↗</span>
+          <span>经验与改进</span>
+        </button>
         <div className="section-label">
           项目与任务<span>{info?.projects.recent_projects.length ?? 0}</span>
         </div>
@@ -350,7 +378,9 @@ function App() {
                         ? 'MCP 管理'
                         : view === 'workflows'
                           ? '工作流管理'
-                          : '设置与诊断'}
+                          : view === 'evolution'
+                            ? '经验与改进'
+                            : '设置与诊断'}
               </strong>
             </div>
             {
@@ -484,6 +514,14 @@ function App() {
               )}
             </section>
 
+            {view === 'projects' && project && (
+              <EvolutionQuick
+                key={`review-project-${project.project_id}`}
+                projectId={project.project_id}
+                origin={{ kind: 'project', identity: project.project_id }}
+                onOpen={openEvolution}
+              />
+            )}
             <div className="details-grid">
               <section className="detail-card">
                 <div className="card-heading">
@@ -538,6 +576,18 @@ function App() {
         </div>
         <div className="chat-page" hidden={view !== 'chat'}>
           <Chat
+            review={
+              view === 'chat' &&
+              project &&
+              selection?.sessionId && (
+                <EvolutionQuick
+                  key={selection.sessionId}
+                  projectId={project.project_id}
+                  origin={{ kind: 'session', identity: selection.sessionId }}
+                  onOpen={openEvolution}
+                />
+              )
+            }
             knowledgeCache={knowledgeCache.current}
             materialCache={materialCache.current}
             visible={view === 'chat'}
@@ -565,17 +615,27 @@ function App() {
           )}
         </div>
         {view === 'task' && (
-          <TaskPanel
-            key={`${project?.project_id}/${selection?.taskId}`}
-            project={project ?? null}
-            taskId={selection?.taskId ?? null}
-            defaultModel={info?.config.model_id ?? 'glm-5.3-flash'}
-            connected={connected}
-            onSelect={(next) => void navigate(next)}
-            onChanged={refreshTree}
-            renamedItem={renamedItem}
-            editRequest={selection?.editTaskRequest}
-          />
+          <>
+            {project && selection?.taskId && (
+              <EvolutionQuick
+                key={selection.taskId}
+                projectId={project.project_id}
+                origin={{ kind: 'task', identity: selection.taskId }}
+                onOpen={openEvolution}
+              />
+            )}
+            <TaskPanel
+              key={`${project?.project_id}/${selection?.taskId}`}
+              project={project ?? null}
+              taskId={selection?.taskId ?? null}
+              defaultModel={info?.config.model_id ?? 'glm-5.3-flash'}
+              connected={connected}
+              onSelect={(next) => void navigate(next)}
+              onChanged={refreshTree}
+              renamedItem={renamedItem}
+              editRequest={selection?.editTaskRequest}
+            />
+          </>
         )}
         {(view === 'skills' || view === 'mcp') && (
           <Resources
@@ -597,6 +657,22 @@ function App() {
             <WorkStyles key={project?.project_id ?? 'global'} projectId={project?.project_id} />
           </section>
         )}
+        {view === 'evolution' &&
+          (project ? (
+            <Evolution
+              key={project.project_id + JSON.stringify(evolutionEntry)}
+              projectId={project.project_id}
+              projectName={project.name}
+              draftCache={evolutionDraftCache.current}
+              entry={evolutionEntry}
+            />
+          ) : (
+            <section className="content">
+              <h1>经验与改进</h1>
+              <p>先选择要改进的项目，再描述问题并点击“开始改进”。</p>
+              <button onClick={() => setView('projects')}>选择项目</button>
+            </section>
+          ))}
         <div hidden={view !== 'settings'}>
           <Settings
             info={info}

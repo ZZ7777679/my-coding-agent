@@ -303,4 +303,15 @@ def build_sessions(
     sessions.tool_factory = lambda context: RollbackTools(
         context, existing_tools(context), rollback
     )
+    from my_agent.evolution.diagnostics import DiagnosticStore
+    from my_agent.evolution.service import EvolutionService
+    from my_agent.evolution.tools import EvolutionTools
+
+    sessions.diagnostics = DiagnosticStore(storage)
+    sessions.evolution = EvolutionService(sessions, sessions.diagnostics)
+    evolution_service = sessions.evolution
+    previous_tools = sessions.tool_factory
+    sessions.tool_factory = lambda context: EvolutionTools(
+        context, previous_tools(context), evolution_service
+    )
     return sessions

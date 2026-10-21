@@ -1,5 +1,5 @@
 /** M5 已登记的明确 IPC 能力。 Explicit registered M5 IPC capabilities. */
-import type { ProtocolV11 as P } from '../generated/protocol'
+import type { ProtocolV12 as P } from '../generated/protocol'
 import type { Backend } from './backend'
 import { validate } from '../shared/validation'
 import defaults from '../../../../src/my_agent/defaults.json'

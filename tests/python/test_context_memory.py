@@ -1004,7 +1004,7 @@ def test_memory_followup_recall_and_complete_long_entry_reference(tmp_path):
                 m.source_id: m for m in view.last_request.manifest.materials if m.kind == "memory"
             }
             assert short.memory_id in materials and unrelated.memory_id not in materials
-            assert materials[short.memory_id].reason == "任务目标 / 近期用户话题相关"
+            assert materials[short.memory_id].reason == "任务目标 / 近期用户话题相关 · fact · project"
             assert materials[long.memory_id].form == "reference"
             system = model.requests[-1]["messages"][0]["content"]
             assert "local assets" in system and "read_memory" in system

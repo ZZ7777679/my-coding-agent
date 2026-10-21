@@ -1,0 +1,305 @@
+.evolution {
+  max-width: 1160px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+.evolution .detail-card {
+  margin-bottom: 14px;
+  min-width: 0;
+}
+.evolution h1,
+.evolution h2 {
+  margin: 0 0 12px;
+}
+.evolution label {
+  display: block;
+  margin: 10px 0;
+}
+.evolution input:not([type='checkbox']),
+.evolution select,
+.evolution textarea {
+  box-sizing: border-box;
+  max-width: 100%;
+  color: inherit;
+  background: #18231f;
+  border: 1px solid #395248;
+  border-radius: 6px;
+  padding: 8px;
+}
+.evolution label > input:not([type='checkbox']),
+.evolution label > textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+}
+.evolution textarea {
+  min-height: 90px;
+  resize: vertical;
+  width: 100%;
+}
+.evolution textarea.evolution-editor {
+  min-height: 220px;
+  font-family: Consolas, monospace;
+}
+.evolution-row,
+.evolution-options {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.evolution-row select {
+  flex: 1;
+  min-width: 170px;
+}
+.evolution-entry {
+  border-bottom: 1px solid #304139;
+  padding: 12px 0;
+  overflow-wrap: anywhere;
+}
+.evolution-entry > span {
+  margin-left: 10px;
+}
+.evolution pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 380px;
+  overflow: auto;
+}
+.evolution summary {
+  cursor: pointer;
+}
+.evolution button {
+  color: inherit;
+  background: #20372e;
+  border: 1px solid #395248;
+  border-radius: 6px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.evolution button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.evolution button:focus-visible {
+  outline: 2px solid #aadcca;
+  outline-offset: 2px;
+}
+.evolution .evolution-start {
+  border-color: #5d8875;
+}
+.evolution button.evolution-primary {
+  background: #aadcca;
+  color: #14271e;
+  border-color: #aadcca;
+  font-weight: 600;
+  padding: 10px 20px;
+}
+.evolution-start-options {
+  margin-top: 16px;
+}
+.evolution-budget fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.evolution-budget-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+  gap: 12px;
+}
+.evolution-budget-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.evolution-budget-control > input {
+  width: 100%;
+  min-width: 0;
+}
+.evolution .evolution-budget-control > label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  white-space: nowrap;
+}
+.evolution [role='alert'] {
+  color: #efba8b;
+}
+.evolution .evolution-input {
+  border-left: 2px solid #395248;
+  padding-left: 14px;
+  margin: 14px 0;
+}
+.evolution .evolution-input details,
+.evolution .evolution-source-browser {
+  margin: 12px 0;
+}
+.evolution .evolution-selected .evolution-entry {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.evolution .evolution-selected .evolution-entry span {
+  flex: 1;
+  margin: 0;
+}
+.evolution .evolution-range-total {
+  padding: 12px;
+  border: 1px solid #507566;
+  border-radius: 6px;
+  margin: 12px 0;
+}
+.evolution .evolution-scope-badge {
+  color: #b2decb;
+  white-space: nowrap;
+}
+.evolution .evolution-selected {
+  max-height: 240px;
+  overflow: auto;
+}
+.evolution .evolution-run-list,
+.evolution .evolution-event-list {
+  max-height: 460px;
+  overflow: auto;
+  margin: 12px 0;
+}
+.evolution .evolution-run-list small {
+  margin-right: 12px;
+}
+/* 证据在顶层视窗内打开；长正文只滚动面板，不改变底层页面位置。
+   Open evidence in the top layer; long bodies scroll inside without moving the page. */
+.evolution-evidence-panel {
+  width: min(960px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  height: min(820px, calc(100dvh - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  margin: auto;
+  color: #e0e8e3;
+  background: #111917;
+  border: 1px solid #5d8875;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.evolution-evidence-panel[open] {
+  display: flex;
+  flex-direction: column;
+}
+.evolution-evidence-panel::backdrop {
+  background: #0007;
+}
+.evolution-evidence-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid #34433e;
+  flex-shrink: 0;
+}
+.evolution-evidence-heading h2 {
+  margin: 0;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+.evolution-evidence-body,
+.evolution-evidence-trace {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.evolution-evidence-body {
+  padding: 16px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.evolution-evidence-trace {
+  overflow: hidden;
+}
+.evolution-evidence-panel .trace-panel {
+  position: static;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  box-sizing: border-box;
+  border: 0;
+  box-shadow: none;
+}
+.evolution-evidence-panel .trace-scroll {
+  flex: 1;
+  overscroll-behavior: contain;
+}
+.evolution-quick {
+  position: relative;
+  flex: 0 0 auto;
+  margin: 6px 18px;
+  color: #bacfc6;
+}
+.evolution-quick > summary {
+  cursor: pointer;
+  padding: 5px 0;
+  font-size: 13px;
+}
+.evolution-quick > div {
+  position: absolute;
+  z-index: 12;
+  top: 100%;
+  left: 0;
+  width: min(640px, calc(100vw - 72px));
+  max-width: 100%;
+  max-height: 65vh;
+  overflow: auto;
+  background: #17201c;
+  border: 1px solid #496358;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px #0007;
+  padding: 16px;
+}
+.evolution-quick label {
+  display: grid;
+  gap: 8px;
+}
+.evolution-quick input {
+  width: 100%;
+  min-width: 0;
+  background: #111b17;
+  border: 1px solid #476155;
+  border-radius: 7px;
+  color: #d9e7e0;
+  padding: 8px 10px;
+}
+.evolution-quick button:not(.primary) {
+  border: 1px solid #476155;
+  background: #22392e;
+  color: #d9e7e0;
+  border-radius: 7px;
+  padding: 7px 12px;
+}
+.evolution-quick p {
+  overflow-wrap: anywhere;
+}
+.evolution-quick .button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.evolution-screening {
+  border: 1px solid #3a5046;
+  border-radius: 8px;
+  padding: 12px;
+}
+.evolution-screening pre {
+  max-height: 140px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.evolution-inherited {
+  padding: 8px;
+  background: #21372d;
+  border-radius: 6px;
+}

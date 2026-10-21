@@ -500,6 +500,43 @@ class ContextService:
             ],
             "mcp": [name for name in names if name.startswith("mcp_")],
         }
+        if self.sessions.evolution:
+            try:
+                guidance = await self.sessions.worker.call(
+                    self.sessions.evolution.resources.guidance,
+                    summarize(active.log).project_id,
+                )
+                for item in guidance:
+                    if item.name not in names:
+                        continue
+                    text = f"\nLocal usage notes for {item.name}:\n{item.content}"
+                    window[0] = {
+                        **window[0],
+                        "content": str(window[0].get("content", "")) + text,
+                    }
+                    materials.append(
+                        describe_material(
+                            kind="tool_guidance",
+                            title=item.name,
+                            form="full",
+                            reason="已采用的工具使用经验，仅对本次已加载工具装配",
+                            text=text,
+                            source_id=item.candidate_id,
+                            revision=item.revision,
+                        )
+                    )
+            except AgentError as exc:
+                # 可选补充损坏不关闭已有工具；错误仍进入本次材料记录。
+                # Optional guidance failures do not disable tools; retain the actual error.
+                materials.append(
+                    describe_material(
+                        kind="tool_guidance",
+                        title="工具使用经验不可读",
+                        form="error",
+                        reason=exc.code,
+                        text=exc.message,
+                    )
+                )
         materials.append(
             describe_material(
                 kind="tools",

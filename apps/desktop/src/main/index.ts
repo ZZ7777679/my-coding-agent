@@ -16,6 +16,7 @@ import path from 'node:path'
 import defaults from '../../../../src/my_agent/defaults.json'
 import { Backend, BackendError } from './backend'
 import { registerM5Ipc } from './m5'
+import { registerM7Ipc } from './m7'
 import type { Result } from '../shared/api'
 import { validate } from '../shared/validation'
 import { startupPaths, saveStartupPaths, canonicalDirectory, workspaceRoot } from './startup-paths'
@@ -92,7 +93,7 @@ function projectDialogDirectory(): string | undefined {
 function log(code: string): void {
   try {
     const target = path.join(dataDir, 'logs/electron.log')
-    if (existsSync(target) && statSync(target).size >= 1024 * 1024) {
+    if (existsSync(target) && statSync(target).size >= defaults.diagnostics.electron_max_bytes) {
       writeFileSync(target, 'LOG_ROTATED\n')
     }
     appendFileSync(target, new Date().toISOString() + ' ' + code + '\n')
@@ -228,6 +229,7 @@ app
     })
     handle('agent:info', 0, async () => (await readyBackend()).info())
     registerM5Ipc(handle, readyBackend)
+    registerM7Ipc(handle, readyBackend)
     handle('agent:m6-project-directory', 1, async (value) => {
       const params = validate('EnvironmentProjectParams', value)
       const projects = await (await readyBackend()).call('projects.list', {}, 'ProjectsView')

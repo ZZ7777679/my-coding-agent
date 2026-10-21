@@ -1,13 +1,19 @@
 {
   "app_name": "My Coding Agent",
-  "stage": "M6",
-  "protocol_version": 11,
+  "stage": "M7",
+  "protocol_version": 12,
   "data_schema_version": 1,
   "data_dir": "E:\\MyCodingAgentData",
   "data_dir_env": "MY_AGENT_DATA_DIR",
   "development_project_dir": "E:\\claude_code\\my-coding-agent-test",
   "project_dir_env": "MY_AGENT_PROJECT_DIR",
   "max_frame_bytes": 1048576,
+  "diagnostics": {
+    "max_records": 2000,
+    "prune_every": 100,
+    "queue_size": 256,
+    "electron_max_bytes": 1048576
+  },
   "rollback": {
     "enabled": true,
     "max_file_bytes": 16777216,
@@ -72,6 +78,18 @@
   },
   "intelligence": {
     "timeout_seconds": 30
+  },
+  "evolution": {
+    "input_chars": 48000,
+    "budget": {
+      "max_requests": 25,
+      "max_tools": 60,
+      "max_seconds": 600,
+      "request_timeout_seconds": 180,
+      "max_output_tokens": 8192,
+      "max_context_bytes": 600000,
+      "max_response_bytes": 131072
+    }
   },
   "run": {
     "max_requests": 25,

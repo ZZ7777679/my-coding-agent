@@ -6,13 +6,14 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import path from 'node:path'
 import { existsSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import defaults from '../../../../src/my_agent/defaults.json'
 import type {
   DiagnosticReport,
   DiagnosticsParams,
   InitializeResult,
   OperationError,
-  ProtocolV11,
+  ProtocolV12,
   SessionSignal
 } from '../generated/protocol'
 import { validate } from '../shared/validation'
@@ -67,6 +68,7 @@ export class Backend {
   private termination: Promise<void> | undefined
   private diagnostic: Promise<DiagnosticReport> | undefined
   private listeners = new Set<(signal: SessionSignal) => void>()
+  private readonly launchId = randomUUID()
 
   /** 注册公开会话通知，返回清理入口。 Subscribe to public session notifications. */
   subscribe(listener: (signal: SessionSignal) => void): () => void {
@@ -111,6 +113,9 @@ export class Backend {
       throw error('PYTHON_MISSING', '项目 Python 环境尚未安装，请先运行 uv sync --locked。')
     const allowed = new Set([
       'PATH',
+      // Windows PowerShell 依靠 PATHEXT 识别原生程序；缺失可能转为文档启动而丢失参数。
+      // Windows PowerShell needs PATHEXT for native execution, otherwise arguments can be lost.
+      'PATHEXT',
       'SYSTEMROOT',
       'WINDIR',
       'COMSPEC',
@@ -155,10 +160,19 @@ export class Backend {
       child.once('exit', () => resolve())
       child.once('error', () => resolve())
     })
-    child.on('error', () => this.fail(error('BACKEND_START_FAILED', 'Python 后端启动失败。')))
-    child.on('exit', () =>
+    child.on('error', (cause: NodeJS.ErrnoException) => {
+      // 仅记录系统错误代码，不把路径、环境或原始 stderr 写入日志。
+      // Log only the OS code, never paths, environment or raw stderr.
+      this.log(`BACKEND_START_FAILED launch=${this.launchId} os_code=${cause.code ?? 'unknown'}`)
+      this.fail(error('BACKEND_START_FAILED', 'Python 后端启动失败。'))
+    })
+    child.on('exit', (code, signal) => {
+      this.log(
+        `BACKEND_EXIT launch=${this.launchId} pid=${child.pid ?? 'unknown'} code=${code ?? 'unknown'} signal=${signal ?? 'none'} expected=${this.stopping}`
+      )
       this.fail(error('BACKEND_EXITED', 'Python 后端已退出，请重新打开应用。'))
-    )
+    })
+    this.log(`BACKEND_STARTED launch=${this.launchId} pid=${child.pid ?? 'unknown'}`)
     child.stdout.on('data', (chunk: Buffer) => this.receive(chunk))
     child.stderr.on('data', () => {
       // 持续消费私有诊断，避免堵塞，但不把原始内容送到 renderer 或公开日志。
@@ -254,12 +268,12 @@ export class Backend {
    * 按方法校验短控制响应，诊断与运行使用独立等待。
    * Validate short control responses independently of diagnostic and run waiting.
    */
-  async call<K extends keyof ProtocolV11>(
+  async call<K extends keyof ProtocolV12>(
     method: string,
     params: object,
     resultType: K,
     timeoutMs: number | null = 8000
-  ): Promise<ProtocolV11[K]> {
+  ): Promise<ProtocolV12[K]> {
     // M1 的诊断与模型运行独立，取消请求立即进入控制通道。
     // M1 diagnostics and model runs are independent; cancellation goes directly to control.
     const response = this.request(method, params, timeoutMs)
