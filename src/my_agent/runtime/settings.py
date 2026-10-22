@@ -19,17 +19,20 @@ class ModelLimits(BaseModel):
     max_output_tokens: Annotated[int, Field(ge=1)] | None
     max_context_bytes: Annotated[int, Field(ge=4096)] | None
     max_response_bytes: Annotated[int, Field(ge=1024)] | None
+    model_retry_attempts: Annotated[int, Field(ge=0)] = 0
+    model_retry_delay_seconds: Annotated[float, Field(ge=0)] = 1.0
+    model_retry_max_delay_seconds: Annotated[float, Field(ge=0)] = 30.0
 
 
 class RunLimits(ModelLimits):
-    """普通任务保持既有数值配置与文件读取规则。
+    """累计预算可不限，网络与文件读取容量独立配置。
 
-    Ordinary tasks retain their numeric settings and file-reading rules.
+    Cumulative budgets may be unlimited; network and file capacities remain independent.
     """
 
-    max_requests: Annotated[int, Field(ge=1)]
-    max_tools: Annotated[int, Field(ge=1)]
-    max_seconds: Annotated[int, Field(ge=1)]
+    max_requests: Annotated[int, Field(ge=1)] | None
+    max_tools: Annotated[int, Field(ge=1)] | None
+    max_seconds: Annotated[int, Field(ge=1)] | None
     request_timeout_seconds: Annotated[int, Field(ge=1)]
     max_output_tokens: Annotated[int, Field(ge=1)]
     max_context_bytes: Annotated[int, Field(ge=4096)]
@@ -40,3 +43,11 @@ class RunLimits(ModelLimits):
     max_depth: Annotated[int, Field(ge=1, le=256)]
     include_ignored: bool
     exclude_globs: list[Annotated[str, Field(min_length=1, max_length=1024)]]
+
+
+def minimum_limit(*values: float | None) -> float | None:
+    """合并实际存在的上限，全部不限仍返回 None。
+
+    Combine present limits while preserving None when every limit is unlimited.
+    """
+    return min((value for value in values if value is not None), default=None)

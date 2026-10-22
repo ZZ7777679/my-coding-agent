@@ -25,10 +25,14 @@ import { ProgramCards } from './ProgramCards'
 import { Resources } from './Resources'
 import { Workflows } from './Workflows'
 import { WorkStyles } from './WorkStyles'
+import { FailureNotice } from './FailureNotice'
+import { AppearanceProvider, SidebarResize, useAppearance } from './Appearance'
+import defaults from '../../../../../src/my_agent/defaults.json'
 import { Evolution } from './Evolution'
 import { EvolutionQuick, type EvolutionEntry } from './EvolutionQuick'
 import type { EvolutionDraftCache } from './EvolutionDrafts'
 import './style.css'
+import './appearance.css'
 
 /**
  * 合并后端公开错误和修复说明，保留可操作的信息。
@@ -61,6 +65,7 @@ function FolderIcon({ size = 22 }: { size?: number }) {
  * Display project and settings state, serialize actions and discard stale async responses.
  */
 function App() {
+  const appearance = useAppearance()
   const evolutionDraftCache = useRef<EvolutionDraftCache>(new Map())
   const [evolutionEntry, setEvolutionEntry] = useState<EvolutionEntry | null>(null)
   /** 将现场范围或现有作业带到同一改进页。 Carry a contextual scope or job into the shared page. */
@@ -72,6 +77,10 @@ function App() {
   const materialCache = useRef(new Map<string, QuestionMaterial[]>())
   const [info, setInfo] = useState<InitializeResult | null>(null)
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [connectionError, setConnectionError] = useState<OperationError | null>(null)
+  const reconnectAttempts = useRef(0)
+  const [recoveryPaused, setRecoveryPaused] = useState(false)
+  const pauseRecovery = useRef(false)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [view, setView] = useState<
@@ -110,14 +119,32 @@ function App() {
       if (result.ok) {
         setInfo(result.data)
         setPhase('ready')
+        reconnectAttempts.current = 0
+        setConnectionError(null)
+        pauseRecovery.current = false
+        setRecoveryPaused(false)
       } else {
         setPhase('error')
-        setNotice(errorNotice(result.error))
+        reconnectAttempts.current += 1
+        setConnectionError(result.error)
+        if (reconnectAttempts.current >= defaults.desktop_connection.auto_reconnect_attempts) {
+          pauseRecovery.current = true
+          setRecoveryPaused(true)
+        }
       }
     } catch {
       if (mounted.current && ticket === generation.current) {
         setPhase('error')
-        setNotice('桌面连接未能初始化，请重新打开应用。')
+        reconnectAttempts.current += 1
+        setConnectionError({
+          code: 'DESKTOP_CONNECTION',
+          message: '桌面连接暂不可用。',
+          remediation: '正在尝试恢复读取连接，输入和当前选择会保留。'
+        })
+        if (reconnectAttempts.current >= defaults.desktop_connection.auto_reconnect_attempts) {
+          pauseRecovery.current = true
+          setRecoveryPaused(true)
+        }
       }
     } finally {
       infoPending.current = false
@@ -126,12 +153,29 @@ function App() {
 
   useEffect(() => {
     mounted.current = true
-    void refresh()
-    const timer = setInterval(() => void refresh(), 2500)
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let cancelled = false
+    /** 等上次读取完成后再安排下一次，失败按退避重连；不触发模型或工具。
+     * Schedule after the previous read settles, backing off failures without dispatching work. */
+    async function poll() {
+      if (!pauseRecovery.current) await refresh()
+      if (!cancelled)
+        timer = setTimeout(
+          () => void poll(),
+          Math.min(
+            defaults.desktop_connection.reconnect_max_delay_ms,
+            reconnectAttempts.current
+              ? defaults.desktop_connection.refresh_ms * 2 ** Math.min(reconnectAttempts.current, 8)
+              : defaults.desktop_connection.idle_refresh_ms
+          )
+        )
+    }
+    void poll()
     return () => {
       mounted.current = false
       ++generation.current
-      clearInterval(timer)
+      cancelled = true
+      clearTimeout(timer)
     }
   }, [refresh])
 
@@ -247,9 +291,16 @@ function App() {
   useEffect(() => {
     if (!connected) return
     void refreshRun()
-    const timer = setInterval(() => void refreshRun(), 1000)
+    const timer = setInterval(
+      () => {
+        if (!document.hidden) void refreshRun()
+      },
+      activeRuns.length
+        ? defaults.desktop_connection.refresh_ms
+        : defaults.desktop_connection.idle_refresh_ms
+    )
     return () => clearInterval(timer)
-  }, [connected, refreshRun])
+  }, [connected, refreshRun, activeRuns.length])
   const runningRevision = activeRuns
     .map((item) => `${item.run?.run_id}:${item.run?.status}`)
     .join('|')
@@ -273,8 +324,21 @@ function App() {
   }
 
   return (
-    <div className="app">
+    <div className={'app' + (appearance.value.sidebar_collapsed ? ' sidebar-collapsed' : '')}>
       <aside className="sidebar">
+        <button
+          className="sidebar-toggle"
+          aria-label={appearance.value.sidebar_collapsed ? '展开侧栏' : '收起侧栏'}
+          disabled={!appearance.ready}
+          onClick={() =>
+            void appearance.save({
+              ...appearance.value,
+              sidebar_collapsed: !appearance.value.sidebar_collapsed
+            })
+          }
+        >
+          {appearance.value.sidebar_collapsed ? '☰' : '‹'}
+        </button>
         <div className="brand">
           <div className="brand-mark">
             m<span>_</span>
@@ -358,11 +422,12 @@ function App() {
         <div className="sidebar-bottom">
           <span className={'connection-dot ' + (connected ? 'online' : '')} />
           <span data-testid="connection-status">
-            {phase === 'loading' ? '正在连接后端' : connected ? '本地后端已连接' : '后端不可用'}
+            {phase === 'loading' ? '正在连接后端' : connected ? '本地后端已连接' : '连接恢复中'}
           </span>
-          <small>{info?.app.stage ?? 'M6'}</small>
+          <small>{info?.app.stage ?? defaults.stage}</small>
         </div>
       </aside>
+      <SidebarResize />
 
       <main
         className={
@@ -371,6 +436,36 @@ function App() {
           (view === 'code' ? ' workspace-code' : '')
         }
       >
+        {connectionError && (
+          <FailureNotice error={connectionError}>
+            <button
+              type="button"
+              onClick={() => {
+                reconnectAttempts.current = 0
+                pauseRecovery.current = false
+                setRecoveryPaused(false)
+                void refresh()
+              }}
+            >
+              立即重新读取
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                pauseRecovery.current = !pauseRecovery.current
+                setRecoveryPaused(pauseRecovery.current)
+                reconnectAttempts.current = 0
+                if (!pauseRecovery.current) void refresh()
+              }}
+            >
+              {recoveryPaused ? '恢复自动重连' : '暂停自动重连'}
+            </button>
+            {recoveryPaused && <span>自动恢复已暂停，当前输入和项目选择保留。</span>}
+            <button type="button" onClick={() => setView('settings')}>
+              打开诊断
+            </button>
+          </FailureNotice>
+        )}
         {view !== 'chat' && view !== 'code' && (
           <header className="toolbar">
             <div>
@@ -700,6 +795,8 @@ const container = document.getElementById('root')
 if (!container) throw new Error('Missing application container')
 createRoot(container).render(
   <React.StrictMode>
-    <App />
+    <AppearanceProvider>
+      <App />
+    </AppearanceProvider>
   </React.StrictMode>
 )

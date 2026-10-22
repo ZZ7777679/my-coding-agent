@@ -5,6 +5,8 @@ import { FitAddon } from '@xterm/addon-fit'
 import type { SessionSummary, TerminalSummary } from '../../generated/protocol'
 import '@xterm/xterm/css/xterm.css'
 import './TerminalPanel.css'
+import { useAppearance } from './Appearance'
+import { palettes } from '../../shared/themes'
 
 const alive = new Set<TerminalSummary['status']>(['starting', 'running', 'stopping'])
 const statusLabels: Record<TerminalSummary['status'], string> = {
@@ -30,6 +32,8 @@ function TerminalScreen({
   onRefresh: () => void
 }): React.JSX.Element {
   const host = useRef<HTMLDivElement>(null)
+  const { value: appearance } = useAppearance()
+  const colors = palettes[appearance.preset]
   const [current, setCurrent] = useState(summary)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -53,7 +57,11 @@ function TerminalScreen({
       scrollback: 3000,
       fontSize: 13,
       fontFamily: 'Cascadia Mono, Consolas, monospace',
-      theme: { background: '#10141b', foreground: '#e5e7eb', cursor: '#60a5fa' },
+      theme: {
+        background: colors.background,
+        foreground: colors.text,
+        cursor: appearance.accent ?? colors.accent
+      },
       // 项目输出中的 OSC 链接和剪贴板指令不是浏览器操作授权。
       // OSC links and clipboard sequences in project output grant no browser-side authority.
       linkHandler: { activate: () => undefined }
@@ -188,6 +196,14 @@ function TerminalScreen({
       term.current = null
     }
   }, [summary.terminal_id, visible])
+  useEffect(() => {
+    if (term.current)
+      term.current.options.theme = {
+        background: colors.background,
+        foreground: colors.text,
+        cursor: appearance.accent ?? colors.accent
+      }
+  }, [colors, appearance.accent])
 
   /** 中断与关闭分别作用于前台程序和整个终端进程树。 Interrupt foreground or close the entire tree. */
   async function control(action: 'interrupt' | 'close' | 'take'): Promise<void> {

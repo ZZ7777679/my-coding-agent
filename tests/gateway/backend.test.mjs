@@ -30,6 +30,52 @@ after(() => {
   childProcess.spawn = realSpawn
 })
 
+/** 单次只读等待超时不杀后端，迟到响应不会误配或使后续读取失败。
+ * A read timeout neither kills the backend nor mispairs its late reply. */
+test('M8 read timeout preserves backend and consumes late responses', async () => {
+  const peers = []
+  childProcess.spawn = (command, args, options) => {
+    if (path.basename(command).toLowerCase() === 'taskkill.exe') return realSpawn(command, args, options)
+    const peer = realSpawn(process.execPath, [fileURLToPath(new URL('peer.mjs', import.meta.url)), 'delayed-read'], options)
+    peers.push(peer)
+    return peer
+  }
+  const backend = new Backend(root, artifacts, '0.0.0', () => {})
+  try {
+    await backend.start()
+    await assert.rejects(backend.call('projects.list', {}, 'ProjectsView', 20), e => e.detail.code === 'BACKEND_TIMEOUT')
+    assert.equal(peers[0].exitCode, null)
+    const result = await backend.call('projects.list', {}, 'ProjectsView', 1000)
+    assert.equal(result.active_project, null)
+    assert.equal(peers.length, 1)
+    await backend.info()
+  } finally { await backend.stop() }
+})
+
+/** 真正退出后恢复同一后端对象和订阅，不在第一次失败时悄悄重发原操作。
+ * Recover only after actual exit, retaining the backend object without replaying failed work. */
+test('M8 read reconnect is single flight after actual process closure', async () => {
+  const peers = []
+  childProcess.spawn = (command, args, options) => {
+    if (path.basename(command).toLowerCase() === 'taskkill.exe') return realSpawn(command, args, options)
+    const mode = peers.length ? 'normal' : 'crash-on-read'
+    const peer = realSpawn(process.execPath, [fileURLToPath(new URL('peer.mjs', import.meta.url)), mode], options)
+    peers.push(peer)
+    return peer
+  }
+  const backend = new Backend(root, artifacts, '0.0.0', () => {})
+  try {
+    await backend.start()
+    const closed = new Promise(resolve => peers[0].once('close', resolve))
+    await assert.rejects(backend.call('projects.list', {}, 'ProjectsView'), e => e.detail.code === 'BACKEND_EXITED')
+    assert.equal(peers.length, 1)
+    await closed
+    await Promise.all(Array.from({length: 8}, () => backend.reconnectForRead()))
+    assert.equal(peers.length, 2)
+    assert.equal((await backend.info()).projects.active_project, null)
+  } finally { await backend.stop() }
+})
+
 /** 长查询与元数据移动使用真实 Python / RPC，只有耗时为夹具注入。
  * Real Python/RPC for long queries and moves; only delays are injected.
  */

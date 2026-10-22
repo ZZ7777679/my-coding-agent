@@ -13,6 +13,7 @@ from my_agent.sessions.types import (
     AuxiliaryCompleted,
     AuxiliaryStarted,
     Fact,
+    RequestFailed,
     RequestStarted,
     RunAccepted,
     RunFinished,
@@ -43,6 +44,11 @@ def usage(
     ]
     tokens.extend(fact.data.usage for fact in relevant if isinstance(fact.data, AuxiliaryCompleted))
     tokens.extend(
+        fact.data.usage
+        for fact in relevant
+        if isinstance(fact.data, RequestFailed) and fact.data.usage is not None
+    )
+    tokens.extend(
         fact.data.failed_request_usage
         for fact in relevant
         if isinstance(fact.data, RunFinished) and fact.data.failed_request_usage is not None
@@ -63,7 +69,7 @@ def usage(
         else:
             # 不用 UTC 时间差推算崩溃耗时，避免把离线数小时算成工作。
             # Never infer crashed runtime from UTC timestamps that include offline hours.
-            reserved += start.active_time_limit_seconds or start.limits.max_seconds
+            reserved += start.active_time_limit_seconds or start.limits.max_seconds or 0
             uncertain.append(run_id)
     return GoalUsage(
         requests=requests,

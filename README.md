@@ -4,7 +4,7 @@
 
 它既用于开发普通应用，也用于开发大模型应用和改进 Harness 自身。工作围绕 **项目 → 任务 → 会话** 组织，工作流、Skill 和团队图可以组合使用；实际代码默认直接保存在用户选择的项目目录。
 
-> 当前开发阶段：**M7 · 经验与改进**，协议 **v12**。2026-10-21 本轮收尾包含十二项审查修复，以及旧会话加载与后台刷新优化；Git 同步状态见进度总览。本文描述当前版本能力，不代表所有能力均已完成真实模型长期验证。实际进度、验证证据和剩余问题以 [进度总览](docs/progress/README.md) 和 [M7 记录](docs/progress/m7.md) 为准。
+> 当前开发阶段：**M8 · 稳定性与使用体验**，协议 **v13**。新增统一错误与恢复入口、可选模型重试、默认不限的累计运行预算、父子用量与部分成果、五种主题，以及子 Agent／Trace／记忆完整阅读空间。本文描述源码中的能力，不代表长期稳定性承诺；实际验证与 Git 状态见 [进度总览](docs/progress/README.md) 和 [M8 记录](docs/progress/m8.md)。
 >
 > 当前提供源码启动方式，尚未交付安装包、自动更新或跨平台执行后端。
 
@@ -121,7 +121,11 @@ npm.cmd --prefix apps/desktop run preview
 - 测试正常运行但未通过会报告结果；是否继续修复取决于原请求是否包含修复授权。
 - 已交付预览服务在切换会话、回复结束或停止 Goal 后保留；退出应用清理，重启不自动重跑。
 
-普通运行预算在“设置与诊断”调整，Goal 有自己的累计控制。模型思考通过明确的 reasoning 字段流式显示，可折叠；思考首字与正文首字分别计量。
+普通运行预算在“设置与诊断”调整：新配置的请求次数、工具次数和累计活跃时间默认不限；已有数值不会被升级覆盖，可点击“改用不限预算”。父子用量在运行详情分开显示，主动设置有限总额度时仍共同计账；Goal 有自己的累计控制。模型思考通过明确的 reasoning 字段流式显示，可折叠；思考首字与正文首字分别计量。
+
+子 Agent 入口打开应用内独立工作空间，能查看最近动作、失败来源、部分结果、历史和 Trace。Trace 与记忆可展开到工作区，关闭保留筛选与草稿；配色及侧栏调整见 [外观与阅读空间指南](docs/guide/13-appearance-and-reading.md)。
+
+断连时界面尝试恢复读取，不自动重跑原任务。失败卡片提供诊断、Trace、准备接续与回退入口；临时模型故障自动重试默认关闭，需在运行设置中明确配置。认证、余额、格式拒绝以及结果未知的工具操作不会自动重放。长 Markdown 复用渲染，空闲读取降频，测量样本与边界见 M8 进度。
 
 ### 工作流与智能体合作空间
 
@@ -265,7 +269,7 @@ docs/research/     上游调研与取舍依据
 examples/          独立评测样本
 ```
 
-业务默认值集中在 [defaults.json](src/my_agent/defaults.json)。renderer 通过受限 IPC / JSON-RPC 调用 Python，不直接读取密钥或业务文件。DTO、schema、生成 TypeScript 同步维护；当前协议 v12，前后端应使用同一源码版本。
+业务默认值集中在 [defaults.json](src/my_agent/defaults.json)。renderer 通过受限 IPC / JSON-RPC 调用 Python，不直接读取密钥或业务文件。DTO、schema、生成 TypeScript 同步维护；当前协议 v13，前后端应使用同一源码版本。
 
 修改 DTO 后生成：
 
@@ -294,10 +298,11 @@ uv run --locked python scripts/check.py --desktop
 
 | 文档 | 用途 |
 | --- | --- |
-| [用户指南](docs/guide/README.md) | 12 篇功能操作说明、26 张应用截图与常见问题 |
+| [用户指南](docs/guide/README.md) | 分功能操作说明、实际应用截图与常见问题，含 M8 外观与阅读空间 |
 | [进度总览](docs/progress/README.md) | 当前真实状态与下一步 |
 | [总规划](docs/plan/coding-agent-from-zero-plan.md) | 产品方向与阶段依赖 |
 | [M7 方案](docs/plan/m7-self-evolution.md) / [进度](docs/progress/m7.md) | 经验与改进的设计、实现和验证 |
+| [M8 方案](docs/plan/m8-product-stability-and-experience.md) / [进度](docs/progress/m8.md) | 异常恢复、预算、主题与完整阅读空间 |
 | [M6 方案](docs/plan/m6-sandbox-rollback-and-capabilities.md) / [进度](docs/progress/m6.md) | 沙箱、回退、按需能力、记忆与组合复用 |
 | [任务工作图](docs/plan/task-work-graph-initial.md) | 模板、任务实例、Loop / Graph 的关系 |
 | [MCP OAuth](docs/plan/mcp-oauth.md) | 授权原理、服务配置与实现边界 |

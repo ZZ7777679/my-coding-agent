@@ -11,8 +11,11 @@ const fields: {
 }[] = [
   { key: 'max_requests', label: '模型请求次数', min: 1 },
   { key: 'max_tools', label: '工具调用次数', min: 1 },
-  { key: 'max_seconds', label: '总运行时间（秒）', min: 1 },
+  { key: 'max_seconds', label: '累计 Agent 活跃时间（秒）', min: 1 },
   { key: 'request_timeout_seconds', label: '单请求总时限（秒）', min: 1 },
+  { key: 'model_retry_attempts', label: '临时模型故障重试次数（0 为关闭）', min: 0 },
+  { key: 'model_retry_delay_seconds', label: '首次重试等待（秒）', min: 0 },
+  { key: 'model_retry_max_delay_seconds', label: '重试等待上限（秒）', min: 0 },
   { key: 'max_output_tokens', label: '输出 token 上限', min: 1 },
   {
     key: 'max_context_bytes',
@@ -60,6 +63,18 @@ export function RunSettings({ config, disabled, onSaved }: Props) {
       <summary>高级运行预算与读取规则</summary>
       <p className="muted">容量是本地保护预算，不代表模型真实上下文上限。修改只影响下一次运行。</p>
       <p className="muted">单请求总时限包含连接、等待及完整生成；收到流式数据不会重置此计时。</p>
+      <p className="muted">
+        重试默认关闭。开启后只对临时模型连接、服务故障或明确限流重试，每次都计入请求数；不重放工具，不切换模型。
+      </p>
+      <p className="muted">
+        请求、工具和活跃时间包含子 Agent；不限仍统计真实用量，不影响并发数与单请求超时。
+      </p>
+      <button
+        type="button"
+        onClick={() => change({ max_requests: null, max_tools: null, max_seconds: null })}
+      >
+        改用不限预算
+      </button>
       <form
         onSubmit={(event) => {
           event.preventDefault()
@@ -72,13 +87,26 @@ export function RunSettings({ config, disabled, onSaved }: Props) {
               {field.label}
               <input
                 type="number"
-                required
+                required={limits[field.key] !== null}
+                disabled={limits[field.key] === null}
                 min={field.min}
                 max={field.max}
                 step={1}
-                value={limits[field.key]}
+                value={limits[field.key] ?? ''}
                 onChange={(event) => change({ [field.key]: Number(event.target.value) })}
               />
+              {['max_requests', 'max_tools', 'max_seconds'].includes(field.key) && (
+                <span className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={limits[field.key] === null}
+                    onChange={(event) =>
+                      change({ [field.key]: event.target.checked ? null : field.min })
+                    }
+                  />
+                  不限
+                </span>
+              )}
             </label>
           ))}
         </div>
@@ -88,7 +116,7 @@ export function RunSettings({ config, disabled, onSaved }: Props) {
             checked={limits.include_ignored}
             onChange={(event) => change({ include_ignored: event.target.checked })}
           />
-          允许读取普通忽略文件（凭据和 Git 元数据仍受保护）
+          文件发现包含忽略项（不影响显式路径读取）
         </label>
         <label>
           额外排除 glob（每行一项）

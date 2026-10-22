@@ -482,7 +482,7 @@ export function WorkGraphPanel({ active, space, connected, onSelectSession, onCh
           ...ports(work.work_id, id, true),
           type: 'smoothstep',
           label: '反馈',
-          style: { strokeDasharray: '5 4', stroke: '#c0a76b' },
+          style: { strokeDasharray: '5 4', stroke: 'var(--warning)' },
           markerEnd: { type: MarkerType.ArrowClosed }
         }))
     ])

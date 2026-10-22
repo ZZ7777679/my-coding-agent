@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -180,7 +181,9 @@ class TurnBuffer:
 
         Carry reasons and statistics, never answer or reasoning text, in failures.
         """
-        return ModelResponseError(code, message, self.usage, self.finish_reason, phase=phase)
+        return ModelResponseError(
+            code, message, self.usage, self.finish_reason, phase=phase or "response_validation"
+        )
 
     def finish(self) -> ModelTurn:
         """完整结束标记与参数校验通过后才返回回合。 Return only a fully validated finished turn."""
@@ -232,7 +235,7 @@ class TurnBuffer:
         if calls:
             native["tool_calls"] = native_calls
         if not calls and not self.text.strip():
-            raise AgentError("MODEL_EMPTY", "模型没有返回可显示的回答。")
+            raise self.failure("MODEL_EMPTY", "模型没有返回可显示的回答。")
         reasoning = self.native_extra.get("reasoning_content")
         return ModelTurn(
             text=self.text,
@@ -393,31 +396,48 @@ class GoClient:
                 self.http.record(timing.progress, code, http_status=http_status, model_id=model_id)
 
     async def http_failure(self, response: httpx.Response, operation: str) -> AgentError:
-        """将已识别的认证失败转为可操作说明，不公开原始响应。
+        """保留服务拒绝类别与脱敏参数原因，不公开整份响应或认证正文。
 
-        Explain recognized authentication failures without exposing the raw response.
+        Preserve rejection categories and redacted parameter reasons, never raw bodies or auth text.
         """
-        kind = await self._error_kind(response)
+        kind, detail, parameter = await self._error_details(response)
         code = http_error_code(response.status_code, kind)
         if kind == "api_key_expired" and response.status_code == 401:
             return AgentError(
                 code,
                 "当前 API key 已过期；续费或重新登录不会续期旧 key。",
                 "请在 OpenCode Console 新建 API key，更新应用使用的凭据后重试。",
+                cause_code=kind,
+                phase="response_headers",
             )
+        message = f"{operation}失败（HTTP {response.status_code}）。"
+        if kind:
+            message += f" 服务类别：{kind}。"
+        if parameter:
+            message += f" 参数：{parameter}。"
+        if detail:
+            message += f" 服务说明：{detail}"
         return AgentError(
             code,
-            f"{operation}失败（HTTP {response.status_code}）。",
-            "检查认证、Go 额度或网络后显式重试。",
+            message,
+            "检查服务指出的参数或请求格式后显式重试。"
+            if response.status_code in {400, 422}
+            else "检查认证、Go 额度或服务状态后显式重试。",
+            cause_code=kind,
+            phase="response_headers",
         )
 
-    @staticmethod
-    async def _error_kind(response: httpx.Response) -> str | None:
-        """只提取有界错误类别，原始响应不公开。 Extract a bounded error category, never its body."""
+    async def _error_details(
+        self, response: httpx.Response
+    ) -> tuple[str | None, str | None, str | None]:
+        """只读错误对象的类别／参数／说明；长度限制仅约束诊断文本。
+
+        Read only error category, parameter and message; size bounds apply solely to diagnostics.
+        """
         raw = bytearray()
         async for chunk in response.aiter_bytes(4096):
             if len(raw) + len(chunk) > 16384:
-                return None
+                return None, None, None
             raw.extend(chunk)
         try:
             value = json.loads(raw)
@@ -427,11 +447,52 @@ class GoClient:
                 # 仅识别已观察到的过期说明，不把服务商响应原文带入 UI。
                 # Recognize the observed expiry notice without forwarding provider text to the UI.
                 if isinstance(message, str) and message.startswith("This API key has expired."):
-                    return "api_key_expired"
+                    return "api_key_expired", None, None
             kind = error.get("type", error.get("code")) if isinstance(error, dict) else None
-            return kind if isinstance(kind, str) else None
+            parameter = error.get("param") if isinstance(error, dict) else None
+            message = error.get("message") if isinstance(error, dict) else None
+            # 认证／HTML／任意整份输入不回显，仅对参数拒绝保留错误说明。
+            # Omit auth bodies, HTML and input objects; detail is for request rejection only.
+            return (
+                self._error_identifier(kind),
+                self._redact_error_text(message)
+                if response.status_code in {400, 422} and isinstance(message, str)
+                else None,
+                self._error_identifier(parameter),
+            )
         except ValueError:
+            return None, None, None
+
+    def _error_identifier(self, value: object) -> str | None:
+        """错误类别和字段名只接收短标识，凭据不成为诊断身份。
+
+        Accept short category/field identifiers without treating credentials as diagnostic names.
+        """
+        if not isinstance(value, str) or not re.fullmatch(
+            r"[A-Za-z][A-Za-z0-9_.\[\]-]{0,119}", value
+        ):
             return None
+        return value if self._redact_error_text(value) == value else None
+
+    def _redact_error_text(self, value: str) -> str:
+        """清除当前模型凭据与常见认证值，再限制公开错误说明长度。
+
+        Remove the current model credential and common auth values before bounding public detail.
+        """
+        secret = self.credential.secret
+        if secret and secret.get_secret_value():
+            value = value.replace(secret.get_secret_value(), "[redacted]")
+        value = re.sub(r"(?i)\bBearer\s+[^\s\"',;]+", "Bearer [redacted]", value)
+        value = re.sub(r"(?i)\b(?:sk-|gh[pousr]_|github_pat_)[A-Za-z0-9_-]+", "[redacted]", value)
+        value = re.sub(
+            r"""(?ix)\b(?:api[_-]?key|token|password|secret|authorization|cookie)\b
+                [\"']?\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)""",
+            "[redacted]",
+            value,
+        )
+        value = re.sub(r"(\w+://)[^\s/@]+:[^\s/@]+@", r"\1[redacted]@", value)
+        value = " ".join(value.split())
+        return value[:512] + ("…" if len(value) > 512 else "")
 
     async def _stream(
         self,

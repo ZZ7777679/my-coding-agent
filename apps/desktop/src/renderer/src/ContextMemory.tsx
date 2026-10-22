@@ -10,6 +10,7 @@ type Panel = 'context' | 'history' | 'memory'
  * Per-session viewer cache, separate from business state. */
 export type KnowledgeUi = {
   panel: Panel | null
+  expanded?: boolean
   folds: Record<string, boolean>
   query: string
   includeLookups?: boolean
@@ -323,7 +324,7 @@ export function ContextMemory({
       </div>
       <div
         hidden={!ui.panel}
-        className="knowledge-viewer"
+        className={'knowledge-viewer' + (ui.expanded ? ' full-reading' : '')}
         role="region"
         aria-label="上下文与记忆查看面板"
         onKeyDown={(event) => {
@@ -337,6 +338,9 @@ export function ContextMemory({
           <strong>
             {ui.panel === 'history' ? '查找历史' : ui.panel === 'memory' ? '记忆管理' : '上下文'}
           </strong>
+          <button type="button" onClick={() => update({ expanded: !ui.expanded })}>
+            {ui.expanded ? '收回面板' : '展开到工作区'}
+          </button>
           <button type="button" ref={closeButton} onClick={close}>
             关闭面板
           </button>

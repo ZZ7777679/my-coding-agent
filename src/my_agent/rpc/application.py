@@ -277,8 +277,8 @@ class RpcApplication:
                     app=AppInfo(
                         name=DEFAULTS["app_name"],
                         app_version=__version__,
-                        protocol_version=12,
-                        stage="M7",
+                        protocol_version=13,
+                        stage="M8",
                     ),
                     storage=self.storage.info(),
                     config=config.public(self.credential.info),

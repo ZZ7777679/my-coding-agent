@@ -153,12 +153,14 @@ function TraceRow({
   item,
   sessionId,
   projectId,
-  focus
+  focus,
+  visible = true
 }: {
   item: TraceItem
   sessionId: string
   projectId: string
   focus: boolean
+  visible?: boolean
 }) {
   const [open, setOpen] = useState(focus)
   const [detail, setDetail] = useState<TraceDetail | null>(null)
@@ -176,7 +178,7 @@ function TraceRow({
   }, [focus])
   useEffect(() => {
     const ticket = ++generation.current
-    if (!open) return
+    if (!open || !visible) return
     void window.agent
       .getTraceDetail({ session_id: sessionId, seq: item.seq, part })
       .then((result) => {
@@ -192,7 +194,7 @@ function TraceRow({
     return () => {
       ++generation.current
     }
-  }, [open, sessionId, item.seq, item.updated_seq, part])
+  }, [open, visible, sessionId, item.seq, item.updated_seq, part])
   /** 续读实际记录，不影响任务。 Page saved detail without affecting the run. */
   async function more() {
     if (!detail || detail.next_offset === null) return
@@ -313,6 +315,8 @@ export function Trace({
   focusSeq,
   focusRun,
   showHeader = true,
+  visible = true,
+  initialExpanded = false,
   onClose
 }: {
   sessionId: string
@@ -321,9 +325,22 @@ export function Trace({
   focusSeq: number | null
   focusRun?: string | null
   showHeader?: boolean
+  visible?: boolean
+  initialExpanded?: boolean
   onClose: () => void
 }) {
   const [items, setItems] = useState<TraceItem[]>([])
+  const [expanded, setExpanded] = useState(initialExpanded)
+  const [selectedSeq, setSelectedSeq] = useState<number | null>(focusSeq)
+  const panel = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (!visible) return
+    const source = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    panel.current?.querySelector<HTMLButtonElement>('header button')?.focus({ preventScroll: true })
+    return () => {
+      if (source?.isConnected) source.focus({ preventScroll: true })
+    }
+  }, [visible])
   const [cursor, setCursor] = useState<number | null>(null)
   const [tool, setTool] = useState('')
   const [errors, setErrors] = useState(false)
@@ -337,19 +354,24 @@ export function Trace({
   const latestItems = useRef(items)
   latestItems.current = items
   useEffect(() => {
+    if (!visible) return
     // 独立压缩 / 记忆作业不产生主 Run 事件，面板打开时刷新其真实状态。
     // Independent maintenance jobs need refreshes even without new Run facts.
-    const timer = setInterval(() => setRefreshTick((tick) => tick + 1), 2000)
+    const timer = setInterval(() => setRefreshTick((tick) => tick + 1), 5000)
     return () => clearInterval(timer)
-  }, [])
+  }, [visible])
   useEffect(() => {
     setItems([])
     setCursor(null)
     setTool('')
     setErrors(false)
+    setSelectedSeq(focusSeq)
+    setJobs([])
+    setJobCursor(undefined)
+    setJobIssues([])
   }, [sessionId, focusSeq, focusRun])
   useEffect(() => {
-    if (focusSeq === null) return
+    if (focusSeq === null || !visible) return
     let disposed = false
     void window.agent
       .listTrace({ session_id: sessionId, before_seq: focusSeq + 1, run_id: focusRun })
@@ -369,9 +391,10 @@ export function Trace({
     return () => {
       disposed = true
     }
-  }, [sessionId, focusSeq, focusRun])
+  }, [sessionId, focusSeq, focusRun, visible])
   useEffect(() => {
     const ticket = ++generation.current
+    if (!visible) return
     let disposed = false
     void window.agent
       .listTrace({
@@ -424,7 +447,7 @@ export function Trace({
     return () => {
       disposed = true
     }
-  }, [sessionId, revision, focusSeq, focusRun, tool, errors, refreshTick])
+  }, [sessionId, revision, focusSeq, focusRun, tool, errors, refreshTick, visible])
   /** 保留当前页，向前加载历史。 Load older facts while retaining the current page. */
   async function older() {
     if (!cursor || busy) return
@@ -478,10 +501,24 @@ export function Trace({
     }
   }
   return (
-    <aside className="trace-panel" aria-label="执行轨迹">
+    <aside
+      ref={panel}
+      hidden={!visible}
+      className={'trace-panel' + (expanded ? ' expanded' : '')}
+      aria-label="执行轨迹"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation()
+          onClose()
+        }
+      }}
+    >
       {showHeader && (
         <header>
           <strong>Trace · 执行轨迹</strong>
+          <button onClick={() => setExpanded(!expanded)}>
+            {expanded ? '收回侧栏' : '展开到工作区'}
+          </button>
           <button onClick={onClose}>关闭 Trace</button>
         </header>
       )}
@@ -511,56 +548,87 @@ export function Trace({
         </label>
       </div>
       {error && <p role="alert">{error}</p>}
-      <div className="trace-scroll">
-        <details>
-          <summary>
-            压缩与记忆作业 · {jobs.length}
-            {jobCursor != null ? '+' : ''}
-          </summary>
-          {jobIssues.map((issue) => (
-            <p key={issue} role="alert">
-              {issue}
-            </p>
-          ))}
-          {jobs.map((job) => (
-            <details key={String(job.job_id)}>
-              <summary>
-                {job.kind === 'context' ? '压缩' : '记忆'} · {String(job.status ?? '历史状态未知')}{' '}
-                · {String(job.job_id)}
-              </summary>
-              <pre>{JSON.stringify(job, null, 2)}</pre>
-            </details>
-          ))}
-          {jobCursor != null && (
-            <button disabled={busy} onClick={() => void olderJobs()}>
-              更多作业
+      <div className="trace-reading">
+        <nav className="trace-timeline" aria-label="轨迹时间线">
+          <p className="muted">运行 → 请求 → 工具 · 选择记录阅读详情</p>
+          {!!cursor && (
+            <button disabled={busy} onClick={() => void older()}>
+              更早轨迹
             </button>
           )}
-        </details>
-        {!!cursor && (
-          <button disabled={busy} onClick={() => void older()}>
-            更早轨迹
-          </button>
-        )}
-        {!items.length && <p>暂无匹配记录。</p>}
-        {items.map((item, index) => (
-          <div key={item.seq}>
-            {(index === 0 || items[index - 1].run_id !== item.run_id) && (
-              <h4>运行 {item.run_id ?? '会话记录'}</h4>
+          {items.map((item, index) => (
+            <div key={item.seq}>
+              {(index === 0 || items[index - 1].run_id !== item.run_id) && (
+                <small>运行 {item.run_id?.slice(0, 8) ?? '会话记录'}</small>
+              )}
+              <button
+                aria-current={(selectedSeq ?? items.at(-1)?.seq) === item.seq}
+                onClick={() => setSelectedSeq(item.seq)}
+              >
+                {item.title}
+                <small>
+                  #{item.seq} · {item.status}
+                  {item.duration_ms != null ? ` · ${(item.duration_ms / 1000).toFixed(1)} 秒` : ''}
+                </small>
+              </button>
+            </div>
+          ))}
+        </nav>
+        <div className="trace-scroll">
+          <details>
+            <summary>
+              压缩与记忆作业 · {jobs.length}
+              {jobCursor != null ? '+' : ''}
+            </summary>
+            {jobIssues.map((issue) => (
+              <p key={issue} role="alert">
+                {issue}
+              </p>
+            ))}
+            {jobs.map((job) => (
+              <details key={String(job.job_id)}>
+                <summary>
+                  {job.kind === 'context' ? '压缩' : '记忆'} ·{' '}
+                  {String(job.status ?? '历史状态未知')} · {String(job.job_id)}
+                </summary>
+                <pre>{JSON.stringify(job, null, 2)}</pre>
+              </details>
+            ))}
+            {jobCursor != null && (
+              <button disabled={busy} onClick={() => void olderJobs()}>
+                更多作业
+              </button>
             )}
-            {item.goal_id && (index === 0 || items[index - 1].run_id !== item.run_id) && (
-              <small>Goal {item.goal_id}</small>
-            )}
-            {(index === 0 || items[index - 1].request_id !== item.request_id) &&
-              item.request_id && <small>请求 {item.request_id}</small>}
-            <TraceRow
-              item={item}
-              sessionId={sessionId}
-              projectId={projectId}
-              focus={item.seq === focusSeq}
-            />
-          </div>
-        ))}
+          </details>
+          {!!cursor && (
+            <button disabled={busy} onClick={() => void older()}>
+              更早轨迹
+            </button>
+          )}
+          {!items.length && <p>暂无匹配记录。</p>}
+          {items.map((item, index) => (
+            <div
+              key={item.seq}
+              hidden={expanded && item.seq !== (selectedSeq ?? items.at(-1)?.seq)}
+            >
+              {(index === 0 || items[index - 1].run_id !== item.run_id) && (
+                <h4>运行 {item.run_id ?? '会话记录'}</h4>
+              )}
+              {item.goal_id && (index === 0 || items[index - 1].run_id !== item.run_id) && (
+                <small>Goal {item.goal_id}</small>
+              )}
+              {(index === 0 || items[index - 1].request_id !== item.request_id) &&
+                item.request_id && <small>请求 {item.request_id}</small>}
+              <TraceRow
+                item={item}
+                sessionId={sessionId}
+                projectId={projectId}
+                focus={item.seq === (expanded ? (selectedSeq ?? items.at(-1)?.seq) : focusSeq)}
+                visible={visible && (!expanded || item.seq === (selectedSeq ?? items.at(-1)?.seq))}
+              />
+            </div>
+          ))}
+        </div>
       </div>
     </aside>
   )

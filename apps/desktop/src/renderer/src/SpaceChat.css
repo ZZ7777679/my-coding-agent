@@ -34,9 +34,9 @@
 .space-chat-history > article {
   flex: 0 0 auto;
   padding: 14px;
-  border: 1px solid #34453c;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: #131b17;
+  background: var(--panel);
   min-width: 0;
 }
 .space-chat-history article p {
@@ -45,33 +45,33 @@
 }
 .space-chat .space-user-message {
   white-space: pre-wrap;
-  color: #e0e8e3;
+  color: var(--text);
   padding-bottom: 8px;
 }
 .space-exchange > header {
-  color: #a7d8c0;
+  color: var(--text);
   font-size: 12px;
 }
 .space-exchange time {
   margin-left: auto;
-  color: #8d9b94;
+  color: var(--muted);
   font-size: 11px;
 }
 .space-chat .space-round {
-  border-color: #526a83;
+  border-color: var(--accent);
 }
 .space-chat .space-output {
-  border-left: 2px solid #40584b;
+  border-left: 2px solid var(--border);
   padding-left: 12px;
 }
 .space-chat .space-output.is-active {
-  border-left-color: #98d6b9;
+  border-left-color: var(--accent);
 }
 .space-output > summary {
   font-size: 13px;
 }
 .space-output > summary span {
-  color: #95a89c;
+  color: var(--muted);
   font-size: 11px;
 }
 .space-output-body {
@@ -89,7 +89,7 @@
   background: transparent;
 }
 .space-output-error {
-  color: #edb491;
+  color: var(--danger);
   overflow-wrap: anywhere;
 }
 .space-chat form {
@@ -104,7 +104,7 @@
   padding: 0;
 }
 .space-chat fieldset legend {
-  color: #a3b2a8;
+  color: var(--muted);
   font-size: 11px;
   margin-bottom: 8px;
 }
@@ -117,7 +117,7 @@
 }
 .space-chat fieldset label {
   padding: 5px 9px;
-  border: 1px solid #35493d;
+  border: 1px solid var(--border);
   border-radius: 20px;
 }
 .space-panel input[type='checkbox'] {
@@ -126,7 +126,7 @@
   padding: 0;
   margin: 0;
   flex: 0 0 auto;
-  accent-color: #a7d8bc;
+  accent-color: var(--text);
 }
 .space-chat textarea {
   min-height: 78px;
@@ -139,7 +139,7 @@
   flex-wrap: wrap;
 }
 .space-team-tools {
-  border: 1px solid #34453c;
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0 12px;
 }
@@ -163,7 +163,7 @@
   flex-wrap: wrap;
 }
 .space-template-list article {
-  border: 1px solid #34453c;
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 9px;
   display: grid;
@@ -176,7 +176,7 @@
 .space-work > details {
   margin-left: 12px;
   padding: 0 12px 10px;
-  border-left: 2px solid #34453c;
+  border-left: 2px solid var(--border);
 }
 .space-work > details:not([open]) {
   padding-bottom: 0;
@@ -200,7 +200,7 @@
   inset: 3rem 1rem 1rem auto;
   width: min(48rem, calc(100vw - 2rem));
   z-index: 30;
-  background: #151e1b;
+  background: var(--panel);
   box-shadow: 0 10px 40px #0008;
   display: flex;
 }

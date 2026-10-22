@@ -12,11 +12,26 @@ from my_agent.credentials import ResolvedCredential
 from my_agent.errors import AgentError
 from my_agent.evolution.types import EvolutionBudget
 from my_agent.models.failures import ModelResponseError
-from my_agent.models.go import GoClient
+from my_agent.models.go import GoClient, TurnBuffer
 from my_agent.models.http import ModelHttpPool
 from my_agent.models.types import TokenUsage
 from my_agent.rpc.dto import CredentialInfo
 from my_agent.runtime.settings import RunLimits
+
+
+def test_empty_completed_response_keeps_usage_and_validation_phase():
+    """已结束的空回答仍保留服务用量，不误报为连接错误。
+
+    An empty finished response retains usage and is not classified as a connection failure.
+    """
+    turn = TurnBuffer()
+    turn.finish_reason = "stop"
+    turn.usage = TokenUsage(input_tokens=120, output_tokens=7)
+    with pytest.raises(ModelResponseError) as failure:
+        turn.finish()
+    assert failure.value.code == "MODEL_EMPTY"
+    assert failure.value.phase == "response_validation"
+    assert failure.value.usage == turn.usage
 
 
 class ChunkStream(httpx.AsyncByteStream):
@@ -612,6 +627,106 @@ def test_auth_failure_no_retry_or_raw_body(expired):
         if expired:
             assert "OpenCode Console" in error.value.remediation
         await client.http.close()
+
+    asyncio.run(scenario())
+
+
+def test_http_rejection_preserves_safe_reason_without_retry():
+    """400 参数原因可追踪，响应回显的密钥／认证值不进入公开错误。
+
+    Preserve a 400 parameter reason without exposing echoed credentials or retrying the request.
+    """
+
+    async def scenario():
+        """实际客户端经 MockTransport 收到拒绝，仅检查公开错误字段。
+
+        Exercise the real client through MockTransport and inspect its public failure fields.
+        """
+        calls = 0
+        secret = "private-sentinel-model-credential"
+
+        def handler(request):
+            """服务只返回一次结构化参数错误，附带应被排除的输入和认证值。
+
+            Return a structured rejection with echoed input and credentials that must be omitted.
+            """
+            nonlocal calls
+            calls += 1
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "type": "invalid_request_error",
+                        "param": "messages[2].tool_calls",
+                        "message": f"Missing tool response; credential={secret}; "
+                        "Bearer bearer-sentinel; "
+                        'api_key="other-private-value"; token=other-token; '
+                        "https://user:db-pass@example.invalid; sk-test-foreign-key",
+                        "input": "private-input-not-for-error",
+                    },
+                    "extra": "private-extra-not-for-error",
+                },
+            )
+
+        pool = ModelHttpPool(
+            reuse_enabled=True,
+            keepalive_expiry=None,
+            drain_timeout_seconds=0.1,
+            transport=httpx.MockTransport(handler),
+        )
+        client = GoClient(
+            ResolvedCredential(
+                SecretStr(secret),
+                CredentialInfo(
+                    env_var="OPENCODE_API_KEY",
+                    source="process",
+                    present=True,
+                ),
+            ),
+            "https://opencode.ai/inference/go/openai/v1",
+            pool,
+        )
+
+        async def text(delta):
+            """拒绝没有模型正文。 A rejection contains no model answer."""
+            pytest.fail("Unexpected model text")
+
+        try:
+            with pytest.raises(AgentError) as observed:
+                await client.complete(
+                    model_id="deepseek-v4.1-flash",
+                    session_id="isolated",
+                    messages=[],
+                    tools=[],
+                    limits=RunLimits.model_validate(DEFAULTS["run"]),
+                    on_text=text,
+                )
+            error = observed.value
+            assert calls == 1 and error.code == "HTTP_ERROR"
+            assert error.phase == "response_headers" and error.cause_code == "invalid_request_error"
+            assert "messages[2].tool_calls" in error.message
+            assert "Missing tool response" in error.message
+            for private in [
+                secret,
+                "bearer-sentinel",
+                "other-private-value",
+                "other-token",
+                "db-pass",
+                "sk-test-foreign-key",
+                "private-input-not-for-error",
+                "private-extra-not-for-error",
+            ]:
+                assert private not in error.message
+            malformed = await client.http_failure(
+                httpx.Response(400, text="<html>private-body</html>"), "Model"
+            )
+            assert malformed.code == "HTTP_ERROR" and "private-body" not in malformed.message
+            # 未识别错误仍保留状态码，诊断长度不是模型请求的运行限制。
+            # Unknown errors retain their status; diagnostic size is not a model execution gate.
+            large = await client.http_failure(httpx.Response(400, text="x" * 20000), "Model")
+            assert large.code == "HTTP_ERROR"
+        finally:
+            await pool.close()
 
     asyncio.run(scenario())
 

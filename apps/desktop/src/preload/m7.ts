@@ -1,5 +1,5 @@
 /** 自进化的具名转发。 Named evolution forwarding. */
-import type { ProtocolV12 as P } from '../generated/protocol'
+import type { ProtocolV13 as P } from '../generated/protocol'
 import type { M7DesktopAPI } from '../shared/m7-api'
 import type { Result } from '../shared/api'
 

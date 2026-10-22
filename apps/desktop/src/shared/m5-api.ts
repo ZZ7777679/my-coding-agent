@@ -1,5 +1,5 @@
 /** M5 明确能力接口，数据类型仅来自生成协议。 Explicit M5 capabilities using generated contracts only. */
-import type { ProtocolV12 as P } from '../generated/protocol'
+import type { ProtocolV13 as P } from '../generated/protocol'
 import type { Result } from './api'
 
 export interface M5DesktopAPI {

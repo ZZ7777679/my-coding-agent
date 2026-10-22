@@ -1,5 +1,7 @@
 # 测试与回归
 
+子任务失败回读：`pytest tests/python/test_delegation.py -q` 验证原安排失败停止、部分输出与错误分离、重启后四个旧结果读完及诊断关联；夹具明确加载完整工具目录以隔离调度语义，产品默认按需发现不变。`test_go.py -k 'http_rejection or auth_failure'` 检查 HTTP 400 原因、认证正文不回显及无重试；双端契约过滤 `worker-failure`。桌面构建后 `knowledge.spec.ts` 用隔离离线模型验证错误卡片与再次查询完成，截图归 `.artifacts/tests/desktop-knowledge-*/worker-failure.png`。不重发个人历史请求。
+
 旧会话读取／请求积压：`pytest tests/python/test_session_read_cache.py tests/python/test_goal_records.py -q` 检查解析复用、变更／损坏／删除失效、缓存淘汰不限制读取及 Goal 原持久规则；桌面构建后 `npm.cmd --prefix apps/desktop run test:desktop -- old-session.spec.ts` 使用 `tests/support/long_session.py` 的隔离 180 轮样本，观测慢读取下的请求合并、会话切换、忙碌提示恢复和历史不变。知识面板兼容用 `knowledge.spec.ts`。产物归 `.artifacts/tests/desktop-old-session-*/`，不调用模型、不写个人历史；只在涉及这条链路时运行。
 
 M7 独立改进预算：`pytest tests/python/test_evolution_budget.py -q` 通过真实服务和离线模型检查调查／提案／指定资源生成的独立预算、接纳快照、持久化、旧记录兼容、有限／不限与取消。`test_go.py -k 'unlimited_model_budget or frame_limits or failure_cause'` 覆盖真实客户端的省略 token 参数、HTTP 超时关闭、300K 大帧／取消及原数值限制；`test_evolution.py -k review_evidence` 包含不限选材的 Trace 分页。桌面构建后 `npm.cmd --prefix apps/desktop run test:desktop -- evolution.spec.ts -g "independent budgets"` 检查首屏入口、八项有限／不限切换、普通配置不变、重启和恢复单项限额；截图／隔离数据在 `.artifacts/tests/desktop-m7-budget-*/`。预算正反字段沿用共享契约 `-k m7-budget`／`--test-name-pattern=m7-budget`。不访问网络、个人历史或真实模型，按相关改动选择执行。
@@ -296,6 +298,8 @@ M2 收尾复用该文件中的三条定向检查：`::test_bidirectional_deliver
 
 ## M7 自进化定向验证
 
+M8 的后续维护与新增入口见本文末尾，不将协议 v12 的历史说明当作当前协议。
+
 - 十二项审查修复：`pytest tests/python/test_evolution_review_fixes.py -q` 使用真实服务和离线模型，覆盖指定资源纠错、独立候选冲突、重启接续、历史分页、准备取消／时间预算／跨项目接纳、现场反馈冻结、记忆正文检索／派生纠错、独立证据失效，以及历史改进检索→经验采用→版本变化后的召回。桌面 `evolution.spec.ts -g 'investigates cross-project'` 追加勾选导航保留、原调查再次生成、超过一页的作业／按 ID 打开历史和经验提炼入口；产物仍归 `.artifacts/tests/desktop-m7-investigation-*/`。不发真实模型请求，不修改个人数据。
 
 - 选择性筛选与现场入口：`pytest tests/python/test_evolution_screening.py -q` 覆盖长正文检索、重复归组、准确阅读计量、任务／项目完整分页、冻结接续及模型工具与桌面同一作业。桌面 `evolution.spec.ts -g 'contextual entry'` 检查三种现场范围、启动与原地进度、跳转同一作业、线索／实际阅读及清除继承范围。离线模型，产物 `.artifacts/tests/desktop-m7-contextual-*/`。指定资源与普通调查现在共用筛选／按需读取，预览不再默认铺入 Trace 全文。
@@ -308,3 +312,12 @@ M2 收尾复用该文件中的三条定向检查：`::test_bidirectional_deliver
 - `.venv/Scripts/python.exe -m pytest tests/python/test_diagnostics_contracts.py -q -k m7` 与 `node --test --test-name-pattern=m7 tests/contracts/schema.test.mjs`：共用正反 DTO 样本，检查 v12 新入口。
 - 构建后 `npm.cmd --prefix apps/desktop run test:desktop -- evolution.spec.ts`：实际 Electron / RPC，规范及偏好编辑、采用／恢复、反馈、实验详情关闭与重启；选材场景可用 `-g 'selects a named run'`：离线模型生成 22 轮真实运行，翻页保留旧轮、多选、切换整个会话／单事件、预览、跳转 Trace、生成并回查实际材料。证据浮层检查完整位于视窗、材料→Trace→材料、关闭后页面滚动与焦点保持，以及窄窗口直接查看和 Esc 关闭。实际启动本机 Python 检查，产物 `.artifacts/tests/desktop-m7-*/`、`.artifacts/tests/desktop-m7-evidence-*/`；不调用外部模型。
 - `.venv/Scripts/python.exe tests/models/m7_evolution_live.py --enable-real-models`：明确启用网络后使用生产 OpenCode Go 客户端。GLM 和 DeepSeek 各生成规范／代码候选并接续一次，通常共 6 请求；隔离试验上限 8 请求／600 秒、单请求 90 秒，不写产品预算。真实代码检查及采用／恢复，报告 `.artifacts/tests/m7-live-*/report.json`。只发送隔离样本，不读取个人会话；不是每次开发必跑项。
+
+## M8 稳定性与体验定向验证
+
+- `pytest tests/python/test_m8_recovery.py tests/python/test_delegation.py tests/python/test_mcp_http.py -q`：离线故障模型、真实运行／文件／持久化及本地 MCP；四 worker 超过旧累计限额、父子账本、取消部分输出、默认不重试、已写文件后模型重试不重放工具、退避取消、有限预算与 MCP 只读重连。
+- `test_capability_discovery.py` 中 M8 组合查询用实际服务定义确认 worker 可发现；`test_go.py -k empty_completed` 核对空回答的 usage 与 phase 保留。回退继续复用 `test_checkpoints.py`。
+- 构建后 `node --test --test-name-pattern=M8 tests/gateway/backend.test.mjs`：真实测试子进程的读取超时／迟到响应和实际退出后的单次恢复；不发模型请求。
+- 构建后 `npm.cmd --prefix apps/desktop run test:desktop -- m8-experience.spec.ts`：真实 Electron 和生产 RPC，模型为隔离样本；五主题、主色持久、侧栏、子任务阅读、Trace 筛选、记忆草稿／反馈、长 Markdown 输入和 125% 缩放。输出 `.artifacts/tests/m8-experience-*/` 的截图与 `metrics.json`。原生缩放截图采用 `webContents.capturePage`，避免 CDP 的视口坐标裁切。测试专用 RPC 计量只记录方法与时间，不记录参数。
+- `knowledge.spec.ts` 保留历史查询／压缩／记忆与失败子任务接续回归；新版覆盖面板先关闭再切换入口。
+- `.venv/Scripts/python.exe tests/models/m8_collaboration_live.py --enable-real-models`：GLM／DeepSeek 各一次隔离 worker 读取→主任务写文件→最终回答；使用真实 Go，默认 24 请求／600 秒总预算，各 Run 12 请求／16 工具／240 秒。可用 `--model glm-5.3-flash` 单独复测、`--retry-attempts 1` 显式测试临时重试；这些仅属验收设置，不改用户默认。报告 `.artifacts/tests/m8-live-*/report.json` 逐请求记录用量与失败，不进普通 CI。

@@ -28,6 +28,16 @@ def tool_name(definition: JsonObject) -> str:
     return str(function.get("name", "")) if isinstance(function, dict) else ""
 
 
+def query_rank(item: JsonObject, words: list[str]) -> tuple[int, int]:
+    """按名称与正文命中排序，多个意图词不再要求同时出现在单个工具中。
+
+    Rank name and description matches without requiring every intent in one tool.
+    """
+    name = str(item["name"]).casefold()
+    text = name + " " + str(item["description"]).casefold()
+    return sum(word in name for word in words), sum(word in text for word in words)
+
+
 class CapabilityTools:
     """保留会话工作集合；未加载只影响提示，不拒绝合法调用。
 
@@ -88,7 +98,8 @@ class CapabilityTools:
                 "function": {
                     "name": "discover_tools",
                     "description": (
-                        "Search available tools by name/description (space-separated keywords). "
+                        "Search available tools by name/description (space-separated keywords, "
+                        "ranked by name and then matching keyword count). "
                         "Capabilities include files, execution, terminals, Git, code intelligence, "
                         "web, browser/MCP, context/history, memory, tasks, collaboration "
                         "workers, feedback and improvement proposals. "
@@ -174,12 +185,17 @@ class CapabilityTools:
             if item["name"] in args.names
             or (
                 not args.names
-                and all(
-                    word in (str(item["name"]) + " " + str(item["description"])).casefold()
-                    for word in words
+                and (
+                    not words
+                    or any(
+                        word in (str(item["name"]) + " " + str(item["description"])).casefold()
+                        for word in words
+                    )
                 )
             )
         ]
+        if words and not args.names:
+            matches.sort(key=lambda item: query_rank(item, words), reverse=True)
         page = matches[args.offset : args.offset + args.limit]
         activated = (
             [str(item["name"]) for item in page if item["execution_compatible"]]

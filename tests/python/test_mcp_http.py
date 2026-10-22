@@ -86,6 +86,15 @@ def test_streamable_http_tools_and_resources(tmp_path, monkeypatch):
                 assert any(r["uri"] == "fixture://note" for r in resources["resources"])
                 resource = await connection.call("resources/read", {"uri": "fixture://note"})
                 assert resource["contents"][0]["text"] == "fixture-resource"
+                # 只读发现可重建已关闭连接，不重放之前的工具。
+                # Read-only discovery can replace a closed connection without replaying tools.
+                await connection.close()
+                unchanged = await service.connect(params, "fixture")
+                assert unchanged is connection
+                connection = await service.connect(params, "fixture", refresh_closed=True)
+                assert connection is not unchanged
+                refreshed = await connection.call("tools/list", {})
+                assert any(t["name"] == "add" for t in refreshed["tools"])
                 sid = created.session.session_id
                 service.select_tools(sid, "fixture", connection.tools)
                 other = await app.dispatch(

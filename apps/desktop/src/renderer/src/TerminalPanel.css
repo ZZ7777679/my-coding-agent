@@ -1,7 +1,7 @@
 .terminal-panel {
   position: relative;
   min-width: 0;
-  border: 1px solid var(--border, #344256);
+  border: 1px solid var(--border, var(--border));
   border-radius: 8px;
   padding: 10px;
   margin: 10px 0;
@@ -39,8 +39,8 @@
   white-space: nowrap;
 }
 .terminal-tabs button[aria-selected='true'] {
-  border-color: #60a5fa;
-  background: #203852;
+  border-color: var(--accent);
+  background: var(--selected);
 }
 .terminal-toolbar,
 .terminal-assignment {
@@ -59,7 +59,7 @@
   height: 290px;
   min-width: 0;
   padding: 8px;
-  background: #10141b;
+  background: var(--panel);
   border-radius: 5px;
   overflow: hidden;
 }

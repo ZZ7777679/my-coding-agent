@@ -13,7 +13,7 @@ import type {
   DiagnosticsParams,
   InitializeResult,
   OperationError,
-  ProtocolV12,
+  ProtocolV13,
   SessionSignal
 } from '../generated/protocol'
 import { validate } from '../shared/validation'
@@ -51,6 +51,22 @@ type Pending = {
   timer: ReturnType<typeof setTimeout> | null
 }
 
+// 只合并明确只读查询；诊断、写入、搜索取消和工具派发保持原语义。
+// Coalesce explicit read-only queries; diagnostics, writes and dispatch retain their semantics.
+const sharedReads = new Set([
+  'projects.list',
+  'config.get',
+  'sessions.get',
+  'sessions.list',
+  'runs.active',
+  'workers.list',
+  'goals.list',
+  'context.get',
+  'trace.list',
+  'trace.detail',
+  'memory.list'
+])
+
 /**
  * 维护一个 Python 连接、待响应请求和终止状态，业务初始化错误可保留诊断通道。
  * Own one Python connection and its requests; retain diagnostics after business init errors.
@@ -68,7 +84,44 @@ export class Backend {
   private termination: Promise<void> | undefined
   private diagnostic: Promise<DiagnosticReport> | undefined
   private listeners = new Set<(signal: SessionSignal) => void>()
-  private readonly launchId = randomUUID()
+  private launchId = randomUUID()
+  private processClosed = false
+  private recovering: Promise<void> | undefined
+  private sharedReads = new Map<string, Promise<unknown>>()
+
+  /** 后端实际退出并完成清理后，只恢复读取服务，不重放原请求。
+   * Restore the read service only after actual process closure and cleanup; never replay work. */
+  async reconnectForRead(): Promise<void> {
+    if (this.recovering) return this.recovering
+    if (
+      this.stopping ||
+      !this.failed ||
+      !this.processClosed ||
+      !['BACKEND_EXITED', 'BACKEND_PIPE_CLOSED', 'BACKEND_START_FAILED'].includes(
+        this.failed.detail.code
+      )
+    )
+      return
+    this.recovering = (async () => {
+      await this.termination
+      this.child = undefined
+      this.failed = undefined
+      this.ready = undefined
+      this.termination = undefined
+      this.exited = undefined
+      this.processClosed = false
+      this.launchId = randomUUID()
+      this.sharedReads.clear()
+      this.log('BACKEND_RECONNECTING')
+      await this.start()
+      this.log('BACKEND_RECONNECTED')
+    })()
+    try {
+      await this.recovering
+    } finally {
+      this.recovering = undefined
+    }
+  }
 
   /** 注册公开会话通知，返回清理入口。 Subscribe to public session notifications. */
   subscribe(listener: (signal: SessionSignal) => void): () => void {
@@ -157,8 +210,10 @@ export class Backend {
     )
     this.child = child
     this.exited = new Promise((resolve) => {
-      child.once('exit', () => resolve())
-      child.once('error', () => resolve())
+      child.once('close', () => {
+        this.processClosed = true
+        resolve()
+      })
     })
     child.on('error', (cause: NodeJS.ErrnoException) => {
       // 仅记录系统错误代码，不把路径、环境或原始 stderr 写入日志。
@@ -170,7 +225,9 @@ export class Backend {
       this.log(
         `BACKEND_EXIT launch=${this.launchId} pid=${child.pid ?? 'unknown'} code=${code ?? 'unknown'} signal=${signal ?? 'none'} expected=${this.stopping}`
       )
-      this.fail(error('BACKEND_EXITED', 'Python 后端已退出，请重新打开应用。'))
+      this.fail(
+        error('BACKEND_EXITED', 'Python 后端已退出，正在等待清理并恢复连接；运行不会自动重放。')
+      )
     })
     this.log(`BACKEND_STARTED launch=${this.launchId} pid=${child.pid ?? 'unknown'}`)
     child.stdout.on('data', (chunk: Buffer) => this.receive(chunk))
@@ -268,15 +325,20 @@ export class Backend {
    * 按方法校验短控制响应，诊断与运行使用独立等待。
    * Validate short control responses independently of diagnostic and run waiting.
    */
-  async call<K extends keyof ProtocolV12>(
+  async call<K extends keyof ProtocolV13>(
     method: string,
     params: object,
     resultType: K,
-    timeoutMs: number | null = 8000
-  ): Promise<ProtocolV12[K]> {
+    timeoutMs: number | null = defaults.desktop_connection.request_timeout_ms
+  ): Promise<ProtocolV13[K]> {
     // M1 的诊断与模型运行独立，取消请求立即进入控制通道。
     // M1 diagnostics and model runs are independent; cancellation goes directly to control.
-    const response = this.request(method, params, timeoutMs)
+    const key = sharedReads.has(method) ? JSON.stringify([method, params, timeoutMs]) : null
+    let response = key ? this.sharedReads.get(key) : undefined
+    if (!response) {
+      response = this.request(method, params, timeoutMs)
+      if (key) this.sharedReads.set(key, response)
+    }
     if (method === 'git.configure') this.metadataMoves.add(response)
     try {
       const value = await response
@@ -288,6 +350,7 @@ export class Backend {
       }
     } finally {
       this.metadataMoves.delete(response)
+      if (key && this.sharedReads.get(key) === response) this.sharedReads.delete(key)
     }
   }
 
@@ -308,7 +371,7 @@ export class Backend {
    */
   private request(method: string, params: object, timeoutMs: number | null): Promise<unknown> {
     this.assertHealthy()
-    if (this.pending.size >= 32)
+    if (this.pending.size >= defaults.desktop_connection.max_pending_requests)
       return Promise.reject(error('BACKEND_BUSY', '正在处理其他请求，请稍后重试。'))
     const id = 'request-' + ++this.nextId
     const frame = JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n'
@@ -322,7 +385,20 @@ export class Backend {
         timeoutMs === null
           ? null
           : setTimeout(() => {
-              this.fail(error('BACKEND_TIMEOUT', '后端响应超时，请重新打开应用。'))
+              // 单次等待超时不终止仍在执行的后端；迟到响应单独消费，不能误配新请求。
+              // One timed-out wait never kills ongoing work; consume its late reply separately.
+              this.pending.delete(id)
+              reject(
+                new BackendError({
+                  code: 'BACKEND_TIMEOUT',
+                  message: '等待后端响应超时。',
+                  remediation: sharedReads.has(method)
+                    ? '可以重新读取；后台运行保持不变。'
+                    : '操作可能仍在执行，请先读取实际状态再决定是否继续，不要重复提交。',
+                  phase: 'rpc_wait',
+                  effect_state: sharedReads.has(method) ? 'not_executed' : 'unknown'
+                })
+              )
             }, timeoutMs)
       this.pending.set(id, { resolve, reject, timer })
       this.child?.stdin.write(frame)
@@ -358,6 +434,11 @@ export class Backend {
         }
         const response = validate('RpcResponse', data)
         const pending = response.id === null ? undefined : this.pending.get(response.id)
+        // 已发出且不再等待的身份属于迟到／重复回包，不因缓存淘汰杀掉后端。
+        // Previously issued, settled IDs are late/duplicate replies, without eviction-based failure.
+        const issued = response.id?.match(/^request-(\d+)$/)
+        if (!pending && issued && Number(issued[1]) > 0 && Number(issued[1]) <= this.nextId)
+          continue
         if (!pending || response.id === null) throw new Error('Unmatched RPC response')
         this.pending.delete(response.id)
         if (pending.timer) clearTimeout(pending.timer)

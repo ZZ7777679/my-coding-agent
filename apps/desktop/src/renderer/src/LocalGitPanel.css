@@ -1,7 +1,7 @@
 .local-git-panel {
   position: relative;
   min-width: 0;
-  border: 1px solid var(--border, #344256);
+  border: 1px solid var(--border, var(--border));
   padding: 10px;
   border-radius: 8px;
   margin: 10px 0;
@@ -24,8 +24,8 @@
   margin: 10px 0;
 }
 .local-git-tabs button[aria-selected='true'] {
-  border-color: #60a5fa;
-  background: #203852;
+  border-color: var(--accent);
+  background: var(--selected);
 }
 .local-git-files {
   list-style: none;
@@ -58,7 +58,7 @@
   overflow-wrap: anywhere;
   max-height: 290px;
   overflow: auto;
-  background: #111721;
+  background: var(--panel);
   border-radius: 5px;
   padding: 10px;
 }
@@ -83,6 +83,6 @@
 }
 .local-git-history small {
   display: block;
-  color: #9ca3af;
+  color: var(--muted);
   margin-left: 11ch;
 }

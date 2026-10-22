@@ -5,6 +5,9 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import path from 'node:path'
 
 test('M3 context, memory and worker controls persist across reload', async () => {
+  // 该场景含重载、压缩、历史分页及新增子任务故障读取，保留单动作超时。
+  // Allow the expanded reload/compaction/history/worker scenario while retaining action timeouts.
+  test.setTimeout(90000)
   await mkdir(artifacts, { recursive: true })
   const root = await mkdtemp(path.join(artifacts, 'desktop-knowledge-'))
   const project = path.join(root, 'project')
@@ -26,6 +29,7 @@ test('M3 context, memory and worker controls persist across reload', async () =>
   })
   try {
     const page = await app.firstWindow()
+    page.on('pageerror', (error) => console.error('Knowledge renderer:', error.message))
     await expect(page.getByTestId('connection-status')).toHaveText('本地后端已连接')
     await choose(app, project)
     await page.getByRole('button', { name: '新建任务 →', exact: true }).click()
@@ -68,6 +72,9 @@ test('M3 context, memory and worker controls persist across reload', async () =>
     await expect(
       page.getByRole('button', { name: '保存材料与压缩参数', exact: true })
     ).toBeEnabled()
+    // M8 使用独立阅读面板，先关闭再切换入口；不穿透覆盖层。
+    // Close the M8 reading surface before switching entry points.
+    await closePanel.click()
     await panel.getByTestId('open-memory').click()
     await page.getByRole('button', { name: '新增记忆', exact: true }).click()
     await page.getByLabel('记忆标题').fill('Offline requirement')
@@ -136,6 +143,7 @@ test('M3 context, memory and worker controls persist across reload', async () =>
     await results.locator(':scope > button').click()
     await expect(results).toContainText('3 项匹配')
     await page.screenshot({ path: path.join(root, 'history-panel.png') })
+    await closePanel.click()
     await contextButton.click()
     await panel.getByTestId('request-materials').locator(':scope > button').click()
     await expect(panel.getByTestId('request-materials')).toContainText('任务目标')
@@ -173,16 +181,17 @@ test('M3 context, memory and worker controls persist across reload', async () =>
     await expect(linkedResult.locator('pre')).toBeHidden()
     await expect(callEntry.locator(':scope > button')).toHaveAttribute('aria-expanded', 'true')
     await closePanel.click()
-    await workers.locator(':scope > summary').click()
+    await workers.locator(':scope > button').click()
+    await page.locator('.worker-options > summary').click()
     await page.getByLabel('允许拆分子 agent').click()
     await expect(page.getByLabel('允许拆分子 agent')).toBeChecked()
-    await expect(workers.locator(':scope > summary')).toContainText('已开启')
+    await expect(workers.locator(':scope > button')).toContainText('已开启')
     await page.screenshot({ path: path.join(root, 'knowledge.png') })
     await page.reload()
     await page.locator('.tree-project').click()
     await page.locator('.tree-task').click()
     await page.locator(`.tree-session[data-session-id="${sid}"]`).click()
-    await expect(page.getByTestId('workers').locator(':scope > summary')).toContainText('已开启')
+    await expect(page.getByTestId('workers').locator(':scope > button')).toContainText('已开启')
     await expect(page.getByTestId('open-context')).toContainText('已压缩')
     const state = await page.evaluate(
       (sessionId) => window.agent.listMemory({ session_id: sessionId }),
@@ -196,6 +205,27 @@ test('M3 context, memory and worker controls persist across reload', async () =>
       sid
     )
     expect(contextState.ok && contextState.data.settings.summary_output_tokens).toBe(null)
+    await page.getByLabel('输入问题').fill('m3: failing worker')
+    await page.getByRole('button', { name: '发送', exact: true }).click()
+    await expect(page.getByTestId('run-status')).toContainText('运行失败')
+    await workers.locator(':scope > button').click()
+    const failed = page.locator('.reading-detail')
+    await expect(failed).toContainText('Model request rejected (HTTP 400)')
+    await failed.locator('.failure-notice summary').click()
+    await expect(failed).toContainText('response_headers')
+    await expect(failed).toContainText('诊断编号')
+    await expect(failed).toContainText('已保存的部分输出')
+    await expect(failed.locator('.markdown-content')).toHaveText(
+      'I will inspect the progress directory'
+    )
+    await page.screenshot({ path: path.join(root, 'worker-failure.png') })
+    await page.getByRole('button', { name: '返回对话', exact: true }).click()
+    await page.getByLabel('输入问题').fill('m3: inspect failed worker')
+    await page.getByRole('button', { name: '发送', exact: true }).click()
+    await expect(page.getByTestId('run-status')).toContainText('回答结束')
+    await expect(page.locator('.chat-panel')).toContainText(
+      'Saved failure inspected without restarting the child.'
+    )
   } finally {
     await app.close()
   }

@@ -833,7 +833,7 @@ class ContextService:
             model = self.sessions.model_factory()
             previous = old
             while prefix:
-                if job.requests >= limits.max_requests:
+                if limits.max_requests is not None and job.requests >= limits.max_requests:
                     raise AgentError(
                         "BUDGET_REQUESTS", "整理已达到请求预算，原始历史和此前摘要保持。"
                     )

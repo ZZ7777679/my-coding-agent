@@ -1,5 +1,5 @@
 /** 自进化 IPC 复用来源校验。 Evolution IPC reuses sender validation. */
-import type { ProtocolV12 as P } from '../generated/protocol'
+import type { ProtocolV13 as P } from '../generated/protocol'
 import type { Backend } from './backend'
 import { validate } from '../shared/validation'
 

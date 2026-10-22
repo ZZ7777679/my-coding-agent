@@ -1,5 +1,5 @@
 /** 自进化的有限桌面接口。 Restricted evolution desktop API. */
-import type { ProtocolV12 as P } from '../generated/protocol'
+import type { ProtocolV13 as P } from '../generated/protocol'
 import type { Result } from './api'
 
 export interface M7DesktopAPI {

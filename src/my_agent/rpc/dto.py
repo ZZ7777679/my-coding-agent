@@ -187,6 +187,18 @@ class DTO(BaseModel):
         return value
 
 
+class AppearanceSettings(DTO):
+    """应用外观由 Electron 持久化，不属于项目业务配置。
+
+    Electron persists appearance independently from project business settings.
+    """
+
+    preset: Literal["graphite", "light", "nord", "paper", "mint"]
+    accent: Annotated[str, StringConstraints(pattern=r"^#[0-9a-fA-F]{6}$")] | None
+    sidebar_width: Annotated[int, Field(ge=190, le=440)]
+    sidebar_collapsed: bool
+
+
 class CredentialInfo(DTO):
     """仅公开凭据来源与存在状态；null 表示读取受限。
 
@@ -300,8 +312,8 @@ class AppInfo(DTO):
 
     name: Text
     app_version: Text
-    protocol_version: Literal[12]
-    stage: Literal["M7"]
+    protocol_version: Literal[13]
+    stage: Literal["M8"]
 
 
 class StorageInfo(DTO):
@@ -381,7 +393,7 @@ class InitializeParams(DTO):
     """
 
     app_version: Text
-    protocol_version: Literal[12]
+    protocol_version: Literal[13]
     data_schema_version: Literal[1]
 
 
@@ -596,9 +608,14 @@ class ErrorData(DTO):
 
     code: Text
     remediation: str
+    cause_code: str | None = None
+    phase: str | None = None
+    diagnostic_id: str | None = None
+    tool_call_id: str | None = None
+    effect_state: Literal["not_executed", "saved", "partial", "unknown"] | None = None
 
 
-class OperationError(DTO):
+class OperationError(ErrorData):
     """桌面操作使用的公开错误，不包含原始异常堆栈。
 
     Public desktop-operation error without a raw exception traceback.
@@ -777,6 +794,7 @@ PUBLIC_TYPES: dict[str, type[BaseModel]] = {
         *M5_TYPES,
         *M6_TYPES,
         *EVOLUTION_TYPES,
+        AppearanceSettings,
         SpaceParams,
         SaveSpaceParams,
         SaveSpaceLayoutParams,

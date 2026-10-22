@@ -607,10 +607,13 @@ class McpService:
             "可继续用文件工具、沙箱命令，或已配置的浏览器／远端 MCP；无需额外授权。"
         )
 
-    async def connect(self, params: McpParams, identity: str) -> Connection:
-        """复用相同会话连接，失败不隐式重连。
+    async def connect(
+        self, params: McpParams, identity: str, *, refresh_closed: bool = False
+    ) -> Connection:
+        """复用相同会话连接；只读发现可恢复已关闭连接，不重放之前的工具。
 
-        Reuse a session connection without implicit retry."""
+        Reuse a connection; discovery may restore a closed one without replaying prior tools.
+        """
         server = await self.sessions.worker.call(self.server, params, identity)
         if server.transport == "stdio" and params.project_id and self.sessions.read_roots:
             roots = await self.sessions.worker.call(self.sessions.read_roots, params.project_id)
@@ -621,6 +624,9 @@ class McpService:
                 )
         key = self.key(params, identity)
         connection = self.connections.get(key)
+        if connection and connection.task.done() and refresh_closed:
+            self.connections.pop(key, None)
+            connection = None
         if connection is None:
             connection = Connection(server, self, params)
             self.connections[key] = connection

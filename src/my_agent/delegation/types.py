@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from pydantic import Field
 
 from my_agent.identifiers import EntityId
-from my_agent.models.types import ModelData, ModelId, TokenUsage
+from my_agent.models.types import ModelData, ModelId, ModelProgress, TokenUsage
 from my_agent.runtime.modes import RunMode
 
 
@@ -53,6 +53,19 @@ class SpawnWorkerArgs(ModelData):
     mode: RunMode = "plan"
 
 
+class WorkerFailure(ModelData):
+    """子运行的真实失败原因，与部分成果分开保存。
+
+    Preserve the child run's actual failure separately from partial output.
+    """
+
+    code: str
+    message: str
+    cause_code: str | None = None
+    phase: str | None = None
+    diagnostic_id: EntityId | None = None
+
+
 class WorkerRecord(ModelData):
     """完整内部身份、原安排与结果入口。
 
@@ -66,16 +79,25 @@ class WorkerRecord(ModelData):
     goal_id: EntityId | None
     model_id: ModelId
     assignment: SpawnWorkerArgs
-    status: Literal["queued", "running", "completed", "failed", "cancelled", "interrupted"]
+    status: Literal[
+        "queued", "running", "completed", "failed", "cancelled", "interrupted", "budget_exceeded"
+    ]
     run_id: EntityId | None = None
     result: str = ""
     code: str | None = None
+    failure: WorkerFailure | None = None
     created_at: str
     updated_at: str
     pending_messages: list[str] = Field(default_factory=list)
     requests: int = 0
     tools: int = 0
     active_seconds: float = 0.0
+    last_seq: int | None = None
+    last_event_at: str | None = None
+    last_tool: str | None = None
+    last_tool_status: Literal["running", "completed", "failed", "skipped"] | None = None
+    model_progress: ModelProgress | None = None
+    history_issue: str | None = None
 
 
 class WorkerControlParams(WorkerSessionParams):

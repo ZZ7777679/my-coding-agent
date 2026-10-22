@@ -16,6 +16,7 @@ import { RunSettings } from './RunSettings'
 import { Connections } from './Connections'
 import { EnvironmentSettings } from './EnvironmentSettings'
 import { Workflows } from './Workflows'
+import { AppearanceSettingsPanel } from './Appearance'
 
 /**
  * 从工作台接收连接与互斥状态，并上报已保存配置。
@@ -185,6 +186,7 @@ export function Settings({ info, connected, busy, onBusy, onConfig }: Props) {
         </div>
       </div>
       {config && <RunSettings config={config} disabled={busy || !connected} onSaved={onConfig} />}
+      <AppearanceSettingsPanel />
       {error && (
         <div className="notice" role="alert">
           <span>!</span>

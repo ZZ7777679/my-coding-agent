@@ -1,10 +1,11 @@
 /** 渲染模型 Markdown，远程资源不自动加载。 Render model Markdown without automatically loading remote resources. */
+import { memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import './Markdown.css'
 
 /** 保留流式文本与安全的表格、代码块；不执行原始 HTML。 Preserve streaming text, tables and code without executing raw HTML. */
-export function Markdown({ text }: { text: string }) {
+export const Markdown = memo(function Markdown({ text }: { text: string }) {
   return (
     <div className="markdown-content">
       <ReactMarkdown
@@ -43,4 +44,4 @@ export function Markdown({ text }: { text: string }) {
       </ReactMarkdown>
     </div>
   )
-}
+})

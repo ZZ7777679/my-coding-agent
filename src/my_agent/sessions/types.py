@@ -9,6 +9,7 @@ from pydantic import Field
 
 from my_agent.checkpoints.types import ConversationRestored
 from my_agent.delegation.types import DelegatedUsage
+from my_agent.errors import EffectState
 from my_agent.execution.types import ProgramView
 from my_agent.goals.types import (
     GoalControl,
@@ -145,6 +146,26 @@ class AuxiliaryStarted(ModelData):
     purpose: Literal["web_search", "compaction"] = "web_search"
 
 
+class RequestFailed(ModelData):
+    """显式策略允许重试的失败请求，单独记账且保留原请求身份。
+
+    A failed request retried by explicit policy, counted separately under its original identity.
+    """
+
+    kind: Literal["request.failed"] = "request.failed"
+    message_id: SessionId
+    code: str
+    message: str
+    cause_code: str | None = None
+    phase: str | None = None
+    retry_number: int
+    retry_delay_seconds: float
+    usage: TokenUsage | None = None
+    partial_text: str = ""
+    partial_reasoning: str = ""
+    model_progress: ModelProgress | None = None
+
+
 class AuxiliaryCompleted(ModelData):
     """保存辅助请求实际用量，失败或中断未报告用量保持未知。
 
@@ -223,6 +244,9 @@ class RunFinished(ModelData):
     cause_code: str | None = None
     failure_phase: str | None = None
     diagnostic_id: SessionId | None = None
+    remediation: str = ""
+    tool_call_id: str | None = None
+    effect_state: EffectState | None = None
     model_progress: ModelProgress | None = None
     # 仅记录宿主单调时钟测得的活跃耗时，旧日志 / 崩溃未知时保留 None。
     # Record host-measured monotonic active time; old logs and crashes remain unknown.
@@ -231,6 +255,10 @@ class RunFinished(ModelData):
     # Failed responses can report usage; link the unanswered request without a complete turn.
     failed_request_id: SessionId | None = None
     failed_request_usage: TokenUsage | None = None
+    # 未完整返回的可见输出只供展示，不补造 assistant 回合或执行工具参数。
+    # Incomplete visible output is display-only, never a committed turn or executable tool call.
+    partial_text: str = ""
+    partial_reasoning: str = ""
     report: WorkReport | None = None
     # 宿主只在完整配对边界让出执行；不是模型自行宣布一个工作单元完成。
     # Only the host yields at a paired boundary; this is not a model's completion claim.
@@ -257,6 +285,7 @@ FactData = Annotated[
     | ConversationRestored
     | RunAccepted
     | RequestStarted
+    | RequestFailed
     | AuxiliaryStarted
     | AuxiliaryCompleted
     | AssistantCommitted
@@ -301,11 +330,19 @@ class RunView(ModelData):
     status: RunStatus
     requests: int
     tools: int
+    child_requests: int = 0
+    child_tools: int = 0
     input_tokens: int | None
     output_tokens: int | None
     limits: RunLimits
     code: str | None
     message: str | None
+    cause_code: str | None = None
+    failure_phase: str | None = None
+    diagnostic_id: SessionId | None = None
+    remediation: str = ""
+    tool_call_id: str | None = None
+    effect_state: EffectState | None = None
     mode: RunMode = "plan"
     plan_document: str | None = None
     progress_sync: Literal["none", "pending", "synced"] = "none"
@@ -362,6 +399,7 @@ class ChatEntry(ModelData):
     ]
     text: str
     reasoning: str = ""
+    partial_text: str = ""
     model_id: ModelId | None = None
     call: ToolCall | None
     result: ToolResult | None

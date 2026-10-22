@@ -8,10 +8,11 @@ import json
 import threading
 from collections.abc import Awaitable, Callable
 from typing import Literal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from my_agent.context.tokens import estimate_tokens
 from my_agent.errors import AgentError
+from my_agent.models.failures import ModelResponseError
 from my_agent.models.types import (
     JsonObject,
     ModelClient,
@@ -32,6 +33,7 @@ from my_agent.runtime.settings import ModelLimits
 from my_agent.runtime.tools import ToolExecutor
 from my_agent.sessions.types import (
     AssistantCommitted,
+    RequestFailed,
     RequestStarted,
     ToolCompleted,
     ToolSkipped,
@@ -121,63 +123,92 @@ async def run_loop(
             and context_bytes > limits.max_context_bytes
         ):
             raise AgentError("BUDGET_CONTEXT", "请求上下文超过字节预算，可在设置中调整后继续。")
-        model.check_available()
-        message_id = str(uuid4())
-        await sink.commit(
-            RequestStarted(
-                message_id=message_id,
-                model_id=request_model,
-                task_id=shared.task_id if shared else None,
-                task_revision=shared.revision if shared else None,
-                context=ContextManifest(
-                    materials=materials,
-                    message_count=len(context),
-                    request_bytes=context_bytes,
-                    tool_names=[
-                        str(function.get("name", ""))
-                        for definition in definitions
-                        if isinstance(function := definition.get("function"), dict)
-                    ],
-                    estimated_input_tokens=estimated_input,
-                    estimated_fixed_tokens=estimate_tokens([context[:1], definitions]),
-                ),
+        retry_number = 0
+        while True:
+            if limits.max_requests is not None and requests >= limits.max_requests:
+                raise AgentError("BUDGET_REQUESTS", "本次请求预算已用完，未发送下一次模型请求。")
+            model.check_available()
+            message_id = str(uuid4())
+            await sink.commit(
+                RequestStarted(
+                    message_id=message_id,
+                    model_id=request_model,
+                    task_id=shared.task_id if shared else None,
+                    task_revision=shared.revision if shared else None,
+                    context=ContextManifest(
+                        materials=materials,
+                        message_count=len(context),
+                        request_bytes=context_bytes,
+                        tool_names=[
+                            str(function.get("name", ""))
+                            for definition in definitions
+                            if isinstance(function := definition.get("function"), dict)
+                        ],
+                        estimated_input_tokens=estimated_input,
+                        estimated_fixed_tokens=estimate_tokens([context[:1], definitions]),
+                    ),
+                )
             )
-        )
-        if stop.is_set():
-            raise asyncio.CancelledError
-        requests += 1
+            if stop.is_set():
+                raise asyncio.CancelledError
+            requests += 1
 
-        async def on_text(delta: str, identifier: str = message_id) -> None:
-            """流只用于展示，不提前执行参数。
+            async def on_text(delta: str, identifier: str = message_id) -> None:
+                """流只用于展示，不提前执行参数。
 
-            Stream for display without executing partial arguments.
-            """
-            await sink.text(identifier, delta)
+                Stream for display without executing partial arguments.
+                """
+                await sink.text(identifier, delta)
 
-        async def on_progress(progress: ModelProgress, identifier: str = message_id) -> None:
-            """按请求消息 ID 关联阶段。
+            async def on_progress(progress: ModelProgress, identifier: str = message_id) -> None:
+                """按请求消息 ID 关联阶段。
 
-            Correlate phases with their request message.
-            """
-            await sink.progress(identifier, progress)
+                Correlate phases with their request message.
+                """
+                await sink.progress(identifier, progress)
 
-        async def on_reasoning(delta: str, identifier: str = message_id) -> None:
-            """可见思考沿同一消息顺序交付，不当作正文。
+            async def on_reasoning(delta: str, identifier: str = message_id) -> None:
+                """可见思考沿同一消息顺序交付，不当作正文。
 
-            Deliver reasoning under the same message ID.
-            """
-            await sink.reasoning(identifier, delta)
+                Deliver reasoning under the same message ID.
+                """
+                await sink.reasoning(identifier, delta)
 
-        turn = await model.complete(
-            model_id=request_model,
-            session_id=session_id,
-            messages=context,
-            tools=definitions,
-            limits=limits,
-            on_text=on_text,
-            on_progress=on_progress,
-            on_reasoning=on_reasoning,
-        )
+            try:
+                turn = await model.complete(
+                    model_id=request_model,
+                    session_id=session_id,
+                    messages=context,
+                    tools=definitions,
+                    limits=limits,
+                    on_text=on_text,
+                    on_progress=on_progress,
+                    on_reasoning=on_reasoning,
+                )
+                break
+            except AgentError as exc:
+                if retry_number >= limits.model_retry_attempts or not retryable_model_error(exc):
+                    raise
+                retry_number += 1
+                delay = min(
+                    limits.model_retry_max_delay_seconds,
+                    limits.model_retry_delay_seconds * 2 ** min(retry_number - 1, 30),
+                )
+                await sink.commit(
+                    RequestFailed(
+                        message_id=message_id,
+                        code=exc.code,
+                        message=exc.message,
+                        cause_code=exc.cause_code,
+                        phase=exc.phase,
+                        retry_number=retry_number,
+                        retry_delay_seconds=delay,
+                        usage=exc.usage if isinstance(exc, ModelResponseError) else None,
+                    )
+                )
+                await asyncio.sleep(delay)
+                if stop.is_set():
+                    raise asyncio.CancelledError from None
         if stop.is_set():
             raise asyncio.CancelledError
         # FakeModel 也必须提供完整对象；重复 ID 不进入工具执行。
@@ -221,6 +252,27 @@ async def run_loop(
                 if failed:
                     raise tool_failure(call, result)
                 return "yielded" if yielding and not reported else "finished"
+
+
+def retryable_model_error(error: AgentError) -> bool:
+    """只重试明确的临时模型传输／服务故障，不重放工具或认证、余额与格式拒绝。
+
+    Retry transient model transport/service faults, never tools, auth, quota or invalid input.
+    """
+    return error.code in {
+        "MODEL_CONNECT_TIMEOUT",
+        "MODEL_READ_TIMEOUT",
+        "MODEL_WRITE_TIMEOUT",
+        "MODEL_POOL_TIMEOUT",
+        "MODEL_REQUEST_TIMEOUT",
+        "MODEL_PROXY_ERROR",
+        "MODEL_CONNECT_ERROR",
+        "MODEL_STREAM_ERROR",
+        "MODEL_WRITE_ERROR",
+        "MODEL_NETWORK",
+        "SERVICE_ERROR",
+        "RATE_LIMITED",
+    }
 
 
 def recoverable_tool_error(call: ToolCall, result: ToolResult) -> bool:
@@ -294,6 +346,17 @@ def tool_failure(call: ToolCall, result: ToolResult) -> AgentError:
         error = None
     detail = error.get("message") if isinstance(error, dict) else None
     code = error.get("code") if isinstance(error, dict) else None
+    remediation = error.get("remediation") if isinstance(error, dict) else None
+    cause = error.get("cause_code") if isinstance(error, dict) else None
+    phase = error.get("phase") if isinstance(error, dict) else None
+    diagnostic = error.get("diagnostic_id") if isinstance(error, dict) else None
+    # 外部工具可能使用自己的编号；不让展示元数据再次阻断错误保存。
+    # External tool IDs may differ; display metadata must not block saving the real failure.
+    try:
+        diagnostic = str(UUID(diagnostic)) if isinstance(diagnostic, str) else None
+    except ValueError:
+        diagnostic = None
+    effect = error.get("effect_state") if isinstance(error, dict) else None
     reason = f"（{code}）" if isinstance(code, str) else ""
     message = f"工具 {call.name} 失败{reason}"
     if isinstance(detail, str) and detail:
@@ -301,8 +364,18 @@ def tool_failure(call: ToolCall, result: ToolResult) -> AgentError:
     return AgentError(
         "TOOL_FAILED",
         message + " 运行已停止，可在处理原因后接续。",
-        cause_code=code if isinstance(code, str) else None,
-        phase="tool",
+        remediation=remediation if isinstance(remediation, str) else "",
+        cause_code=cause if isinstance(cause, str) else code if isinstance(code, str) else None,
+        phase=phase if isinstance(phase, str) else "tool",
+        diagnostic_id=diagnostic if isinstance(diagnostic, str) else None,
+        tool_call_id=call.tool_call_id,
+        effect_state="not_executed"
+        if effect == "not_executed"
+        else "saved"
+        if effect == "saved"
+        else "partial"
+        if effect == "partial"
+        else "unknown",
     )
 
 

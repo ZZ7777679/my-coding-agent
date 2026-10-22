@@ -9,10 +9,10 @@
   max-height: calc(100vh - 16px);
   overflow-y: auto;
   padding: 6px;
-  border: 1px solid #35433e;
+  border: 1px solid var(--border);
   border-radius: 9px;
-  background: #19221f;
-  color: #e5e7e9;
+  background: var(--panel);
+  color: var(--text);
   box-shadow: 0 12px 36px #0008;
 }
 .navigation-menu > strong {
@@ -33,7 +33,7 @@
 .navigation-menu > button:hover,
 .navigation-menu > button:focus-visible {
   background: #ffffff12;
-  outline: 1px solid #b0dbcc;
+  outline: 1px solid var(--accent);
 }
 .navigation-menu p {
   margin: 8px;
@@ -43,10 +43,10 @@
   width: min(640px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   padding: 0;
-  border: 1px solid #35433e;
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: #19221f;
-  color: #e5e7e9;
+  background: var(--panel);
+  color: var(--text);
 }
 .navigation-dialog::backdrop {
   background: #0007;
@@ -73,10 +73,10 @@
   grid-template-columns: 100px minmax(0, 1fr);
   gap: 12px;
   padding: 10px 0;
-  border-bottom: 1px solid #35433e;
+  border-bottom: 1px solid var(--border);
 }
 .navigation-dialog dt {
-  color: #9db4ab;
+  color: var(--muted);
 }
 .navigation-dialog dd {
   margin: 0;
@@ -98,5 +98,5 @@
 }
 .navigation-dialog [role='alert'],
 .navigation-menu [role='alert'] {
-  color: #efb795;
+  color: var(--danger);
 }

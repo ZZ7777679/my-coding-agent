@@ -35,6 +35,7 @@ from my_agent.sessions.types import (
     Fact,
     FactData,
     ProgressSynced,
+    RequestFailed,
     RequestStarted,
     RunAccepted,
     RunFinished,
@@ -461,6 +462,7 @@ class SessionStore:
             )
             if (
                 isinstance(accepted.data, RunAccepted)
+                and accepted.data.limits.max_requests is not None
                 and count >= accepted.data.limits.max_requests
             ):
                 raise AgentError(
@@ -561,6 +563,13 @@ class SessionStore:
                 isinstance(item.data, RequestStarted)
                 and item.data.message_id == fact.data.message_id
                 for item in log.facts
+            ):
+                raise invalid
+        if isinstance(fact.data, RequestFailed):
+            if (
+                not tail
+                or not isinstance(tail[-1].data, RequestStarted)
+                or tail[-1].data.message_id != fact.data.message_id
             ):
                 raise invalid
         if isinstance(fact.data, AssistantCommitted):

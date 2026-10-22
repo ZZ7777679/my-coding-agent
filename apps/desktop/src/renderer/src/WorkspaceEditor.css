@@ -4,14 +4,14 @@
   height: 100%;
   min-height: 360px;
   overflow: hidden;
-  background: #16191f;
-  color: #d4dae3;
+  background: var(--panel);
+  color: var(--text);
 }
 .workspace-files {
   min-height: 0;
   overflow: auto;
   padding: 10px;
-  border-right: 1px solid #343a45;
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -52,7 +52,7 @@
   text-overflow: ellipsis;
 }
 .workspace-files details {
-  border-top: 1px solid #343a45;
+  border-top: 1px solid var(--border);
   padding-top: 8px;
 }
 .workspace-files details input[type='checkbox'] {
@@ -73,16 +73,16 @@
   display: flex;
   overflow-x: auto;
   flex-shrink: 0;
-  background: #1e232c;
+  background: var(--surface);
 }
 .workspace-tabs > div {
   display: flex;
-  border-right: 1px solid #343a45;
+  border-right: 1px solid var(--border);
   white-space: nowrap;
 }
 .workspace-tabs > div.active {
-  background: #313846;
-  border-top: 2px solid #7cafeb;
+  background: var(--surface);
+  border-top: 2px solid var(--accent);
 }
 .workspace-tabs button {
   border: 0;
@@ -90,7 +90,7 @@
 }
 .workspace-code-toolbar {
   padding: 7px 10px;
-  background: #202630;
+  background: var(--surface);
   flex-shrink: 0;
 }
 .workspace-code-toolbar span {
@@ -105,7 +105,7 @@
 .workspace-notice {
   margin: 0;
   padding: 8px 12px;
-  background: #302c23;
+  background: var(--surface);
   overflow-wrap: anywhere;
   max-height: 90px;
   overflow: auto;
@@ -135,7 +135,7 @@
   max-height: 300px;
   overflow: auto;
   padding: 8px 12px;
-  border-bottom: 1px solid #39434f;
+  border-bottom: 1px solid var(--border);
 }
 .workspace-language-result pre {
   white-space: pre-wrap;

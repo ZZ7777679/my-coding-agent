@@ -18,7 +18,7 @@ from uuid import uuid4
 
 from my_agent.config import load_config
 from my_agent.delegation.types import DelegatedUsage
-from my_agent.errors import AgentError
+from my_agent.errors import AgentError, recovery_hint
 from my_agent.evolution.types import EvolutionSource
 from my_agent.goals.ledger import check_budget, usage
 from my_agent.goals.state import states
@@ -29,7 +29,7 @@ from my_agent.projects import ProjectService
 from my_agent.runtime.context import SharedContext
 from my_agent.runtime.loop import run_loop
 from my_agent.runtime.modes import RunMode, system_prompt
-from my_agent.runtime.settings import RunLimits
+from my_agent.runtime.settings import RunLimits, minimum_limit
 from my_agent.runtime.tools import ToolContext, ToolExecutor
 from my_agent.sessions.projection import entries, selected_model, summarize
 from my_agent.sessions.store import SessionLog, SessionStore
@@ -39,6 +39,7 @@ from my_agent.sessions.types import (
     Fact,
     FactData,
     ProgressSynced,
+    RequestFailed,
     RequestStarted,
     RunAccepted,
     RunFinished,
@@ -51,6 +52,8 @@ from my_agent.sessions.types import (
     SessionSignal,
     SessionSummary,
     SessionView,
+    ToolCompleted,
+    ToolSkipped,
     ToolStarted,
 )
 from my_agent.worker import BusinessWorker
@@ -659,7 +662,7 @@ class SessionService:
             root = await self.validate_project(summary.project_id)
             config = await self.worker.call(load_config, self.store.storage.location)
             limits = requested_limits or config.run
-            time_limit = float(limits.max_seconds)
+            time_limit: float | None = limits.max_seconds
             method_name: WorkMethod = work_method or ("plan" if mode == "plan" else "implement")
             if goal is not None:
                 state = states(log.facts).get(goal.goal_id)
@@ -675,7 +678,7 @@ class SessionService:
                 consumed = usage(log.facts, goal.goal_id)
                 check_budget(state.budget, consumed, requests=1)
                 if state.budget.max_active_seconds is not None:
-                    time_limit = min(
+                    time_limit = minimum_limit(
                         time_limit,
                         state.budget.max_active_seconds
                         - consumed.active_seconds
@@ -752,32 +755,34 @@ class SessionService:
         self._signal(active)
         return summarize(active.log, active=True, stopping=True)
 
-    def remaining_seconds(self, active: ActiveRun) -> float:
+    def remaining_seconds(self, active: ActiveRun) -> float | None:
         """真实单调耗时约束 Run 与 Goal；已交付服务不延长活跃时间。
 
         Bound runs and goals by monotonic elapsed time, excluding retained service lifetime.
         """
         elapsed = active.active_seconds()
-        remaining = (active.time_limit_seconds or active.limits.max_seconds) - elapsed
+        limit = active.time_limit_seconds
+        remaining = limit - elapsed if limit is not None else None
         if self.delegations:
             delegated = sum(
                 fact.data.active_seconds
                 for fact in active.log.facts
                 if fact.run_id == active.run_id and isinstance(fact.data, DelegatedUsage)
             )
-            remaining -= delegated + self.delegations.live_seconds(
-                active.log.session_id, run_id=active.run_id
-            )
+            if remaining is not None:
+                remaining -= delegated + self.delegations.live_seconds(
+                    active.log.session_id, run_id=active.run_id
+                )
             child_remaining = self.delegations.child_remaining(active)
             if child_remaining is not None:
-                remaining = min(remaining, child_remaining)
+                remaining = minimum_limit(remaining, child_remaining)
         if active.goal is not None:
             state = states(active.log.facts)[active.goal.goal_id]
             consumed = usage(
                 active.log.facts, active.goal.goal_id, live_seconds={active.run_id: elapsed}
             )
             if state.budget.max_active_seconds is not None:
-                remaining = min(
+                remaining = minimum_limit(
                     remaining,
                     state.budget.max_active_seconds
                     - consumed.active_seconds
@@ -786,7 +791,7 @@ class SessionService:
                     # Include live child time before its final ledger entry.
                 )
                 if self.delegations:
-                    remaining = min(
+                    remaining = minimum_limit(
                         remaining,
                         state.budget.max_active_seconds
                         - consumed.active_seconds
@@ -795,7 +800,7 @@ class SessionService:
                             active.log.session_id, goal_id=active.goal.goal_id
                         ),
                     )
-        return max(0.0, remaining)
+        return max(0.0, remaining) if remaining is not None else None
 
     async def _wait_work(
         self, active: ActiveRun, work: asyncio.Task[Literal["finished", "yielded"]]
@@ -815,9 +820,10 @@ class SessionService:
                     if self.delegations
                     else int(active.wait_started_at is None)
                 )
+                remaining = self.remaining_seconds(active)
                 done, _ = await asyncio.wait(
                     {work, cancel, changed},
-                    timeout=self.remaining_seconds(active) / rate if rate else None,
+                    timeout=remaining / rate if rate and remaining is not None else None,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 if cancel in done:
@@ -825,7 +831,8 @@ class SessionService:
                 if work in done:
                     return await work
                 if changed not in done:
-                    if self.remaining_seconds(active) > 0:
+                    remaining = self.remaining_seconds(active)
+                    if remaining is None or remaining > 0:
                         changed.cancel()
                         await asyncio.gather(changed, return_exceptions=True)
                         continue
@@ -1034,9 +1041,17 @@ class SessionService:
         except asyncio.CancelledError:
             finished = (
                 RunFinished(
-                    status="failed",
+                    status="budget_exceeded"
+                    if active.dependency_error.code.startswith("BUDGET_")
+                    else "failed",
                     code=active.dependency_error.code,
                     message=active.dependency_error.message,
+                    cause_code=active.dependency_error.cause_code,
+                    failure_phase=active.dependency_error.phase,
+                    diagnostic_id=active.dependency_error.diagnostic_id,
+                    remediation=active.dependency_error.remediation,
+                    tool_call_id=active.dependency_error.tool_call_id,
+                    effect_state=active.dependency_error.effect_state,
                 )
                 if active.dependency_error
                 else RunFinished(
@@ -1046,7 +1061,7 @@ class SessionService:
                 )
             )
         except AgentError as exc:
-            diagnostic_id = (
+            diagnostic_id = exc.diagnostic_id or (
                 await self.worker.call(
                     self.diagnostics.record,
                     exc.code,
@@ -1066,6 +1081,9 @@ class SessionService:
                 cause_code=exc.cause_code,
                 failure_phase=exc.phase,
                 diagnostic_id=diagnostic_id,
+                remediation=exc.remediation,
+                tool_call_id=exc.tool_call_id,
+                effect_state=exc.effect_state,
                 failed_request_id=active.message_id
                 if isinstance(exc, ModelResponseError)
                 else None,
@@ -1234,18 +1252,65 @@ class ServiceSink:
                 await self.service.delegations.charge_locked(self.active, data)
             if isinstance(data, ToolStarted):
                 current = summarize(self.active.log, active=True).run
-                if current and current.tools >= self.active.limits.max_tools:
+                if (
+                    current
+                    and self.active.limits.max_tools is not None
+                    and current.tools >= self.active.limits.max_tools
+                ):
                     raise AgentError("BUDGET_TOOLS", "本次运行与子任务的共同工具预算已用完。")
             if (
                 isinstance(data, (RequestStarted, AuxiliaryStarted, ToolStarted))
                 and self.active.goal is not None
             ):
-                if self.service.remaining_seconds(self.active) <= 0:
+                remaining = self.service.remaining_seconds(self.active)
+                if remaining is not None and remaining <= 0:
                     raise AgentError("BUDGET_GOAL_TIME", "Goal 或 Run 的活跃时间预算已用完。")
-            if isinstance(data, (AssistantCommitted, RunFinished)):
+            if isinstance(data, (AssistantCommitted, RequestFailed, RunFinished)):
                 data = data.model_copy(update={"model_progress": self.active.model_progress})
+            if isinstance(data, RequestFailed):
+                data = data.model_copy(
+                    update={
+                        "partial_text": self.active.text,
+                        "partial_reasoning": self.active.reasoning,
+                    }
+                )
             if isinstance(data, RunFinished):
-                data = data.model_copy(update={"elapsed_seconds": self.active.active_seconds()})
+                run_facts = [
+                    f.data for f in self.active.log.facts if f.run_id == self.active.run_id
+                ]
+                ended_tools = {
+                    f.result.tool_call_id
+                    for f in run_facts
+                    if isinstance(f, (ToolCompleted, ToolSkipped))
+                }
+                uncertain = any(
+                    isinstance(f, ToolStarted) and f.call.tool_call_id not in ended_tools
+                    for f in run_facts
+                )
+                data = data.model_copy(
+                    update={
+                        "elapsed_seconds": self.active.active_seconds(),
+                        "partial_text": self.active.text,
+                        "partial_reasoning": self.active.reasoning,
+                        "failed_request_id": data.failed_request_id or self.active.message_id,
+                        "remediation": data.remediation
+                        or (
+                            recovery_hint(data.code or "", data.cause_code)
+                            if data.status != "completed"
+                            else ""
+                        ),
+                        "effect_state": data.effect_state
+                        or (
+                            "saved"
+                            if data.status == "completed"
+                            else "unknown"
+                            if uncertain
+                            else "partial"
+                            if ended_tools
+                            else "not_executed"
+                        ),
+                    }
+                )
             fact = await self.service.worker.call(
                 self.service.store.append, self.active.log, data, self.active.run_id
             )
@@ -1257,13 +1322,15 @@ class ServiceSink:
                 self.active.delta_index = 0
                 self.active.model_progress = None
                 self.active.progress_at = None
-            elif isinstance(data, AssistantCommitted):
-                if self.service.collaboration:
+            elif isinstance(data, (AssistantCommitted, RequestFailed)):
+                if self.service.collaboration and isinstance(data, AssistantCommitted):
                     await self.service.collaboration.acknowledge_messages(self.active.run_id)
                 self.active.message_id = None
                 self.active.text = ""
                 self.active.reasoning = ""
                 self.active.delta_index = 0
+                if isinstance(data, RequestFailed):
+                    self.active.model_progress = None
             self.service._signal(self.active)
             return fact
 

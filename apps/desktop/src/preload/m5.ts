@@ -1,5 +1,5 @@
 /** M5 有限 preload 转发。 Restricted M5 preload forwarding. */
-import type { ProtocolV12 as P } from '../generated/protocol'
+import type { ProtocolV13 as P } from '../generated/protocol'
 import type { M5DesktopAPI } from '../shared/m5-api'
 import type { Result } from '../shared/api'
 

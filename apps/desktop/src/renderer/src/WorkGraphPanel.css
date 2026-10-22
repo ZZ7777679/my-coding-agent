@@ -19,7 +19,7 @@
   max-height: 70vh;
   overflow: auto;
   padding: 0 12px 12px;
-  border: 1px solid #34483e;
+  border: 1px solid var(--border);
   border-radius: 10px;
 }
 @media (max-width: 1100px) {
@@ -42,9 +42,9 @@
 }
 .work-graph-canvas {
   height: clamp(360px, 48vh, 520px);
-  border: 1px solid var(--border, #34483e);
+  border: 1px solid var(--border, var(--border));
   border-radius: 12px;
-  background: #111b17;
+  background: var(--panel);
 }
 .work-graph-canvas .work-node {
   width: 235px;
@@ -52,9 +52,9 @@
   font-size: 14px;
   line-height: 1.35;
   text-align: left;
-  background: #1b3027;
-  color: #e1eee7;
-  border: 1px solid #54826c;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--accent);
   border-radius: 12px;
   padding: 14px;
 }
@@ -64,22 +64,22 @@
   margin-top: 8px;
 }
 .work-node small {
-  color: #acc6b8;
+  color: var(--text);
 }
 .work-graph-canvas .work-node-completed {
-  border-color: #77ba93;
+  border-color: var(--accent);
 }
 .work-graph-canvas .work-node-waiting {
-  border-color: #d0ac65;
+  border-color: var(--warning);
 }
 .work-graph-canvas .work-node.selected {
-  outline: 2px solid #b1e3cf;
+  outline: 2px solid var(--accent);
 }
 .work-graph-canvas .react-flow__edge-textbg {
-  fill: #1b3027;
+  fill: var(--surface);
 }
 .work-graph-canvas .react-flow__edge-text {
-  fill: #dce9e2;
+  fill: var(--accent);
 }
 .work-graph-fields {
   display: grid;
@@ -112,7 +112,7 @@
 }
 .work-attempt {
   padding: 12px 0;
-  border-top: 1px solid #34483e;
+  border-top: 1px solid var(--border);
 }
 .work-attempt p {
   white-space: pre-wrap;

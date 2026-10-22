@@ -10,6 +10,7 @@ import {
 import type { Attachment } from '../../generated/protocol'
 import type { QuestionMaterial } from './KnowledgeDetails'
 import { Workers } from './Workers'
+import { FailureNotice } from './FailureNotice'
 import type {
   ChatEntry,
   ModelId,
@@ -32,6 +33,7 @@ import { ModelActivity } from './ModelActivity'
 import { Reasoning } from './Reasoning'
 import { Trace, toolCaption } from './Trace'
 import type { WorkspaceSelection } from './TaskNavigation'
+import defaults from '../../../../../src/my_agent/defaults.json'
 
 type Props = {
   review?: ReactNode
@@ -119,7 +121,23 @@ function HistoryEntry({
       </details>
     )
   if (entry.kind === 'run.finished' || entry.kind === 'goal.event')
-    return <p className="run-end">{entry.text}</p>
+    return (
+      <div className="run-end">
+        <p>{entry.text}</p>
+        {(entry.partial_text || entry.reasoning) && (
+          <details open>
+            <summary>中断前的部分输出 · 未完整结束</summary>
+            <Reasoning
+              text={entry.reasoning ?? ''}
+              open={reasoningOpen}
+              onToggle={onReasoningToggle}
+              streaming={false}
+            />
+            {entry.partial_text && <Markdown text={entry.partial_text} />}
+          </details>
+        )}
+      </div>
+    )
   if (entry.kind === 'assistant' && !entry.text && !entry.reasoning) return null
   return (
     <article className={'chat-message ' + entry.kind}>
@@ -156,6 +174,8 @@ export function Chat({
   const [olderCursor, setOlderCursor] = useState<number | null>(null)
   const [prompt, setPrompt] = useState('')
   const attachmentInput = useRef<InputAttachmentHandle>(null)
+  const visibility = useRef(visible)
+  visibility.current = visible
   const [attachments, setAttachments] = useState<Attachment[]>(() =>
     selected ? (attachmentSelection.get(selected) ?? []) : []
   )
@@ -201,6 +221,8 @@ export function Chat({
   notifyRun.current = onRunChange
   const generation = useRef(0)
   const historyElement = useRef<HTMLDivElement>(null)
+  const retainedSnapshot = useRef(snapshot)
+  retainedSnapshot.current = snapshot
   const followLatest = useRef(true)
   const projectId = project?.project_id
   const currentProject = useRef(projectId)
@@ -245,12 +267,15 @@ export function Chat({
     let timer: ReturnType<typeof setTimeout> | undefined
     let pending: SessionSignal[] = []
     let overflow = false
-    let value: SessionView | null = null
+    let value: SessionView | null =
+      retainedSnapshot.current?.summary.session_id === selected ? retainedSnapshot.current : null
     let attached = false
-    setSnapshot(null)
-    setOlder([])
-    setOlderCursor(null)
-    followLatest.current = true
+    if (!value) {
+      setSnapshot(null)
+      setOlder([])
+      setOlderCursor(null)
+      followLatest.current = true
+    }
     setError('')
 
     /** 对新快照之后的增量去重；缺口返回 false。 Apply post-snapshot deltas; gaps require resync. */
@@ -345,7 +370,9 @@ export function Chat({
     void refresh()
     // 轮询仅恢复视图，覆盖断线或最后一条通知丢失；不会重复发送输入。
     // Polling recovers views after missed final events and never resends input.
-    const recovery = setInterval(() => void refresh(), 2500)
+    const recovery = setInterval(() => {
+      if (visibility.current && !document.hidden) void refresh()
+    }, defaults.desktop_connection.idle_refresh_ms)
     return () => {
       disposed = true
       if (timer) clearTimeout(timer)
@@ -764,7 +791,7 @@ export function Chat({
                 key={`context:${selected}`}
                 sessionId={selected}
                 revision={snapshot.watermark}
-                connected={connected}
+                connected={connected && visible}
                 cache={knowledgeCache}
                 onAttach={(material) =>
                   changeMaterials((current) => ({
@@ -782,7 +809,7 @@ export function Chat({
                 key={`workers:${selected}`}
                 sessionId={selected}
                 revision={snapshot.watermark}
-                connected={connected}
+                connected={connected && visible}
                 active={!!active}
               />
             )}
@@ -843,14 +870,32 @@ export function Chat({
                     </span>
                   )}
                   <span>
-                    请求 {run.requests}/{run.limits.max_requests}
+                    请求 {run.requests}/{run.limits.max_requests ?? '不限'}
                   </span>
                   <span>
-                    工具 {run.tools}/{run.limits.max_tools}
+                    工具 {run.tools}/{run.limits.max_tools ?? '不限'}
                   </span>
                   <span className="metrics-disclosure">详情</span>
                 </summary>
                 <div className="metrics-details">
+                  <span>
+                    父请求 {run.requests - (run.child_requests ?? 0)} · 子请求{' '}
+                    {run.child_requests ?? 0} · 合计 {run.requests}
+                  </span>
+                  <span>
+                    父工具 {run.tools - (run.child_tools ?? 0)} · 子工具 {run.child_tools ?? 0} ·
+                    合计 {run.tools}
+                  </span>
+                  <span>
+                    剩余请求{' '}
+                    {run.limits.max_requests === null
+                      ? '不限'
+                      : Math.max(0, run.limits.max_requests - run.requests)}{' '}
+                    · 剩余工具{' '}
+                    {run.limits.max_tools === null
+                      ? '不限'
+                      : Math.max(0, run.limits.max_tools - run.tools)}
+                  </span>
                   {snapshot?.model_progress && (
                     <span data-testid="model-progress">
                       <ModelActivity
@@ -866,11 +911,57 @@ export function Chat({
                   <span>费用未知</span>
                 </div>
               </details>
-              {run.message && (
-                <p className="run-message">
-                  {run.code} · {run.message}
-                </p>
-              )}
+              {run.message &&
+                (['failed', 'budget_exceeded', 'interrupted'].includes(run.status) ? (
+                  <FailureNotice
+                    sessionId={selected ?? undefined}
+                    runId={run.run_id}
+                    error={{
+                      code: run.code ?? 'RUN_FAILED',
+                      message: run.message,
+                      remediation: run.remediation ?? '',
+                      cause_code: run.cause_code,
+                      phase: run.failure_phase,
+                      diagnostic_id: run.diagnostic_id,
+                      tool_call_id: run.tool_call_id,
+                      effect_state: run.effect_state
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!prompt.trim())
+                          setPrompt(
+                            `请从上次运行 ${run.run_id} 的停止位置接续，先核对已保存成果，再处理未完成部分。`
+                          )
+                        document
+                          .querySelector<HTMLTextAreaElement>('textarea[aria-label="输入问题"]')
+                          ?.focus()
+                      }}
+                    >
+                      准备接续
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTraceSeq(
+                          [...history]
+                            .reverse()
+                            .find((e) => e.run_id === run.run_id && e.kind === 'run.finished')
+                            ?.seq ?? null
+                        )
+                        setShowTrace(true)
+                      }}
+                    >
+                      查看相关 Trace
+                    </button>
+                    <button type="button" onClick={() => setShowCheckpoints(true)}>
+                      查看回退点
+                    </button>
+                  </FailureNotice>
+                ) : (
+                  <p className="run-message">{run.message}</p>
+                ))}
             </div>
           )}
           <div
@@ -1104,13 +1195,14 @@ export function Chat({
           }}
         />
       )}
-      {selected && project && showTrace && (
+      {selected && project && (
         <Trace
           key={`trace:${selected}`}
           sessionId={selected}
           projectId={project.project_id}
           revision={snapshot?.watermark ?? 0}
           focusSeq={traceSeq}
+          visible={showTrace && visible}
           onClose={() => setShowTrace(false)}
         />
       )}

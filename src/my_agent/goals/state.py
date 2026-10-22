@@ -19,6 +19,7 @@ from my_agent.goals.types import (
     GoalStopped,
     GoalView,
 )
+from my_agent.runtime.settings import minimum_limit
 from my_agent.sessions.types import Fact, ProgressSynced, RunAccepted, RunFinished
 from my_agent.workflow.types import HumanQuestion, WorkReport
 
@@ -278,14 +279,14 @@ def validate_goal_run(facts: Sequence[Fact], accepted: RunAccepted) -> None:
         raise AgentError("GOAL_RESULT_PENDING", "请先核对并同步上一次 Goal 的结果，再启动新工作。")
     consumed = usage(facts, accepted.goal_id)
     check_budget(state.budget, consumed, requests=1)
-    allowance = float(accepted.limits.max_seconds)
+    allowance: float | None = accepted.limits.max_seconds
     if state.budget.max_active_seconds is not None:
-        allowance = min(
+        allowance = minimum_limit(
             allowance,
             state.budget.max_active_seconds - consumed.active_seconds - consumed.reserved_seconds,
         )
     requested_time = accepted.active_time_limit_seconds or accepted.limits.max_seconds
-    if requested_time > allowance:
+    if requested_time is not None and allowance is not None and requested_time > allowance:
         raise AgentError("BUDGET_GOAL_TIME", "本次运行时限超过 Goal 剩余活跃时间预算。")
 
 

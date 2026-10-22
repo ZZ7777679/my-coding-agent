@@ -26,6 +26,8 @@ import {
 } from './EditorIntelligence'
 import { EditorIntelligenceView } from './EditorIntelligenceView'
 import './WorkspaceEditor.css'
+import { useAppearance } from './Appearance'
+import { palettes } from '../../shared/themes'
 
 // Monaco 与 workers 均来自打包资源；不从 CDN 载入代码。
 // Bundle Monaco and workers locally without loading CDN code.
@@ -103,6 +105,22 @@ function language(path: string): string {
 
 /** 隔离会话视图，切换后旧响应不改写新会话。 Isolate session views against late responses after navigation. */
 export function WorkspaceEditor({ sessionId, onReference }: Props) {
+  const { value: appearance } = useAppearance()
+  useEffect(() => {
+    const palette = palettes[appearance.preset]
+    monaco.editor.defineTheme('my-agent', {
+      base: palette.dark ? 'vs-dark' : 'vs',
+      inherit: true,
+      rules: [],
+      colors: {
+        'editor.background': palette.background,
+        'editor.foreground': palette.text,
+        'editorCursor.foreground': appearance.accent ?? palette.accent,
+        'editorLineNumber.foreground': palette.dark ? '#929aa9' : '#636a75'
+      }
+    })
+    monaco.editor.setTheme('my-agent')
+  }, [appearance.preset, appearance.accent])
   if (!sessionId)
     return (
       <section className="workspace-editor">
@@ -1103,7 +1121,7 @@ function FileWorkbench({
               original={compareCurrent ? history.after : history.before}
               modified={compareCurrent ? history.current : history.after}
               language={language(history.summary.path)}
-              theme="vs-dark"
+              theme="my-agent"
               options={{
                 readOnly: true,
                 renderSideBySide: true,
@@ -1251,7 +1269,7 @@ function FileWorkbench({
                                 original={target.base}
                                 modified={target.content}
                                 language={language(target.path)}
-                                theme="vs-dark"
+                                theme="my-agent"
                                 options={{
                                   readOnly: true,
                                   automaticLayout: true,
@@ -1303,7 +1321,7 @@ function FileWorkbench({
                     path: `/${sessionId}/${active.path}`
                   }).toString()}
                   language={language(active.path)}
-                  theme="vs-dark"
+                  theme="my-agent"
                   options={{
                     renderSideBySide: true,
                     automaticLayout: true,
@@ -1324,7 +1342,7 @@ function FileWorkbench({
                 path={codeModelUri(sessionId, active.path).toString()}
                 language={language(active.path)}
                 value={active.content}
-                theme="vs-dark"
+                theme="my-agent"
                 saveViewState
                 options={{
                   automaticLayout: true,

@@ -4,6 +4,14 @@
 
 ## 本版来源
 
+### M8 增量
+
+2026-10-21，M8／协议 v13 实际 Electron 截图来自 `.artifacts/tests/m8-experience-b8a7L4/`。复制 `workers-graphite.png`、`trace-graphite.png`、`memory-graphite.png`、`chat-经典浅色.png` 和 `workers-125.png` 到本目录 `images/m8-*.png`。子任务错误与正文为离线模型样本；状态、记忆保存、主题设置和 RPC 均真实运行。125% 图使用 Electron 原生截图并核对视口几何，未做后期裁切或拼接。
+
+这些新图用于第 13 篇；其余 26 张仍是下面的 M7 历史采集。M8 真实 Go 验收报告单独留在 progress，不把截图中的错误示例当作线上实测。
+
+### M7 原有图片
+
 - 采集日期：2026-10-21（Asia/Shanghai）。产品源码基线 `008b66c`，M7、协议 v12；本轮未修改产品代码。
 - 26 张 PNG 来自实际 Electron / React 页面或可见功能面板。没有用示意图代替应用，没有修改 DOM 文案、伪造连接状态或后期拼接画面。
 - 全部使用仓库 `.artifacts/tests/` 下新建的项目和独立数据根。示例项目名 `counter-demo`，不读取个人项目记录、会话或记忆。

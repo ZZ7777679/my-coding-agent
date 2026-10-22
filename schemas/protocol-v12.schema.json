@@ -18140,6 +18140,63 @@
       "title": "WorkerControlParams",
       "type": "object"
     },
+    "WorkerFailure": {
+      "additionalProperties": false,
+      "description": "子运行的真实失败原因，与部分成果分开保存。\n\nPreserve the child run's actual failure separately from partial output.",
+      "properties": {
+        "cause_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cause Code"
+        },
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "diagnostic_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Diagnostic Id"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "phase": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Phase"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "WorkerFailure",
+      "type": "object"
+    },
     "WorkerPage": {
       "additionalProperties": false,
       "description": "子卡片列表，不进入左侧正式会话树。\n\nWorker cards, excluded from the formal session tree.",
@@ -18189,6 +18246,17 @@
         "created_at": {
           "title": "Created At",
           "type": "string"
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkerFailure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "goal_id": {
           "anyOf": [

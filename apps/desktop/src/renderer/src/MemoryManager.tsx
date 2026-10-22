@@ -7,6 +7,7 @@ import type {
 } from '../../generated/protocol'
 import type { Result } from '../../shared/api'
 import { KnowledgeDetails, type QuestionMaterial } from './KnowledgeDetails'
+import { Markdown } from './Markdown'
 
 /** 查询快照和未保存正文随会话缓存，关闭查看不会清空。
  * Cache search snapshots and unsaved text per session, independently of visibility. */
@@ -25,6 +26,7 @@ export type MemoryDraft = {
   pinned: boolean
   sources: string[]
   afterSeq: string
+  selectedId?: string
 }
 
 /** 管理已有记忆与明确的自动行为，沿用既有 RPC。
@@ -56,7 +58,7 @@ export function MemoryManager({
         includeDisabled: false,
         filterDisabled: false,
         page: null,
-        folds: {},
+        folds: { results: true },
         editing: null,
         title: '',
         content: '',
@@ -119,7 +121,7 @@ export function MemoryManager({
         key={key}
         testId={`memory-${key}`}
         title={title}
-        open={draft.folds[key] ?? false}
+        open={draft.folds[key] ?? key === selectedId}
         onToggle={(open) => fold(key, open)}
       >
         {children}
@@ -236,7 +238,7 @@ export function MemoryManager({
   }
   /** 从可编辑字段构建停用操作，不把宿主来源回传为用户字段。
    * Toggle using editable fields without resubmitting host provenance as user fields. */
-  function toggle(entry: MemoryEntry) {
+  function modify(entry: MemoryEntry, changes: Partial<MemoryFields>, message = '') {
     const fields: MemoryFields = {
       title: entry.title,
       content: entry.content,
@@ -251,14 +253,22 @@ export function MemoryManager({
       source_ids: entry.source_ids,
       stale: entry.stale,
       pinned: entry.pinned,
-      enabled: !entry.enabled
+      enabled: entry.enabled,
+      ...changes
     }
     void perform(
       window.agent.saveMemory({ session_id: sessionId, memory_id: entry.memory_id, fields }),
-      accept
+      (value) => {
+        accept(value)
+        if (message) setNotice(message)
+      }
     )
   }
   const settings = memory?.state.settings
+  const selectedId =
+    draft.selectedId && draft.page?.entries.some((entry) => entry.memory_id === draft.selectedId)
+      ? draft.selectedId
+      : draft.page?.entries[0]?.memory_id
   const job = memory?.state.job
   const jobLabel = job
     ? {
@@ -269,20 +279,77 @@ export function MemoryManager({
         interrupted: '已中断'
       }[job.status]
     : ''
+  const editor = detail(
+    'editor',
+    draft.editing ? '编辑记忆' : '新记忆草稿',
+    <>
+      <input
+        aria-label="记忆标题"
+        placeholder="标题"
+        value={draft.title}
+        onChange={(e) => update({ title: e.target.value })}
+      />
+      <textarea
+        aria-label="记忆正文"
+        rows={5}
+        value={draft.content}
+        onChange={(e) => update({ content: e.target.value })}
+      />
+      <select
+        aria-label="记忆范围"
+        value={draft.scope}
+        onChange={(e) => update({ scope: e.target.value === 'user' ? 'user' : 'project' })}
+      >
+        <option value="project">本项目</option>
+        <option value="user">跨项目偏好</option>
+      </select>
+      <select
+        aria-label="记忆类别"
+        value={draft.category}
+        onChange={(e) => update({ category: e.target.value })}
+      >
+        <option value="fact">知识</option>
+        <option value="preference">偏好</option>
+        <option value="procedure">经验手册</option>
+        <option value="knowledge_page">知识页</option>
+      </select>
+      <label>
+        <input
+          type="checkbox"
+          checked={draft.pinned}
+          onChange={(e) => update({ pinned: e.target.checked })}
+        />
+        优先召回（仍受容量限制）
+      </label>
+      <button
+        type="button"
+        disabled={busy || !connected || !draft.title.trim() || !draft.content.trim()}
+        onClick={save}
+      >
+        保存记忆
+      </button>
+      <button type="button" onClick={() => edit(null)}>
+        清空草稿
+      </button>
+    </>
+  )
   return (
     <>
       {error && <p role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
-      <p>这里管理本项目记忆与跨项目偏好。“上次带入”是最近请求实际使用的数量，不是已保存总数。</p>
-      <p className="muted">
-        Harness 按当前问题检索相关条目，在后续请求中带入；需要更多内容时使用 search_memory /
-        read_memory。 也可以直接说“记住这个项目用
-        uv”。临时进度放在任务报告，任务决定放在已确认结论。
-      </p>
-      <p className="muted">
-        记忆是可纠正的参考，后台提取不代表事实已验证。发现错误可直接编辑或停用，也可以在对话中说明
-        “这条记忆已过时，请纠正”。当前工具能力和执行结果以本次实际情况为准。
-      </p>
+      <details>
+        <summary>记忆如何使用与纠正</summary>
+        <p>这里管理本项目记忆与跨项目偏好。“上次带入”是最近请求实际使用的数量，不是已保存总数。</p>
+        <p className="muted">
+          Harness 按当前问题检索相关条目，在后续请求中带入；需要更多内容时使用 search_memory /
+          read_memory。 也可以直接说“记住这个项目用
+          uv”。临时进度放在任务报告，任务决定放在已确认结论。
+        </p>
+        <p className="muted">
+          记忆是可纠正的参考，后台提取不代表事实已验证。发现错误可直接编辑或停用，也可以在对话中说明
+          “这条记忆已过时，请纠正”。当前工具能力和执行结果以本次实际情况为准。
+        </p>
+      </details>
       {settings && (
         <>
           <label>
@@ -350,60 +417,7 @@ export function MemoryManager({
           记忆提取：{jobLabel}。{job.message}
         </p>
       )}
-      {detail(
-        'editor',
-        draft.editing ? '编辑记忆' : '新记忆草稿',
-        <>
-          <input
-            aria-label="记忆标题"
-            placeholder="标题"
-            value={draft.title}
-            onChange={(e) => update({ title: e.target.value })}
-          />
-          <textarea
-            aria-label="记忆正文"
-            rows={5}
-            value={draft.content}
-            onChange={(e) => update({ content: e.target.value })}
-          />
-          <select
-            aria-label="记忆范围"
-            value={draft.scope}
-            onChange={(e) => update({ scope: e.target.value === 'user' ? 'user' : 'project' })}
-          >
-            <option value="project">本项目</option>
-            <option value="user">跨项目偏好</option>
-          </select>
-          <select
-            aria-label="记忆类别"
-            value={draft.category}
-            onChange={(e) => update({ category: e.target.value })}
-          >
-            <option value="fact">知识</option>
-            <option value="preference">偏好</option>
-            <option value="procedure">经验手册</option>
-            <option value="knowledge_page">知识页</option>
-          </select>
-          <label>
-            <input
-              type="checkbox"
-              checked={draft.pinned}
-              onChange={(e) => update({ pinned: e.target.checked })}
-            />
-            优先召回（仍受容量限制）
-          </label>
-          <button
-            type="button"
-            disabled={busy || !connected || !draft.title.trim() || !draft.content.trim()}
-            onClick={save}
-          >
-            保存记忆
-          </button>
-          <button type="button" onClick={() => edit(null)}>
-            清空草稿
-          </button>
-        </>
-      )}
+      {!draft.editing && editor}
       <div className="knowledge-actions">
         <input
           aria-label="记忆搜索"
@@ -431,99 +445,170 @@ export function MemoryManager({
             列表为查询快照，后台更新后可刷新。关键词：{draft.filter || '全部'}。
           </p>
           {!draft.page?.entries.length && <p>暂无匹配记忆，可新增或让 Harness 按明确要求保存。</p>}
-          {draft.page?.entries.map((entry) =>
-            detail(
-              entry.memory_id,
-              `${entry.title} · ${entry.scope === 'user' ? '跨项目偏好' : '本项目'}${entry.enabled ? '' : ' · 已停用'}${entry.stale ? ' · 来源待更新' : ''}`,
-              <>
-                <pre>{entry.content}</pre>
-                <button type="button" onClick={() => edit(entry)}>
-                  编辑
-                </button>
+          <div className="memory-browser">
+            <nav className="memory-browser-list" aria-label="已保存记忆列表">
+              {draft.page?.entries.map((entry) => (
                 <button
-                  type="button"
+                  key={entry.memory_id}
+                  aria-current={entry.memory_id === selectedId}
                   onClick={() =>
-                    onAttach({
-                      key: `memory:${entry.memory_id}`,
-                      title: entry.title,
-                      source: `memory=${entry.memory_id}, revision=${entry.revision}`,
-                      text: entry.content
+                    update({
+                      selectedId: entry.memory_id,
+                      folds: { ...draft.folds, [entry.memory_id]: true }
                     })
                   }
                 >
-                  加入这次提问
+                  {entry.title}
+                  <small>
+                    {entry.scope === 'user' ? '跨项目偏好' : '本项目'} · 修订 {entry.revision}
+                    {entry.stale ? ' · 待更新' : ''}
+                    {!entry.enabled ? ' · 停用' : ''}
+                  </small>
                 </button>
-                <button type="button" disabled={busy || !connected} onClick={() => toggle(entry)}>
-                  {entry.enabled ? '停用' : '启用'}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || !connected}
-                  onClick={() =>
-                    void perform(
-                      window.agent.forgetMemory({
-                        session_id: sessionId,
-                        memory_id: entry.memory_id
-                      }),
-                      accept
-                    )
-                  }
-                >
-                  忘记
-                </button>
-                {detail(
-                  `source-${entry.memory_id}`,
-                  '来源与知识页选项',
-                  <>
-                    <p>
-                      {entry.source === 'user'
-                        ? '手动保存'
-                        : entry.source === 'agent'
-                          ? 'Agent 保存'
-                          : '后台提取'}{' '}
-                      · 修订 {entry.revision} · 更新 {new Date(entry.updated_at).toLocaleString()}
-                    </p>
-                    <p>
-                      来源会话 {entry.session_id ?? '手动'} · 来源处理至事件{' '}
-                      {entry.source_seq ?? '无'}
-                      ；来源条目 {entry.source_ids?.join('、') || '无'}。
-                    </p>
-                    {(entry.evolution_sources ?? []).map((source) => (
-                      <p
-                        key={`${source.project_id}:${source.candidate_id}:${source.content_revision}`}
-                      >
-                        改进来源 {source.candidate_id} · 正文版本 {source.content_revision} ·
-                        当时状态 {source.status}
-                        {' · '}
-                        {source.comparison_at
-                          ? `效果记录 ${source.comparison_at}`
-                          : '未记录效果，采用不代表改善'}
-                      </p>
-                    ))}
-                    {entry.source === 'maintenance' && (
-                      <p className="muted">
-                        这是后台模型提取的内容；事件号记录处理边界，不代表该条知识已逐项验证。
-                      </p>
-                    )}
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={draft.sources.includes(entry.memory_id)}
-                        onChange={(e) =>
-                          update({
-                            sources: e.target.checked
-                              ? [...draft.sources, entry.memory_id]
-                              : draft.sources.filter((id) => id !== entry.memory_id)
+              ))}
+            </nav>
+            <div className="memory-browser-detail">
+              {draft.editing && editor}
+              {draft.page?.entries
+                .filter((entry) => entry.memory_id === selectedId)
+                .map((entry) =>
+                  detail(
+                    entry.memory_id,
+                    `${entry.title} · ${entry.scope === 'user' ? '跨项目偏好' : '本项目'}${entry.enabled ? '' : ' · 已停用'}${entry.stale ? ' · 来源待更新' : ''}`,
+                    <>
+                      <Markdown text={entry.content} />
+                      <div className="knowledge-actions">
+                        <button
+                          disabled={busy || !connected || !entry.enabled}
+                          onClick={() =>
+                            modify(
+                              entry,
+                              { enabled: false },
+                              '已停用这条错误记忆；原文和来源保留，可更正后启用。'
+                            )
+                          }
+                        >
+                          有误 · 停用
+                        </button>
+                        <button
+                          disabled={busy || !connected || entry.stale}
+                          onClick={() =>
+                            modify(
+                              entry,
+                              { stale: true },
+                              '已标为来源待更新；可编辑纠正，未自动重写事实。'
+                            )
+                          }
+                        >
+                          已过时
+                        </button>
+                        <button
+                          disabled={busy || !connected || !entry.pinned}
+                          onClick={() =>
+                            modify(
+                              entry,
+                              { pinned: false },
+                              '已取消优先召回；后续仍按问题相关性检索，没有删除记忆。'
+                            )
+                          }
+                        >
+                          无关 · 取消优先
+                        </button>
+                      </div>
+                      <button type="button" onClick={() => edit(entry)}>
+                        编辑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onAttach({
+                            key: `memory:${entry.memory_id}`,
+                            title: entry.title,
+                            source: `memory=${entry.memory_id}, revision=${entry.revision}`,
+                            text: entry.content
                           })
                         }
-                      />
-                      选为知识页来源
-                    </label>
-                  </>
+                      >
+                        加入这次提问
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || !connected}
+                        onClick={() => modify(entry, { enabled: !entry.enabled })}
+                      >
+                        {entry.enabled ? '停用' : '启用'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || !connected}
+                        onClick={() =>
+                          void perform(
+                            window.agent.forgetMemory({
+                              session_id: sessionId,
+                              memory_id: entry.memory_id
+                            }),
+                            accept
+                          )
+                        }
+                      >
+                        忘记
+                      </button>
+                      {detail(
+                        `source-${entry.memory_id}`,
+                        '来源与知识页选项',
+                        <>
+                          <p>
+                            {entry.source === 'user'
+                              ? '手动保存'
+                              : entry.source === 'agent'
+                                ? 'Agent 保存'
+                                : '后台提取'}{' '}
+                            · 修订 {entry.revision} · 更新{' '}
+                            {new Date(entry.updated_at).toLocaleString()}
+                          </p>
+                          <p>
+                            来源会话 {entry.session_id ?? '手动'} · 来源处理至事件{' '}
+                            {entry.source_seq ?? '无'}
+                            ；来源条目 {entry.source_ids?.join('、') || '无'}。
+                          </p>
+                          {(entry.evolution_sources ?? []).map((source) => (
+                            <p
+                              key={`${source.project_id}:${source.candidate_id}:${source.content_revision}`}
+                            >
+                              改进来源 {source.candidate_id} · 正文版本 {source.content_revision} ·
+                              当时状态 {source.status}
+                              {' · '}
+                              {source.comparison_at
+                                ? `效果记录 ${source.comparison_at}`
+                                : '未记录效果，采用不代表改善'}
+                            </p>
+                          ))}
+                          {entry.source === 'maintenance' && (
+                            <p className="muted">
+                              这是后台模型提取的内容；事件号记录处理边界，不代表该条知识已逐项验证。
+                            </p>
+                          )}
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={draft.sources.includes(entry.memory_id)}
+                              onChange={(e) =>
+                                update({
+                                  sources: e.target.checked
+                                    ? [...draft.sources, entry.memory_id]
+                                    : draft.sources.filter((id) => id !== entry.memory_id)
+                                })
+                              }
+                            />
+                            选为知识页来源
+                          </label>
+                        </>
+                      )}
+                    </>
+                  )
                 )}
-              </>
-            )
-          )}
+            </div>
+          </div>
           {draft.page?.next_cursor && (
             <button type="button" disabled={busy} onClick={() => search(true)}>
               更多记忆结果

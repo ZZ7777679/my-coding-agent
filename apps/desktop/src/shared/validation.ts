@@ -4,8 +4,8 @@
  */
 
 import Ajv2020 from 'ajv/dist/2020.js'
-import schema from '../../../../schemas/protocol-v12.schema.json'
-import type { ProtocolV12 } from '../generated/protocol'
+import schema from '../../../../schemas/protocol-v13.schema.json'
+import type { ProtocolV13 } from '../generated/protocol'
 
 const ajv = new Ajv2020({
   strict: true,
@@ -20,8 +20,8 @@ ajv.addSchema(schema)
  * 按命名契约校验 unknown 数据；失败仅返回固定错误标识。
  * Validate unknown data against a named contract, failing with a fixed public code.
  */
-export function validate<K extends keyof ProtocolV12>(name: K, value: unknown): ProtocolV12[K] {
-  const validator = ajv.getSchema<ProtocolV12[K]>(schema.$id + '#/$defs/' + name)
+export function validate<K extends keyof ProtocolV13>(name: K, value: unknown): ProtocolV13[K] {
+  const validator = ajv.getSchema<ProtocolV13[K]>(schema.$id + '#/$defs/' + name)
   if (!validator || '$async' in validator) throw new Error('PROTOCOL_INVALID')
   if (!validator(value)) throw new Error('PROTOCOL_INVALID')
   return value

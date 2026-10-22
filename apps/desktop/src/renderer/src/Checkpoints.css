@@ -3,8 +3,8 @@
   inset: 1rem 1rem 1rem auto;
   z-index: 20;
   width: min(48rem, calc(100% - 2rem));
-  background: var(--panel, #151e1b);
-  border: 1px solid #486258;
+  background: var(--panel, var(--panel));
+  border: 1px solid var(--border);
   border-radius: 12px;
   display: flex;
   flex-direction: column;
@@ -15,7 +15,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem;
-  border-bottom: 1px solid #394b43;
+  border-bottom: 1px solid var(--border);
 }
 .checkpoint-body {
   overflow: auto;
@@ -45,6 +45,6 @@
 .abandoned-entry {
   opacity: 0.7;
   margin: 0.5rem 0;
-  border-left: 2px solid #69716d;
+  border-left: 2px solid var(--border);
   padding-left: 0.7rem;
 }

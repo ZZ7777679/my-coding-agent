@@ -1,5 +1,7 @@
 # 从零构建自己的 Coding Agent 桌面应用：调研与实施规划
 
+> 2026-10-21：[M8：产品稳定化、异常恢复与界面体验升级](m8-product-stability-and-experience.md) 首次实现及定向验收完成，涵盖异常／恢复、父子预算与部分成果、性能、可调主题及子 Agent／Trace／记忆详情空间，协议 v13，未提交／推送。[M8 进度](../progress/m8.md) 保存实际桌面、隔离故障与 Go 双模型短流程证据及限制。历史 M8“安装与升级”不是本阶段范围；下方较早时间条目保留原记录，当前状态以进度总览为准。
+
 > 2026-10-20：M6 **沙箱、回退、工具／Skill 按需发现＋既有模块升级**首次实现与定向验收完成，未提交／推送。覆盖记忆优化、双模型接续、请求材料、可选后台压缩、协作／Trace 与组合工作方式；回退支持代码恢复和重新提问。见 [M6 实施方案](m6-sandbox-rollback-and-capabilities.md) 与 [验收／限制](../progress/m6.md)，[原初稿](m6-reliability-context-and-workstyles.md) 相关方案已归并；不据此自动开始新阶段。
 
 > 2026-10-19 接续入口：[当前进度与原有路线](../progress/project-status-and-roadmap-2026-10-19.md) 保留当日整理快照；其后的 Go 接入修正、合作空间 / 工作图、搜索与 Git 及增量修复已随 M5 推送 `origin/dev`，代码提交 `c96d14c`。Go 双模型短闭环和原生搜索已复测，GLM 长流程限制仍保留。本文保留历史设计，第 14 节历史 M6–M8 不是已确认的新阶段清单；当前事实见 [进度总览](../progress/README.md)，下一阶段尚未重新定稿。
@@ -935,6 +937,7 @@ OpenCode Go 的真实接入检查分别覆盖 `glm-5.3-flash` 与 `deepseek-v4.1
 | M5 智能体合作空间与完整编码工作台 | A–F 首次实现及后续增量已推送 origin/dev；双模型图片和 DeepSeek 协作闭环通过，GLM 长业务失败保留 | [M5 方案](m5-implementation-plan.md)、[M5 进度](../progress/m5.md) |
 | M6 沙箱、回退、能力发现与重点优化 | 本轮收尾并推送 origin/dev，代码 `0597f94`，协议 v11；未实测规模及环境兼容边界保留 | [实施方案](m6-sandbox-rollback-and-capabilities.md)、[M6 进度](../progress/m6.md) |
 | M7 自进化与运行经验体系 | 首次实现及后续增量已同步 dev / main；资源采用／恢复、诊断、代码比较、选择性调查与现场入口；代码 `22c2caf` | [实施方案](m7-self-evolution.md)、[M7 进度](../progress/m7.md) |
+| M8 产品稳定化、异常恢复与界面体验升级 | 已完成整合规划，尚未实施；统一异常／恢复、预算／协作、性能、经典主题与独立详情空间 | [整合方案](m8-product-stability-and-experience.md)、[M8 进度](../progress/m8.md) |
 
 **下表为历史路线，非当前阶段安排。** 编辑和执行已经组合进入 M2，当前 M3–M5 分别按上表实施；原 M3 / M5 / M6 等编号不再作为当前新增阶段的执行指令。原安装验收要求仍保留，但不属于本次 M5 功能阶段。
 

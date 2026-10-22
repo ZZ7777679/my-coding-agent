@@ -106,7 +106,9 @@ class WorkerTools:
                 (
                     "Read your own child result, or wait on events without polling the "
                     "model. User questions interrupt waiting. Use next_offset for long "
-                    "results."
+                    "results. A failed child is returned as status data with a separate "
+                    "failure reason; reading it does not retry or fail this request. "
+                    "Result text from failed work is partial output, not completion."
                 ),
             ),
             (
@@ -136,7 +138,10 @@ class WorkerTools:
                         "exploration saves effort. Do simple one-step work directly. "
                         "Specify objective/scope and isolated (default) or inherit "
                         "context. Research role is read-only. Child requests/tools share "
-                        "this assignment's budget. Read returned worker_id with "
+                        "this assignment's configured budget (null means unlimited). "
+                        "Every worker response includes observed assignment_budget and "
+                        "progress; get_context_status can also inspect remaining budget. "
+                        "Read returned worker_id with "
                         "read_worker; wait for and incorporate results before reporting "
                         "completion. No formal sessions or automatic independent review "
                         "sessions are created."
@@ -157,9 +162,9 @@ class WorkerTools:
         return result
 
     async def execute(self, call: ToolCall) -> ToolResult:
-        """真实子记录决定结果；失败按父安排传播。
+        """读取返回真实子状态，只有本次工具操作失败才标记错误。
 
-        Actual child records determine results; failures propagate to the assignment.
+        Return child state as data; only failure of the current operation is a tool error.
         """
         if call.name == "read_parent_history":
             record = self.service.child_record(self.context.session_id)
@@ -176,7 +181,6 @@ class WorkerTools:
             active = self.service.sessions.active_for(self.context.session_id)
             if active is None:
                 raise AgentError("CANCELLED", "来源运行已结束。")
-            failed = False
             offset = 0
             if call.name == "spawn_worker":
                 args = SpawnWorkerArgs.model_validate(call.arguments)
@@ -201,21 +205,47 @@ class WorkerTools:
                 value = await self.service.result(
                     self.context.session_id, read.worker_id, wait=read.wait
                 )
-                failed = value.status == "failed"
             content = text_page(
                 {
                     "worker_id": value.worker_id,
                     "session_id": value.session_id,
                     "status": value.status,
                     "code": value.code,
+                    "run_id": value.run_id,
+                    "failure": value.failure.model_dump(mode="json") if value.failure else None,
                     "context_mode": value.assignment.context_mode,
+                    "owner_run_id": value.owner_run_id,
+                    "progress": {
+                        "requests": value.requests,
+                        "tools": value.tools,
+                        "active_seconds": value.active_seconds,
+                        "last_seq": value.last_seq,
+                        "last_event_at": value.last_event_at,
+                        "last_tool": value.last_tool,
+                        "last_tool_status": value.last_tool_status,
+                        "model": value.model_progress.model_dump(mode="json")
+                        if value.model_progress
+                        else None,
+                        "history_issue": value.history_issue,
+                    },
+                    "assignment_budget": await self.service.budget_snapshot(
+                        self.context.session_id
+                    ),
+                    "next_action": (
+                        "Partial work is retained. Adjust the assignment budget or narrow the "
+                        "follow-up, then explicitly continue this worker; do not replay old tools."
+                        if value.status == "budget_exceeded"
+                        else "Inspect saved progress and the failure before explicitly continuing."
+                        if value.status in {"failed", "cancelled", "interrupted"}
+                        else None
+                    ),
                 },
                 "result",
                 value.result,
                 offset,
                 self.context.limits.max_tool_bytes,
             )
-            return ToolResult(tool_call_id=call.tool_call_id, content=content, is_error=failed)
+            return ToolResult(tool_call_id=call.tool_call_id, content=content, is_error=False)
         except ValidationError:
             error = {"code": "INVALID_TOOL_ARGUMENTS", "message": "子任务参数不符合定义。"}
         except AgentError as exc:

@@ -72,6 +72,7 @@ class ContextTools:
         for name, description in {
             "get_context_status": "Read current compaction state and the actual latest request "
             "material references. Use returned next_offset as offset for more materials. "
+            "Also reports assignment budget including parent/child totals and remaining caps. "
             "form describes the sent material: full=full source, summary=summary, "
             "fragment=source excerpt. Display previews do not describe input truncation. "
             "Optional; never a prerequisite for normal work.",
@@ -133,7 +134,13 @@ class ContextTools:
                     request = view.last_request
                     materials = request.manifest.materials if request else []
                     end = min(len(materials), query_status.offset + query_status.limit)
+                    delegations = self.service.sessions.delegations
                     metadata = {
+                        "assignment_budget": await delegations.budget_snapshot(
+                            self.context.session_id
+                        )
+                        if delegations
+                        else None,
                         "tokens": view.tokens.model_dump(mode="json"),
                         "automatic_compaction": view.settings.automatic,
                         "trigger": {

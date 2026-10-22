@@ -10,6 +10,8 @@ from uuid import uuid4
 import pytest
 
 from my_agent.config import DEFAULTS
+from my_agent.context.types import ContextSettings
+from my_agent.delegation.types import WorkerSettings
 from my_agent.errors import AgentError
 from my_agent.memory.types import MemorySettings
 from tests.python.test_goal_controller import app_at, call, create_session, definition, turn
@@ -72,6 +74,9 @@ async def setup(app, model, path):
     created = await create_session(app, path)
     model.owner = created.session.session_id
     await app.sessions.memory.configure(model.owner, MemorySettings(automatic=False))
+    # 本组验证委派调度，替身明确选择完整目录，不把按需加载误判为能力关闭。
+    # These scheduler fixtures request the full catalog, not the separate discovery workflow.
+    await app.sessions.contexts.configure(model.owner, ContextSettings(tool_loading="all"))
     return created
 
 
@@ -230,8 +235,234 @@ def test_worker_continuation_failure_does_not_return_old_answer(tmp_path):
             result = await app.sessions.view(sid)
             assert page.workers[0].status == "failed"
             assert page.workers[0].code == "MODEL_CONNECTION_FAILED"
-            assert page.workers[0].result == "Current child connection failed"
+            assert page.workers[0].result == ""
+            assert page.workers[0].failure.message == "Current child connection failed"
             assert result.summary.run.message == "Current child connection failed"
+
+    asyncio.run(scenario())
+
+
+def test_failed_worker_is_readable_after_restart_without_stopping_followup(tmp_path):
+    """一次子失败停止原安排；重启后读取四个旧结果不再次失败，也不重放孩子。
+
+    Stop the original assignment, then read four legacy results without failing or replaying.
+    """
+
+    class FailingWorkers(WorkerModel):
+        """三个孩子等待，一个先输出部分进展再模拟 HTTP 拒绝。
+
+        Hold three children while one emits partial progress and encounters an HTTP rejection.
+        """
+
+        def __init__(self):
+            """用实际子身份和门闩确定故障顺序。
+
+            Use real child identities and a gate to control failure ordering.
+            """
+            super().__init__()
+            self.children = []
+            self.ready = asyncio.Event()
+            self.followup = False
+            self.identities = []
+            self.recovered = []
+
+        async def complete(self, **kwargs):
+            """只替换模型响应，读取与失败传播仍走真实工具和控制器。
+
+            Replace only model responses; use real tools and controllers for reads and propagation.
+            """
+            sid = kwargs["session_id"]
+            if sid != self.owner:
+                assert not self.followup, "Reading past results must not restart children"
+                if sid not in self.children:
+                    self.children.append(sid)
+                    if len(self.children) == 4:
+                        self.ready.set()
+                    await self.ready.wait()
+                    if sid == self.children[2]:
+                        return turn(
+                            call("list_files"), text="I will inspect the progress directory"
+                        )
+                    await kwargs["on_text"]("Partial response before cancellation")
+                    await asyncio.Event().wait()
+                raise AgentError(
+                    "HTTP_ERROR",
+                    "Model request rejected (HTTP 400): invalid tool continuation",
+                    cause_code="invalid_request_error",
+                    phase="response_headers",
+                )
+            messages = kwargs["messages"]
+            last_user = max(i for i, msg in enumerate(messages) if msg["role"] == "user")
+            outputs = [
+                json.loads(msg["content"])
+                for msg in messages[last_user + 1 :]
+                if msg["role"] == "tool"
+            ]
+            if self.followup:
+                if not outputs:
+                    return turn(
+                        *(call("read_worker", worker_id=w, wait=False) for w in self.identities)
+                    )
+                self.recovered = outputs
+                assert len(outputs) == 4
+                return turn(text="All four saved statuses inspected; the original child failed")
+            if not outputs:
+                return turn(
+                    *(call("spawn_worker", objective=f"Research part {i}") for i in range(4))
+                )
+            return turn(*(call("read_worker", worker_id=o["worker_id"]) for o in outputs))
+
+    async def scenario():
+        """用隔离持久记录验证错误详情、旧字段兼容与后续完整回合。
+
+        Check failure detail, legacy fields and a complete follow-up using isolated storage.
+        """
+        from my_agent.sessions.types import RunFinished, ToolCompleted, ToolSkipped
+
+        model = FailingWorkers()
+        data = tmp_path / "data"
+        async with app_at(data, model) as app:
+            await setup(app, model, tmp_path / "project")
+            sid = model.owner
+            await app.sessions.delegations.configure(
+                sid, WorkerSettings(enabled=True, concurrency=4)
+            )
+            await app.sessions.start(sid, str(uuid4()), "Research with four workers", None)
+            active = app.sessions.active_for(sid)
+            await asyncio.wait_for(asyncio.shield(active.task), 12)
+            page = await app.sessions.delegations.page(sid)
+            assert len(page.workers) == 4
+            failed = next(w for w in page.workers if w.status == "failed")
+            assert sum(w.status == "cancelled" for w in page.workers) == 3
+            assert all(
+                w.result == "Partial response before cancellation"
+                for w in page.workers
+                if w.status == "cancelled"
+            )
+            assert all(w.last_seq is not None and w.requests > 0 for w in page.workers)
+            assert failed.result == "I will inspect the progress directory"
+            assert failed.failure.code == "HTTP_ERROR"
+            assert failed.failure.cause_code == "invalid_request_error"
+            assert failed.failure.phase == "response_headers"
+            assert failed.failure.diagnostic_id
+            original_failure = failed.failure.model_copy()
+            log = await app.sessions._load(sid)
+            parent = next(f.data for f in reversed(log.facts) if isinstance(f.data, RunFinished))
+            assert parent.status == "failed" and parent.code == "HTTP_ERROR"
+            assert parent.message == original_failure.message
+            assert parent.diagnostic_id == original_failure.diagnostic_id
+            assert parent.failure_phase == original_failure.phase
+            assert parent.cause_code == original_failure.cause_code
+            model.identities = [w.worker_id for w in page.workers]
+
+        # 只在隔离样本删除新增字段，模拟用户已有的失败记录；查询不能写回它。
+        # Remove the new field only from the fixture; reading legacy records must not rewrite them.
+        path = data / "delegation" / "records" / f"{failed.worker_id}.json"
+        document = json.loads(path.read_text(encoding="utf-8"))
+        document.pop("failure")
+        path.write_text(json.dumps(document), encoding="utf-8")
+        before = path.read_bytes()
+        model.followup = True
+        async with app_at(data, model) as app:
+            await app.sessions.start(sid, str(uuid4()), "Read all saved worker statuses", None)
+            active = app.sessions.active_for(sid)
+            run_id = active.run_id
+            await asyncio.wait_for(asyncio.shield(active.task), 10)
+            assert (await app.sessions.view(sid)).summary.run.status == "completed"
+            saved = next(item for item in model.recovered if item["status"] == "failed")
+            assert saved["failure"] == original_failure.model_dump(mode="json")
+            assert saved["result"] == failed.result
+            assert all(
+                item["result"] == "Partial response before cancellation"
+                for item in model.recovered
+                if item["status"] == "cancelled"
+            )
+            log = await app.sessions._load(sid)
+            current = [f.data for f in log.facts if f.run_id == run_id]
+            results = [f for f in current if isinstance(f, ToolCompleted)]
+            assert len(results) == 4 and all(not f.result.is_error for f in results)
+            assert not any(isinstance(f, ToolSkipped) for f in current)
+            assert path.read_bytes() == before
+
+    asyncio.run(scenario())
+
+
+def test_unlimited_assignment_runs_four_workers_past_old_caps(tmp_path):
+    """默认不限越过旧 25/60 限额，仍给出准确父子总账并支持有限预算配置往返。
+
+    Run beyond old caps by default, retain accurate shared totals and round-trip finite settings.
+    """
+
+    class ParallelModel(WorkerModel):
+        """四个真实内部运行使用轻量文件工具，模型响应为离线样本。
+
+        Exercise four real internal runs with lightweight file tools and offline model replies.
+        """
+
+        async def complete(self, **kwargs):
+            """重复七轮三个读取工具，验证请求和工具均超过旧默认值。
+
+            Make seven rounds of three reads to exceed both previous default caps.
+            """
+            self.requests.append(kwargs)
+            outputs = [m for m in kwargs["messages"] if m["role"] == "tool"]
+            if kwargs["session_id"] != self.owner:
+                if len(outputs) < 21:
+                    return turn(*(call("list_files") for _ in range(3)))
+                return turn(text="Saved independent result")
+            if not outputs:
+                return turn(*(call("spawn_worker", objective=f"Part {i}") for i in range(4)))
+            if len(outputs) == 4:
+                return turn(
+                    *(
+                        call("read_worker", worker_id=json.loads(m["content"])["worker_id"])
+                        for m in outputs
+                    )
+                )
+            assert all(
+                not json.loads(m["content"])["assignment_budget"]["limits"]["tools"]
+                for m in outputs
+            )
+            return turn(text="All four results retained")
+
+    async def scenario():
+        """仅隔离数据，核对持久配置和真实账本，无真实模型费用。
+
+        Use isolated data to check persisted settings and actual accounting, without model charges.
+        """
+        from my_agent.config import DataLocation, load_config
+        from my_agent.runtime.settings import RunLimits
+
+        model = ParallelModel()
+        data = tmp_path / "data"
+        async with app_at(data, model) as app:
+            await setup(app, model, tmp_path / "project")
+            sid = model.owner
+            await app.sessions.delegations.configure(
+                sid, WorkerSettings(enabled=True, concurrency=4)
+            )
+            await app.sessions.start(sid, str(uuid4()), "Four independent reads", None)
+            active = app.sessions.active_for(sid)
+            await asyncio.wait_for(asyncio.shield(active.task), 30)
+            result = (await app.sessions.view(sid)).summary.run
+            assert result.status == "completed", result
+            assert result.requests == len(model.requests) == 35
+            assert result.tools == 92
+            assert result.child_requests == 32 and result.child_tools == 84
+            budget = await app.sessions.delegations.budget_snapshot(sid)
+            assert budget["remaining"] == {"requests": None, "tools": None, "active_seconds": None}
+            assert budget["parent"]["requests"] == 3
+            page = await app.sessions.delegations.page(sid)
+            assert len(page.workers) == 4 and all(w.status == "completed" for w in page.workers)
+            # TOML 用 unlimited 表达 null；已有数值配置仍保持原值。
+            # TOML spells null as unlimited; existing numeric settings retain their values.
+            finite = RunLimits.model_validate(
+                {**DEFAULTS["run"], "max_requests": 25, "max_tools": 60, "max_seconds": 600}
+            )
+            app.storage.save_model("glm-5.3-flash", finite)
+            assert load_config(DataLocation(data, "cli")).run == finite
+            app.storage.save_model("glm-5.3-flash", RunLimits.model_validate(DEFAULTS["run"]))
+            assert load_config(DataLocation(data, "cli")).run.max_tools is None
 
     asyncio.run(scenario())
 

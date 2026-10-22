@@ -17,6 +17,8 @@ import defaults from '../../../../src/my_agent/defaults.json'
 import { Backend, BackendError } from './backend'
 import { registerM5Ipc } from './m5'
 import { registerM7Ipc } from './m7'
+import { readAppearance, saveAppearance } from './appearance'
+import { palettes } from '../shared/themes'
 import type { Result } from '../shared/api'
 import { validate } from '../shared/validation'
 import { startupPaths, saveStartupPaths, canonicalDirectory, workspaceRoot } from './startup-paths'
@@ -189,7 +191,14 @@ app
       height: 820,
       minWidth: 960,
       minHeight: 650,
-      backgroundColor: '#111315',
+      backgroundColor: (() => {
+        try {
+          return palettes[readAppearance(dataDir).preset].background
+        } catch {
+          log('APPEARANCE_READ_FAILED')
+          return palettes.graphite.background
+        }
+      })(),
       title: 'My Coding Agent',
       autoHideMenuBar: true,
       webPreferences: {
@@ -227,15 +236,18 @@ app
       log('RENDERER_LOAD_FAILED')
       dialog.showErrorBox('界面加载失败', '请重新构建桌面资源后再打开应用。')
     })
-    handle('agent:info', 0, async () => (await readyBackend()).info())
+    handle('agent:info', 0, async () => {
+      await backend?.reconnectForRead()
+      return (await readyBackend()).info()
+    })
     registerM5Ipc(handle, readyBackend)
     registerM7Ipc(handle, readyBackend)
+    handle('agent:appearance', 0, async () => readAppearance(dataDir))
+    handle('agent:appearance-save', 1, async (value) => saveAppearance(dataDir, value))
     handle('agent:m6-project-directory', 1, async (value) => {
       const params = validate('EnvironmentProjectParams', value)
       const projects = await (await readyBackend()).call('projects.list', {}, 'ProjectsView')
-      const project = projects.recent_projects.find(
-        (item) => item.project_id === params.project_id
-      )
+      const project = projects.recent_projects.find((item) => item.project_id === params.project_id)
       if (!project || !project.available)
         throw new BackendError({
           code: 'PROJECT_UNAVAILABLE',
@@ -253,14 +265,36 @@ app
     handle('agent:m5-pick-attachments', 1, async (value) => {
       const params = validate('DocumentSessionParams', value)
       const service = await readyBackend()
-      const session = await service.call('sessions.get', { session_id: params.session_id }, 'SessionView')
+      const session = await service.call(
+        'sessions.get',
+        { session_id: params.session_id },
+        'SessionView'
+      )
       const projects = await service.call('projects.list', {}, 'ProjectsView')
-      const project = projects.recent_projects.find(item => item.project_id === session.summary.project_id)
-      if (!project) throw new BackendError({ code: 'PROJECT_UNAVAILABLE', message: '项目记录不可用，请重新打开项目。', remediation: '' })
-      const selected = await dialog.showOpenDialog({ title: '选择本次输入材料', defaultPath: project?.path, properties: ['openFile', 'multiSelections'] })
+      const project = projects.recent_projects.find(
+        (item) => item.project_id === session.summary.project_id
+      )
+      if (!project)
+        throw new BackendError({
+          code: 'PROJECT_UNAVAILABLE',
+          message: '项目记录不可用，请重新打开项目。',
+          remediation: ''
+        })
+      const selected = await dialog.showOpenDialog({
+        title: '选择本次输入材料',
+        defaultPath: project?.path,
+        properties: ['openFile', 'multiSelections']
+      })
       const attachments = []
       if (!selected.canceled) {
-        for (const file of selected.filePaths) attachments.push(await service.call('attachments.import', { session_id: params.session_id, path: file, purpose: 'User selected input file' }, 'Attachment'))
+        for (const file of selected.filePaths)
+          attachments.push(
+            await service.call(
+              'attachments.import',
+              { session_id: params.session_id, path: file, purpose: 'User selected input file' },
+              'Attachment'
+            )
+          )
       }
       return validate('AttachmentPage', { attachments })
     })
@@ -268,12 +302,28 @@ app
       const params = validate('DocumentParams', value)
       const service = await readyBackend()
       await service.call('documents.read', params, 'DocumentView')
-      const snapshot = await service.call('sessions.get', { session_id: params.session_id, before_seq: null }, 'SessionView')
+      const snapshot = await service.call(
+        'sessions.get',
+        { session_id: params.session_id, before_seq: null },
+        'SessionView'
+      )
       const info = await service.info()
-      const project = info.projects.recent_projects.find((item) => item.project_id === snapshot.summary.project_id)
-      if (!project) throw new BackendError({ code: 'PROJECT_NOT_FOUND', message: '项目登记不存在。', remediation: '' })
+      const project = info.projects.recent_projects.find(
+        (item) => item.project_id === snapshot.summary.project_id
+      )
+      if (!project)
+        throw new BackendError({
+          code: 'PROJECT_NOT_FOUND',
+          message: '项目登记不存在。',
+          remediation: ''
+        })
       const result = await shell.openPath(path.resolve(project.path, params.path))
-      if (result) throw new BackendError({ code: 'EDITOR_OPEN_FAILED', message: '系统没有可用的外部编辑器关联。', remediation: '' })
+      if (result)
+        throw new BackendError({
+          code: 'EDITOR_OPEN_FAILED',
+          message: '系统没有可用的外部编辑器关联。',
+          remediation: ''
+        })
       return validate('EmptyParams', {})
     })
     handle('agent:environments', 1, async (value) =>

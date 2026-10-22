@@ -168,6 +168,11 @@ def load_config(location: DataLocation, model_override: str | None = None) -> Lo
             user_model: dict[str, object] = content.get("model", {})
             values.update(user_model)
             run_values.update(content.get("run", {}))
+            # TOML 没有 null；仅三项累计预算使用明确的 unlimited 文字，不借大整数表达。
+            # TOML has no null: only cumulative caps accept the explicit unlimited spelling.
+            for key in ("max_requests", "max_tools", "max_seconds"):
+                if run_values.get(key) == "unlimited":
+                    run_values[key] = None
             http_values.update(content.get("http", {}))
             if "model_id" in user_model:
                 source = "user"
@@ -199,7 +204,11 @@ def model_config_text(
     if run is not None:
         lines.extend(["", "[run]"])
         for key, value in run.model_dump().items():
-            lines.append(key + " = " + json.dumps(value, ensure_ascii=False))
+            lines.append(
+                key
+                + " = "
+                + json.dumps("unlimited" if value is None else value, ensure_ascii=False)
+            )
     if http is not None:
         lines.extend(["", "[http]"])
         for key, value in http.model_dump().items():

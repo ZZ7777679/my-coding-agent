@@ -143,7 +143,9 @@ class McpTools:
         try:
             if call.name == "discover_mcp_tools":
                 args = DiscoverMcpArgs.model_validate(call.arguments)
-                connection = await self.service.connect(self.params, args.server_id)
+                connection = await self.service.connect(
+                    self.params, args.server_id, refresh_closed=True
+                )
                 await connection.call("tools/list", {})
                 tools = connection.tools
                 selected = [
@@ -172,7 +174,9 @@ class McpTools:
                 }
             elif call.name == "mcp_resources":
                 resource = McpResourceArgs.model_validate(call.arguments)
-                connection = await self.service.connect(self.params, resource.server_id)
+                connection = await self.service.connect(
+                    self.params, resource.server_id, refresh_closed=True
+                )
                 method = (
                     "resources/read"
                     if resource.uri

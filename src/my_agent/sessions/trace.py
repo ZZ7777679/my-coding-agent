@@ -14,6 +14,7 @@ from my_agent.models.types import JsonObject, ModelData, TokenUsage
 from my_agent.sessions.types import (
     AssistantCommitted,
     Fact,
+    RequestFailed,
     RequestStarted,
     RunAccepted,
     RunFinished,
@@ -146,6 +147,7 @@ def _rows(log: SessionLog) -> list[tuple[TraceItem, list[Fact]]]:
         for fact in log.facts
         if isinstance(fact.data, AssistantCommitted)
     }
+    failed_attempts = {f.data.message_id: f for f in log.facts if isinstance(f.data, RequestFailed)}
     last_requests = {
         fact.run_id: fact.data.message_id
         for fact in log.facts
@@ -158,6 +160,8 @@ def _rows(log: SessionLog) -> list[tuple[TraceItem, list[Fact]]]:
             isinstance(data, (ToolCompleted, ToolSkipped))
             and (fact.run_id, data.result.tool_call_id) in calls
         ):
+            continue
+        if isinstance(data, RequestFailed):
             continue
         if isinstance(data, RequestStarted):
             requests[fact.run_id] = data.message_id
@@ -235,6 +239,19 @@ def _rows(log: SessionLog) -> list[tuple[TraceItem, list[Fact]]]:
                     0,
                     (
                         datetime.fromisoformat(reply.at) - datetime.fromisoformat(fact.at)
+                    ).total_seconds()
+                    * 1000,
+                )
+            elif data.message_id in failed_attempts:
+                attempt = failed_attempts[data.message_id]
+                members.append(attempt)
+                item.status, item.is_error, item.updated_seq = "failed", True, attempt.seq
+                if isinstance(attempt.data, RequestFailed):
+                    item.usage = attempt.data.usage
+                item.duration_ms = max(
+                    0,
+                    (
+                        datetime.fromisoformat(attempt.at) - datetime.fromisoformat(fact.at)
                     ).total_seconds()
                     * 1000,
                 )

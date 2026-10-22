@@ -94,4 +94,4 @@ def request_failure(
         "MODEL_STREAM_ERROR": "response_stream",
         "MODEL_REQUEST_TIMEOUT": "request_deadline",
     }.get(code, "transport")
-    return AgentError(code, message + " 未自动重试。", phase=failure_phase)
+    return AgentError(code, message, phase=failure_phase)

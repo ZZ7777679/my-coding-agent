@@ -7,6 +7,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from my_agent.checkpoints.types import ConversationRestored
 from my_agent.delegation.types import DelegatedUsage
+from my_agent.errors import recovery_hint
 from my_agent.execution.types import ProgramView
 from my_agent.goals.state import TERMINAL_GOALS
 from my_agent.goals.state import views as goal_views
@@ -20,6 +21,7 @@ from my_agent.sessions.types import (
     AuxiliaryStarted,
     ChatEntry,
     ProgressSynced,
+    RequestFailed,
     RequestStarted,
     RunAccepted,
     RunFinished,
@@ -88,6 +90,11 @@ def summarize(log: SessionLog, *, active: bool = False, stopping: bool = False) 
         ]
         tokens.extend(fact.data.usage for fact in tail if isinstance(fact.data, AuxiliaryCompleted))
         tokens.extend(
+            fact.data.usage
+            for fact in tail
+            if isinstance(fact.data, RequestFailed) and fact.data.usage is not None
+        )
+        tokens.extend(
             fact.data.failed_request_usage
             for fact in tail
             if isinstance(fact.data, RunFinished) and fact.data.failed_request_usage is not None
@@ -120,6 +127,8 @@ def summarize(log: SessionLog, *, active: bool = False, stopping: bool = False) 
             requests=requests,
             tools=sum(isinstance(fact.data, ToolStarted) for fact in tail)
             + sum(item.tools for item in delegated),
+            child_requests=sum(item.requests for item in delegated),
+            child_tools=sum(item.tools for item in delegated),
             input_tokens=sum(item.input_tokens or 0 for item in tokens) if input_known else None,
             output_tokens=sum(item.output_tokens or 0 for item in tokens) if output_known else None,
             limits=accepted.data.limits,
@@ -134,6 +143,16 @@ def summarize(log: SessionLog, *, active: bool = False, stopping: bool = False) 
             message=finished.message
             if finished
             else (None if active else "上次运行已中断，未自动重放。"),
+            cause_code=finished.cause_code if finished else None,
+            failure_phase=finished.failure_phase if finished else None,
+            diagnostic_id=finished.diagnostic_id if finished else None,
+            remediation=(
+                finished.remediation or recovery_hint(finished.code or "", finished.cause_code)
+            )
+            if finished and finished.status != "completed"
+            else "",
+            tool_call_id=finished.tool_call_id if finished else None,
+            effect_state=finished.effect_state if finished else None,
             progress_sync="pending"
             if any(fact.seq in pending for fact in tail)
             else "synced"
@@ -342,12 +361,27 @@ def entries(log: SessionLog, before_seq: int | None) -> tuple[list[ChatEntry], i
                     ),
                 }
             )
+        elif isinstance(data, RequestFailed):
+            entry = ChatEntry.model_validate(
+                {
+                    **common,
+                    "kind": "run.finished",
+                    "message_id": data.message_id,
+                    "text": f"模型请求失败（{data.code}）：{data.message} "
+                    f"已按配置安排第 {data.retry_number} 次重试，"
+                    f"等待 {data.retry_delay_seconds:g} 秒。",
+                    "partial_text": data.partial_text,
+                    "reasoning": data.partial_reasoning,
+                }
+            )
         elif isinstance(data, RunFinished):
             question = data.report.question if data.report else None
             entry = ChatEntry.model_validate(
                 {
                     **common,
                     "kind": "run.finished",
+                    "partial_text": data.partial_text,
+                    "reasoning": data.partial_reasoning,
                     "text": (data.message or (data.report.summary if data.report else data.status))
                     + (
                         f"\n等待答复：{question.question}\n影响：{question.impact}"

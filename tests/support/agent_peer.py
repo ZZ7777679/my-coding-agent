@@ -65,10 +65,43 @@ class DesktopModel:
         ):
             return await goal_turn(messages)
         if prompt.startswith("m3:"):
+            if prompt == "m3: m8 long reading":
+                return response(
+                    text=(
+                        "## Local reading sample\n\nKeep the original project files. "
+                        "This is a controlled UI performance sample, not a live model answer.\n\n"
+                    )
+                    * 500
+                )
+            if prompt == "m3: failing worker":
+                if messages[-1]["role"] != "tool":
+                    return response("spawn_worker", {"objective": "worker-http-fixture"})
+                worker = json.loads(messages[-1]["content"])
+                return response("read_worker", {"worker_id": worker["worker_id"]})
+            if prompt == "m3: inspect failed worker":
+                if messages[-1]["role"] != "tool":
+                    worker = next(
+                        json.loads(m["content"])
+                        for m in reversed(messages)
+                        if m["role"] == "tool" and "worker_id" in json.loads(m["content"])
+                    )
+                    return response(
+                        "read_worker", {"worker_id": worker["worker_id"], "wait": False}
+                    )
+                return response(text="Saved failure inspected without restarting the child.")
             if prompt == "m3: lookup" and messages[-1]["role"] != "tool":
                 return response("read_history", {"query": "desktop history", "max_chars": 100})
             return response(text="M3 local desktop sample completed. " * 20).model_copy(
                 update={"usage": TokenUsage(input_tokens=123456, output_tokens=77)}
+            )
+        if prompt == "worker-http-fixture":
+            if messages[-1]["role"] != "tool":
+                return response("list_files", {}, text="I will inspect the progress directory")
+            raise AgentError(
+                "HTTP_ERROR",
+                "Model request rejected (HTTP 400): invalid tool continuation",
+                cause_code="invalid_request_error",
+                phase="response_headers",
             )
         if prompt.startswith("goal-chat:"):
             return response(text="普通问题已回答，等待中的 Goal 没有恢复。")

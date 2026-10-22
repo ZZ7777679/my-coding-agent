@@ -29,6 +29,12 @@ input.on('line', (line) => {
     return
   }
   const request = JSON.parse(line)
+  if (mode === 'crash-on-read' && request.method === 'projects.list') process.exit(2)
+  if (mode === 'delayed-read' && request.method === 'projects.list') {
+    setTimeout(() => process.stdout.write(JSON.stringify({jsonrpc: '2.0', id: request.id,
+      result: ready.projects}) + '\n'), 120)
+    return
+  }
   if (mode === 'timeout') return
   if (mode === 'exit') {
     process.exit(2)

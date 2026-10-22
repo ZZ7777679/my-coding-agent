@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 from my_agent.delegation.types import (
     DelegatedUsage,
     SpawnWorkerArgs,
+    WorkerFailure,
     WorkerPage,
     WorkerRecord,
     WorkerSettings,
@@ -19,16 +20,22 @@ from my_agent.delegation.types import (
 from my_agent.errors import AgentError
 from my_agent.goals.ledger import check_budget, usage
 from my_agent.goals.state import states
+from my_agent.models.types import JsonObject
+from my_agent.runtime.settings import minimum_limit
 from my_agent.sessions.projection import selected_model, summarize
+from my_agent.sessions.store import SessionLog
 from my_agent.sessions.types import (
     AssistantCommitted,
     AuxiliaryCompleted,
     AuxiliaryStarted,
     FactData,
+    RequestFailed,
     RequestStarted,
     RunAccepted,
     RunFinished,
     SessionSignal,
+    ToolCompleted,
+    ToolSkipped,
     ToolStarted,
 )
 from my_agent.storage import read_document, utc_now, write_document
@@ -141,19 +148,7 @@ class DelegationService:
         for value in self.records.values():
             if value.owner_session_id != session_id:
                 continue
-            log = await self.sessions._load(value.session_id)
-            value.requests = sum(
-                isinstance(fact.data, (RequestStarted, AuxiliaryStarted)) for fact in log.facts
-            )
-            value.tools = sum(isinstance(fact.data, ToolStarted) for fact in log.facts)
-            value.active_seconds = sum(
-                fact.data.elapsed_seconds or 0
-                for fact in log.facts
-                if isinstance(fact.data, RunFinished)
-            )
-            child = self.sessions.active_for(value.session_id)
-            if child:
-                value.active_seconds += child.active_seconds()
+            await self._refresh_record(value)
         return WorkerPage(
             settings=settings,
             workers=sorted(
@@ -162,6 +157,78 @@ class DelegationService:
                 reverse=True,
             ),
         )
+
+    async def _refresh_record(self, value: WorkerRecord) -> None:
+        """从原日志还原用量、最近动作与部分正文，不额外调用模型或重写旧历史。
+
+        Recover usage, latest activity and partial prose from facts without a model or log rewrite.
+        """
+        try:
+            log = await self.sessions._load(value.session_id)
+        except AgentError as exc:
+            value.history_issue = f"{exc.code}: {exc.message}"
+            return
+        value.history_issue = None
+        self._restore_failure_from_log(value, log)
+        value.requests = sum(
+            isinstance(f.data, (RequestStarted, AuxiliaryStarted)) for f in log.facts
+        )
+        value.tools = sum(isinstance(f.data, ToolStarted) for f in log.facts)
+        value.active_seconds = sum(
+            f.data.elapsed_seconds or 0 for f in log.facts if isinstance(f.data, RunFinished)
+        )
+        child = self.sessions.active_for(value.session_id)
+        if child and not any(
+            f.run_id == child.run_id and isinstance(f.data, RunFinished) for f in log.facts
+        ):
+            value.active_seconds += child.active_seconds()
+        current = [f for f in log.facts if value.run_id and f.run_id == value.run_id]
+        value.last_seq = current[-1].seq if current else None
+        value.last_event_at = current[-1].at if current else None
+        finished = next(
+            (f.data for f in reversed(current) if isinstance(f.data, RunFinished)), None
+        )
+        value.model_progress = (
+            child.progress_snapshot() if child else (finished.model_progress if finished else None)
+        )
+        last_tool = next(
+            (f.data.call for f in reversed(current) if isinstance(f.data, ToolStarted)), None
+        )
+        value.last_tool = last_tool.name if last_tool else None
+        result = next(
+            (
+                f.data
+                for f in reversed(current)
+                if isinstance(f.data, (ToolCompleted, ToolSkipped))
+                and last_tool
+                and f.data.result.tool_call_id == last_tool.tool_call_id
+            ),
+            None,
+        )
+        value.last_tool_status = (
+            "skipped"
+            if isinstance(result, ToolSkipped)
+            else "failed"
+            if result and result.result.is_error
+            else "completed"
+            if result
+            else "running"
+            if last_tool
+            else None
+        )
+        answer = next(
+            (
+                f.data.turn.text
+                for f in reversed(current)
+                if isinstance(f.data, AssistantCommitted) and f.data.turn.text
+            ),
+            "",
+        )
+        # 取消也走这一条收尾；不把先前成功运行的回答当成本次成果。
+        # Cancellation uses the same harvest; never reuse an earlier run's answer as this result.
+        value.result = (
+            finished.partial_text if finished and finished.partial_text else answer
+        ) or (finished.report.summary if finished and finished.report else "")
 
     async def configure(self, session_id: str, settings: WorkerSettings) -> WorkerPage:
         """关闭只拒绝新委派，已有子任务由其停止入口控制。
@@ -174,6 +241,83 @@ class DelegationService:
         self.settings[session_id] = settings
         self._notify()
         return await self.page(session_id)
+
+    async def budget_snapshot(self, session_id: str) -> JsonObject:
+        """读取当前安排的父子总账与余额；None 是不限，不进行成本预测或预检拦截。
+
+        Read current parent/child totals and remaining caps; None means unlimited, with no gate.
+        """
+        child = self.child_record(session_id)
+        owner_id = child.owner_session_id if child else session_id
+        log = await self.sessions._load(owner_id)
+        summary = summarize(log)
+        run = summary.run
+        if run is None:
+            return {"run_id": None}
+        active = self.sessions.active_for(owner_id)
+        goal = states(log.facts).get(run.goal_id) if run.goal_id else None
+        current = [f for f in log.facts if f.run_id == run.run_id]
+        parent_seconds = (
+            active.active_seconds()
+            if active and active.run_id == run.run_id
+            else next(
+                (
+                    f.data.elapsed_seconds
+                    for f in reversed(current)
+                    if isinstance(f.data, RunFinished)
+                ),
+                None,
+            )
+        )
+        child_seconds = sum(
+            f.data.active_seconds for f in current if isinstance(f.data, DelegatedUsage)
+        ) + self.live_seconds(owner_id, run_id=run.run_id)
+        seconds = parent_seconds + child_seconds if parent_seconds is not None else None
+        result: JsonObject = {
+            "run_id": run.run_id,
+            "parent": {
+                "requests": run.requests - run.child_requests,
+                "tools": run.tools - run.child_tools,
+                "active_seconds": parent_seconds,
+            },
+            "children": {
+                "requests": run.child_requests,
+                "tools": run.child_tools,
+                "active_seconds": child_seconds,
+            },
+            "total": {"requests": run.requests, "tools": run.tools, "active_seconds": seconds},
+            "limits": {
+                "requests": run.limits.max_requests,
+                "tools": run.limits.max_tools,
+                "active_seconds": run.limits.max_seconds,
+            },
+            "remaining": {
+                "requests": max(0, run.limits.max_requests - run.requests)
+                if run.limits.max_requests is not None
+                else None,
+                "tools": max(0, run.limits.max_tools - run.tools)
+                if run.limits.max_tools is not None
+                else None,
+                "active_seconds": max(0.0, run.limits.max_seconds - seconds)
+                if run.limits.max_seconds is not None and seconds is not None
+                else None,
+            },
+            "note": "Shared assignment totals. null limits mean unlimited. Concurrent work "
+            "sums agent active seconds, not wall time. Counts are observed, not reserved.",
+        }
+        if goal and run.goal_id:
+            result["goal"] = {
+                "goal_id": run.goal_id,
+                "limits": goal.budget.model_dump(mode="json"),
+                "usage": usage(
+                    log.facts,
+                    run.goal_id,
+                    live_seconds={run.run_id: parent_seconds}
+                    if active and parent_seconds is not None
+                    else None,
+                ).model_dump(mode="json"),
+            }
+        return result
 
     async def save(self, value: WorkerRecord) -> None:
         """原子保存后通知来源会话。
@@ -200,6 +344,46 @@ class DelegationService:
         Look up the original assignment by internal execution identity.
         """
         return next((item for item in self.records.values() if item.session_id == session_id), None)
+
+    @staticmethod
+    def _restore_failure_from_log(value: WorkerRecord, log: SessionLog) -> None:
+        """旧记录按对应子运行补读原因，不将中间回答当作错误或重写历史。
+
+        Read matching run failures without treating prose as errors or rewriting history.
+        """
+        if value.status not in {"failed", "budget_exceeded"} or value.failure is not None:
+            return
+        finished = next(
+            (
+                fact.data
+                for fact in reversed(log.facts)
+                if fact.run_id == value.run_id and isinstance(fact.data, RunFinished)
+            ),
+            None,
+        )
+        if finished:
+            value.failure = WorkerFailure(
+                code=finished.code or value.code or "WORKER_FAILED",
+                message=finished.message or "子任务失败，未保存详细原因。",
+                cause_code=finished.cause_code,
+                phase=finished.failure_phase,
+                diagnostic_id=finished.diagnostic_id,
+            )
+
+    @staticmethod
+    def _failure_error(value: WorkerRecord) -> AgentError:
+        """传播失败事实与原诊断，部分成果不充当错误说明。
+
+        Propagate failure facts and the original diagnostic, never partial output as the reason.
+        """
+        failure = value.failure
+        return AgentError(
+            failure.code if failure else value.code or "WORKER_FAILED",
+            failure.message if failure else "子任务失败，未保存详细原因。",
+            cause_code=failure.cause_code if failure else None,
+            phase=failure.phase if failure else None,
+            diagnostic_id=failure.diagnostic_id if failure else None,
+        )
 
     async def spawn(
         self, owner: "ActiveRun", assignment: SpawnWorkerArgs, identity: str
@@ -342,45 +526,54 @@ class DelegationService:
             log = await self.sessions._load(value.session_id)
             summary = summarize(log)
             value.status = (
-                "completed" if summary.run and summary.run.status == "completed" else "failed"
+                summary.run.status
+                if summary.run
+                and summary.run.status
+                in {"completed", "failed", "budget_exceeded", "cancelled", "interrupted"}
+                else "failed"
             )
             value.code = summary.run.code if summary.run else "WORKER_NO_RESULT"
-            answer = next(
-                (
-                    fact.data.turn.text
-                    for fact in reversed(log.facts)
-                    if fact.run_id == value.run_id
-                    and isinstance(fact.data, AssistantCommitted)
-                    and fact.data.turn.text
-                ),
-                "",
-            )
-            report = next(
-                (
-                    fact.data.report
-                    for fact in reversed(log.facts)
-                    if fact.run_id == value.run_id and isinstance(fact.data, RunFinished)
-                ),
-                None,
-            )
-            value.result = (
-                answer
-                or (report.summary if report else "")
-                or (summary.run.message or "" if summary.run else "")
-            )
+            self._restore_failure_from_log(value, log)
         except asyncio.CancelledError:
             value.status, value.code = "cancelled", "CANCELLED"
+            owner = self.sessions.active_for(value.owner_session_id)
+            cause = owner.dependency_error if owner else None
+            value.failure = WorkerFailure(
+                code="CANCELLED",
+                message=(
+                    "应用退出，子任务已停止，已保存成果仍可读取。"
+                    if self.closed
+                    else f"原安排因 {cause.code} 停止：{cause.message}"
+                    if cause
+                    else "子任务或原安排已被停止，已保存成果仍可读取。"
+                ),
+                cause_code="APP_CLOSED" if self.closed else cause.code if cause else None,
+                phase="worker_cancel",
+            )
         except AgentError as exc:
-            value.status = "cancelled" if exc.code == "CANCELLED" else "failed"
-            value.code, value.result = exc.code, exc.message
+            value.status = (
+                "cancelled"
+                if exc.code == "CANCELLED"
+                else "budget_exceeded"
+                if exc.code.startswith("BUDGET_")
+                else "failed"
+            )
+            value.code = exc.code
+            if value.status in {"failed", "budget_exceeded", "cancelled"}:
+                value.failure = WorkerFailure(
+                    code=exc.code,
+                    message=exc.message,
+                    cause_code=exc.cause_code,
+                    phase=exc.phase,
+                    diagnostic_id=exc.diagnostic_id,
+                )
         except Exception as exc:
             logging.getLogger(__name__).error(
                 "WORKER_INTERNAL type=%s worker=%s", type(exc).__name__, value.worker_id
             )
-            value.status, value.code, value.result = (
-                "failed",
-                "WORKER_INTERNAL",
-                "子任务内部错误，已停止。",
+            value.status, value.code = "failed", "WORKER_INTERNAL"
+            value.failure = WorkerFailure(
+                code="WORKER_INTERNAL", message="子任务内部错误，已停止。"
             )
         finally:
             child = self.sessions.active_for(value.session_id)
@@ -389,13 +582,23 @@ class DelegationService:
                 child.cancel.set()
                 if child.task:
                     await asyncio.gather(child.task, return_exceptions=True)
+            await self._refresh_record(value)
             value.updated_at = utc_now()
             await self.save(value)
             self.drivers.pop(value.worker_id, None)
-            if value.status == "failed":
-                error = AgentError(value.code or "WORKER_FAILED", value.result or "子任务失败。")
+            if value.status in {"failed", "budget_exceeded"}:
+                error = self._failure_error(value)
                 owner = self.sessions.active_for(value.owner_session_id)
-                if owner:
+                # 迟到的子失败只属于原安排，不能停止后来启动的其他运行。
+                # Late child failures belong to their assignment, never an unrelated later run.
+                if owner and (
+                    owner.run_id == value.owner_run_id
+                    or (
+                        value.goal_id is not None
+                        and owner.goal
+                        and owner.goal.goal_id == value.goal_id
+                    )
+                ):
                     owner.dependency_error = error
                     owner.stop.set()
                     owner.cancel.set()
@@ -458,10 +661,14 @@ class DelegationService:
             fact.data.active_seconds for fact in relevant if isinstance(fact.data, DelegatedUsage)
         )
         remaining = (
-            start.limits.max_seconds
-            - own
-            - delegated
-            - self.live_seconds(value.owner_session_id, run_id=value.owner_run_id)
+            (
+                start.limits.max_seconds
+                - own
+                - delegated
+                - self.live_seconds(value.owner_session_id, run_id=value.owner_run_id)
+            )
+            if start.limits.max_seconds is not None
+            else None
         )
         if value.goal_id:
             state = states(log.facts)[value.goal_id]
@@ -471,14 +678,14 @@ class DelegationService:
                     value.goal_id,
                     live_seconds={parent.run_id: parent.active_seconds()} if parent else None,
                 )
-                remaining = min(
+                remaining = minimum_limit(
                     remaining,
                     state.budget.max_active_seconds
                     - consumed.active_seconds
                     - consumed.reserved_seconds
                     - self.live_seconds(value.owner_session_id, goal_id=value.goal_id),
                 )
-        return max(0.0, remaining)
+        return max(0.0, remaining) if remaining is not None else None
 
     def rate(self, active: "ActiveRun") -> int:
         """并行时间按各工作单元活跃秒数相加，不计算被动等待。
@@ -509,7 +716,9 @@ class DelegationService:
             data.turn.usage
             if isinstance(data, AssistantCommitted)
             else data.usage
-            if isinstance(data, AuxiliaryCompleted)
+            if isinstance(data, (AuxiliaryCompleted, RequestFailed))
+            else data.failed_request_usage
+            if isinstance(data, RunFinished)
             else None
         )
         seconds = child.active_seconds() if isinstance(data, RunFinished) else 0.0
@@ -525,11 +734,16 @@ class DelegationService:
             executed = sum(isinstance(fact.data, ToolStarted) for fact in own_facts)
             delegated = [fact.data for fact in own_facts if isinstance(fact.data, DelegatedUsage)]
             if (
-                requested + sum(item.requests for item in delegated) + requests
+                accepted.limits.max_requests is not None
+                and requested + sum(item.requests for item in delegated) + requests
                 > accepted.limits.max_requests
             ):
                 raise AgentError("BUDGET_REQUESTS", "父安排与子任务的共同请求预算已用完。")
-            if executed + sum(item.tools for item in delegated) + tools > accepted.limits.max_tools:
+            if (
+                accepted.limits.max_tools is not None
+                and executed + sum(item.tools for item in delegated) + tools
+                > accepted.limits.max_tools
+            ):
                 raise AgentError("BUDGET_TOOLS", "父安排与子任务的共同工具预算已用完。")
             if value.goal_id:
                 state = states(owner_log.facts)[value.goal_id]
@@ -580,6 +794,7 @@ class DelegationService:
                 if owner:
                     await self.sessions.set_wait(owner, identity)
                 await changed.wait()
+            await self._refresh_record(value)
             return value
         finally:
             if owner:
@@ -613,6 +828,7 @@ class DelegationService:
         value.owner_run_id = owner.run_id
         value.goal_id = owner.goal.goal_id if owner.goal else None
         value.status, value.result, value.code = "queued", "", None
+        value.failure, value.run_id = None, None
         value.pending_messages = []
         await self.save(value)
         self.drivers[identity] = asyncio.create_task(self._drive(value, prompt))
@@ -658,10 +874,11 @@ class DelegationService:
                 await self.stop(active.log.session_id, item.worker_id)
             else:
                 result = await self.result(active.log.session_id, item.worker_id, wait=True)
-                if result.status == "failed" and result.owner_run_id == active.run_id:
-                    raise AgentError(
-                        result.code or "WORKER_FAILED", result.result or "子任务失败。"
-                    )
+                if (
+                    result.status in {"failed", "budget_exceeded"}
+                    and result.owner_run_id == active.run_id
+                ):
+                    raise self._failure_error(result)
 
     async def close(self) -> None:
         """退出时取消所有子工作，重启不自动续跑。

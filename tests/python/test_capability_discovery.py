@@ -9,11 +9,43 @@ import pytest
 from my_agent.checkpoints.types import RestoreCheckpointParams
 from my_agent.context.service import SUMMARY_PROMPT
 from my_agent.context.types import ContextSettings
+from my_agent.delegation.types import WorkerSettings
 from my_agent.errors import AgentError
 from my_agent.memory.types import MemorySettings
 from my_agent.skills.types import SaveSkillParams
 from tests.python.test_context_memory import KnowledgeModel, run
 from tests.python.test_goal_controller import app_at, call, create_session, turn
+
+
+def test_mixed_worker_intent_discovers_names_without_empty_catalog(tmp_path):
+    """真实联网样本的组合意图仍能发现 worker，无需先列出全部工具。
+
+    Mixed intents observed in live runs discover workers without listing every tool.
+    """
+
+    class Model(KnowledgeModel):
+        """用实际请求定义核对发现效果。 Check discovery against actual request schemas."""
+
+        async def complete(self, **kwargs):
+            """首次查组合关键词，下次核对已加载工具。 Query once and inspect loaded tools."""
+            self.requests.append(kwargs)
+            if len(self.requests) == 1:
+                return turn(call("discover_tools", query="collaboration worker request read peers"))
+            names = {item["function"]["name"] for item in kwargs["tools"]}
+            assert {"spawn_worker", "read_worker"} <= names
+            return turn(text="Worker discovery ready")
+
+    async def scenario():
+        """使用正式会话与能力服务。 Use production sessions and capability services."""
+        model = Model()
+        async with app_at(tmp_path / "data", model) as app:
+            created = await create_session(app, tmp_path / "project")
+            sid = created.session.session_id
+            await app.sessions.delegations.configure(sid, WorkerSettings(enabled=True))
+            await app.sessions.memory.configure(sid, MemorySettings(automatic=False))
+            assert (await run(app, sid, "Read through a worker")).run.status == "completed"
+
+    asyncio.run(scenario())
 
 
 def test_discovery_loads_and_unloads_without_extra_model_router(tmp_path):
