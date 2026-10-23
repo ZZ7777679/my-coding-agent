@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from my_agent.errors import AgentError
 from my_agent.models.native_search import NativeSearchClient
 from my_agent.models.types import JsonObject, ToolCall, ToolResult
-from my_agent.runtime.tools import ToolContext, ToolExecutor
+from my_agent.runtime.tools import ToolContext, ToolExecutor, failed_tool_result
 from my_agent.sessions.types import AuxiliaryCompleted, AuxiliaryStarted
 from my_agent.tools.policy import checkpoint
 from my_agent.tools.read_only import encode
@@ -162,7 +162,7 @@ class WebTools:
         except AgentError as exc:
             if exc.code == "CANCELLED":
                 raise
-            code, message = exc.code, exc.message
+            return failed_tool_result(call, exc)
         return ToolResult(
             tool_call_id=call.tool_call_id,
             is_error=True,

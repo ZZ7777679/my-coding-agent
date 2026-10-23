@@ -11,7 +11,7 @@ from my_agent.errors import AgentError
 from my_agent.intelligence.service import IntelligenceService
 from my_agent.intelligence.types import LanguageQuery
 from my_agent.models.types import JsonObject, ModelData, ToolCall, ToolResult
-from my_agent.runtime.tools import ToolContext, ToolExecutor
+from my_agent.runtime.tools import ToolContext, ToolExecutor, failed_tool_result
 from my_agent.tools.read_only import encode
 
 
@@ -184,13 +184,4 @@ class IntelligenceTools:
                 # 真正连接或执行故障停止原 Run；可选服务缺失仍作为可修正反馈。
                 # Actual connection or execution failure stops the run; absence remains feedback.
                 raise
-            return ToolResult(
-                tool_call_id=call.tool_call_id,
-                content=encode(
-                    {
-                        "code": exc.code,
-                        "message": exc.message,
-                    }
-                ),
-                is_error=True,
-            )
+            return failed_tool_result(call, exc)

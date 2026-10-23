@@ -6,7 +6,20 @@ Build tool context from durable provenance without rewriting stored results.
 import json
 
 from my_agent.models.types import JsonObject
-from my_agent.sessions.types import Fact, ToolCompleted, ToolSkipped
+from my_agent.sessions.types import Fact, RunInputQueued, ToolCompleted, ToolSkipped
+
+
+def input_message(data: RunInputQueued) -> JsonObject:
+    """实时与历史共用补充消息格式，附件保留回读引用。
+
+    Share supplemental input formatting between live and historical context.
+    """
+    references = (
+        "\nSaved attachment references (read_attachment): " + ", ".join(data.attachment_ids)
+        if data.attachment_ids
+        else ""
+    )
+    return {"role": "user", "content": data.prompt + references}
 
 
 def tool_result_message(fact: Fact) -> JsonObject:

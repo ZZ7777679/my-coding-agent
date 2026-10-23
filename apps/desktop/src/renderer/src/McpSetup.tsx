@@ -5,7 +5,10 @@ import { useState } from 'react'
 import type { McpPreset, McpServer, ProjectSummary, SaveMcpParams } from '../../generated/protocol'
 import { McpOAuthSetup } from './McpOAuth'
 
-type SetupValue = Pick<SaveMcpParams, 'server' | 'credential_value' | 'clear_credential'>
+type SetupValue = Pick<
+  SaveMcpParams,
+  'server' | 'credential_value' | 'clear_credential' | 'connection_values'
+>
 
 /** 解析旧配置的引用字段，错误只显示说明。 Parse legacy reference fields with a fixed error message. */
 function stringMap(text: string): Record<string, string> {
@@ -46,6 +49,10 @@ export function McpSetup({
   const [token, setToken] = useState('')
   const [clearToken, setClearToken] = useState(false)
   const [error, setError] = useState('')
+  const [connectionValues, setConnectionValues] = useState<
+    NonNullable<SaveMcpParams['connection_values']>
+  >({})
+  const remote = draft.transport === 'http' || draft.transport === 'sse'
   const auth = draft.auth
   let selectedToolsets: string[] = []
   try {
@@ -89,7 +96,8 @@ export function McpSetup({
           project_ids: draft.all_projects ? [] : (draft.project_ids ?? [])
         },
         credential_value: auth?.source === 'saved' && token.trim() ? token.trim() : null,
-        clear_credential: clearToken && !token.trim()
+        clear_credential: clearToken && !token.trim(),
+        connection_values: connectionValues
       }
     } catch {
       setError('高级引用和配置头应为 JSON 对象，键和值均为文本。')
@@ -130,11 +138,17 @@ export function McpSetup({
             value={draft.transport ?? 'stdio'}
             onChange={(e) => {
               const transport = e.target.value
-              if (transport === 'http' || transport === 'stdio' || transport === 'browser')
+              if (
+                transport === 'http' ||
+                transport === 'sse' ||
+                transport === 'stdio' ||
+                transport === 'browser'
+              )
                 setDraft({ ...draft, transport })
             }}
           >
             <option value="http">远程 HTTP</option>
+            <option value="sse">远程 SSE（旧式服务）</option>
             <option value="stdio">本地 stdio</option>
             <option value="browser">临时浏览器</option>
           </select>
@@ -148,7 +162,7 @@ export function McpSetup({
           />
         </label>
       </div>
-      {draft.transport === 'http' ? (
+      {remote ? (
         <>
           <label>
             服务地址
@@ -332,10 +346,68 @@ export function McpSetup({
       </label>
       <details className="mcp-advanced">
         <summary>高级连接选项</summary>
+        <label>
+          协议兼容方式
+          <select
+            aria-label="协议兼容方式"
+            value={draft.protocol_mode ?? 'auto'}
+            onChange={(event) => {
+              if (event.target.value === 'auto' || event.target.value === 'legacy')
+                setDraft({ ...draft, protocol_mode: event.target.value })
+            }}
+          >
+            <option value="auto">自动协商（推荐）</option>
+            <option value="legacy">旧版 initialize 握手</option>
+          </select>
+        </label>
+        {!remote && (
+          <label>
+            工作目录（留空跟随项目）
+            <input
+              value={draft.cwd ?? ''}
+              onChange={(event) => setDraft({ ...draft, cwd: event.target.value })}
+            />
+          </label>
+        )}
+        {(['env', 'headers'] as const).map((kind) =>
+          (kind === 'env' ? draft.stored_env : draft.stored_headers)?.map((name) => (
+            <div className="mcp-form-row" key={`${kind}:${name}`}>
+              <label>
+                {kind === 'env' ? '已保存环境变量' : '已保存请求头'} {name}
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="留空保留原值"
+                  value={connectionValues[kind]?.[name] ?? ''}
+                  onChange={(event) => {
+                    const values: Record<string, string> = { ...connectionValues[kind] }
+                    if (event.target.value) values[name] = event.target.value
+                    else delete values[name]
+                    setConnectionValues({ ...connectionValues, [kind]: values })
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() =>
+                  setDraft({
+                    ...draft,
+                    [kind === 'env' ? 'stored_env' : 'stored_headers']: (kind === 'env'
+                      ? draft.stored_env
+                      : draft.stored_headers
+                    )?.filter((key) => key !== name)
+                  })
+                }
+              >
+                移除 {name}
+              </button>
+            </div>
+          ))
+        )}
         <p className="muted">
           服务身份：<code>{draft.server_id}</code>
         </p>
-        {draft.transport === 'http' && (
+        {remote && (
           <>
             {auth?.source !== 'oauth' && (
               <div className="mcp-form-row">
@@ -372,7 +444,7 @@ export function McpSetup({
             </p>
           </>
         )}
-        {draft.transport !== 'http' && (
+        {!remote && (
           <label>
             环境变量引用 JSON（变量名 → 本机变量名）
             <textarea value={envRefs} onChange={(e) => setEnvRefs(e.target.value)} />
@@ -386,7 +458,7 @@ export function McpSetup({
       )}
       <div className="mcp-actions">
         <button type="button" onClick={() => void submit(true)}>
-          {auth?.source === 'oauth' && draft.transport === 'http' ? '保存并登录' : '保存并测试连接'}
+          {auth?.source === 'oauth' && remote ? '保存并登录' : '保存并测试连接'}
         </button>
         <button type="button" onClick={() => void submit(false)}>
           保存配置

@@ -76,11 +76,16 @@ def test_retry_keeps_partial_evidence_and_never_replays_tools(tmp_path):
             assert sum(isinstance(f.data, ToolStarted) for f in log.facts) == 1
             failed = next(f.data for f in log.facts if isinstance(f.data, RequestFailed))
             assert failed.usage.input_tokens == 5
+            assert failed.diagnostic_id
+            diagnostic = app.sessions.diagnostics.read(failed.diagnostic_id)
+            assert diagnostic.request_id == failed.message_id
+            assert "Fixture stream disconnected" in diagnostic.causes[0].message
             assert failed.partial_text == "Interrupted unique prose"
             assert failed.partial_reasoning == "Interrupted visible reasoning"
             requests = [r for r in trace_items(log) if r.kind == "request.started"]
             assert [r.status for r in requests] == ["completed", "failed", "completed"]
             assert requests[1].usage == failed.usage
+            assert requests[1].diagnostic_ids == [failed.diagnostic_id]
             assert log.context()[1]
             assert root.joinpath("note.txt").read_text() == "saved"
         async with app_at(data, model) as app:

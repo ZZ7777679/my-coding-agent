@@ -54,7 +54,7 @@ test('M5 workbench preserves dirty edits across Agent writes and restart, with s
     const sessions = await readdir(path.join(data, 'sessions'))
     expect(sessions).toHaveLength(1)
     const sessionId = sessions[0]
-    await page.getByRole('button', { name: '编码工作台', exact: true }).click()
+    await page.getByRole('button', { name: '项目文件', exact: true }).click()
     await page
       .getByRole('navigation', { name: '项目文件树', exact: true })
       .getByRole('button', { name: 'src/main.py', exact: true })
@@ -78,7 +78,7 @@ test('M5 workbench preserves dirty edits across Agent writes and restart, with s
         return result.ok ? result.data.drafts[0]?.content : ''
       })
       .toBe(dirty)
-    await page.getByRole('button', { name: '返回对话', exact: true }).click()
+    await page.getByRole('button', { name: '关闭工作台', exact: true }).click()
     const prompt =
       'files:edit\n\n| 项目 | 状态 |\n| --- | --- |\n| 文件 | 核对 |\n\n```python\nprint(2)\n```'
     await page.getByLabel('输入问题', { exact: true }).fill(prompt)
@@ -89,7 +89,7 @@ test('M5 workbench preserves dirty edits across Agent writes and restart, with s
     await expect(
       page.getByTestId('chat-history').getByRole('button', { name: '复制代码', exact: true })
     ).toBeVisible()
-    await page.getByRole('button', { name: '编码工作台', exact: true }).click()
+    await page.getByRole('button', { name: '项目文件', exact: true }).click()
     await page
       .locator('.workspace-code-toolbar')
       .getByRole('button', { name: '保存', exact: true })
@@ -124,7 +124,7 @@ test('M5 workbench preserves dirty edits across Agent writes and restart, with s
     await chip.getByRole('button').first().click()
     await expect(page.locator('.input-attachments pre')).toContainText('# restored after restart')
     expect(await readFile(file, 'utf8')).not.toContain('restored after restart')
-    await page.getByRole('button', { name: '编码工作台', exact: true }).click()
+    await page.getByRole('button', { name: '项目文件', exact: true }).click()
     const nav = page.getByRole('navigation', { name: '编码工作台', exact: true })
     await nav.getByRole('button', { name: '交互终端', exact: true }).click()
     await expect(page.locator('.code-workbench .workbench-pane:not([hidden])')).toHaveCount(1)
@@ -142,7 +142,7 @@ test('M5 workbench preserves dirty edits across Agent writes and restart, with s
     await page.locator('.tree-project').click()
     await page.locator('.tree-task').filter({ hasText: '文件工作台验收' }).click()
     await page.getByRole('button', { name: '打开 / 补齐首会话', exact: true }).click()
-    await page.getByRole('button', { name: '编码工作台', exact: true }).click()
+    await page.getByRole('button', { name: '项目文件', exact: true }).click()
     await expect(page.locator('.workspace-tabs')).toContainText('main.py ●')
     await expect(page.locator('.workspace-code .view-lines')).toContainText(
       '# restored after restart'
@@ -192,7 +192,7 @@ test('M5 editor uses real LSP and preserves rename drafts until explicit save', 
     await page.getByLabel('阶段目标', { exact: true }).fill('验证代码导航与重命名草稿')
     await page.getByRole('button', { name: '创建任务与首会话', exact: true }).click()
     await page.getByRole('button', { name: '打开 / 补齐首会话', exact: true }).click()
-    await page.getByRole('button', { name: '编码工作台', exact: true }).click()
+    await page.getByRole('button', { name: '项目文件', exact: true }).click()
     await page
       .getByRole('navigation', { name: '项目文件树', exact: true })
       .getByRole('button', { name: 'main.py', exact: true })

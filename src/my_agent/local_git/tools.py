@@ -14,7 +14,7 @@ from my_agent.local_git.types import (
     GitProjectParams,
 )
 from my_agent.models.types import JsonObject, ModelData, ToolCall, ToolResult
-from my_agent.runtime.tools import ToolContext, ToolExecutor
+from my_agent.runtime.tools import ToolContext, ToolExecutor, failed_tool_result
 from my_agent.tools.arguments import argument_message
 from my_agent.tools.policy import checkpoint
 from my_agent.tools.read_only import encode
@@ -167,14 +167,11 @@ class GitTools:
                 "GIT_REPOSITORY_REQUIRED",
                 "PROGRAM_UNAVAILABLE",
             }
-            return ToolResult(
-                tool_call_id=call.tool_call_id,
-                is_error=True,
-                content=encode(
-                    {
-                        "code": "INVALID_TOOL_ARGUMENTS" if correctable else exc.code,
-                        "cause_code": exc.code,
-                        "message": exc.message,
-                    }
-                ),
+            return failed_tool_result(
+                call,
+                exc,
+                {
+                    "code": "INVALID_TOOL_ARGUMENTS" if correctable else exc.code,
+                    "cause_code": exc.code,
+                },
             )

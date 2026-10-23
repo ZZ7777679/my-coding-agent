@@ -43,6 +43,7 @@
 | 默认服务 | Python 直接调用 OpenCode Go；不把 OpenCode CLI 作为自己的 agent 核心 |
 | 模型范围 | 初始 `glm-5.3-flash`，可在会话输入区切换 `deepseek-v4.1-flash`；已发出请求保持原模型，下一请求采用已保存选择；不自动增加或静默切换其他模型 |
 | Go 地址 | 主对话 `https://opencode.ai/inference/go/openai/v1/chat/completions`；Messages 辅助搜索使用独立的 `/inference/go/anthropic/v1/messages`；目录 `/inference/go/v1/models`。统一集中配置，旧 `/zen/go/v1` 在读取时兼容映射，显式保存时写回新值 |
+| 辅助搜索模型 | 使用 Messages 接口的 `deepseek-flash` 别名，集中配置为 `web.search_model_id`；与主对话 `deepseek-v4.1-flash` 分开，旧辅助请求身份保持可读 |
 | 凭据 | 默认引用 `OPENCODE_API_KEY`；只在受信凭据解析器和模型客户端中使用 |
 | 应用数据 | 默认 `E:\MyCodingAgentData`；自定义顺序为 `--data-dir` → `MY_AGENT_DATA_DIR` → 默认目录 |
 | 项目运行环境 | Windows 本机优先，复用项目已有 Python / Conda / uv 等；统一登记管理，Docker 可选，WSL 直接执行后置 |

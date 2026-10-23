@@ -6,7 +6,7 @@ const phases: Record<ModelProgress['phase'], string> = {
   preparing: '准备请求',
   connecting: '尝试建立连接',
   tls: '尝试建立安全连接',
-  waiting: '已发送请求',
+  waiting: '等待服务响应（尚无响应头）',
   receiving: '已收到响应头',
   reasoning: '已收到思考片段',
   text: '已收到正文',
@@ -20,11 +20,13 @@ const phases: Record<ModelProgress['phase'], string> = {
 export function ModelActivity({
   progress,
   active,
-  compact = false
+  compact = false,
+  timeoutSeconds
 }: {
   progress: ModelProgress
   active: boolean
   compact?: boolean
+  timeoutSeconds?: number | null
 }) {
   const live = active && progress.phase !== 'completed'
   const observedAt = useMemo(() => performance.now(), [progress.elapsed_ms, live])
@@ -46,6 +48,11 @@ export function ModelActivity({
     <span>
       最后观测：{phases[progress.phase]}
       {live && ' · 等待后续响应'}
+      {progress.phase === 'waiting' && ' · 请求已发出，尚未收到服务响应，不能据此判断模型正在思考'}
+      {timeoutSeconds !== undefined &&
+        (timeoutSeconds === null
+          ? ' · 本次请求未设超时，可手动停止'
+          : ` · 本次请求总时限 ${timeoutSeconds} 秒${live ? `，剩余约 ${Math.max(0, timeoutSeconds - elapsed / 1000).toFixed(0)} 秒` : ''}`)}
       {progress.received_bytes != null &&
         ` · 已接收响应数据 ${(progress.received_bytes / 1024).toFixed(1)} KiB`}
       {gap != null &&

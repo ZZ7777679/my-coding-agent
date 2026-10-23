@@ -17,7 +17,7 @@ from my_agent.delegation.types import SpawnWorkerArgs
 from my_agent.errors import AgentError
 from my_agent.identifiers import EntityId
 from my_agent.models.types import JsonObject, ModelData, ToolCall, ToolResult
-from my_agent.runtime.tools import ToolContext, ToolExecutor
+from my_agent.runtime.tools import ToolContext, ToolExecutor, failed_tool_result
 
 
 class ReadWorkerArgs(ModelData):
@@ -247,9 +247,12 @@ class WorkerTools:
             )
             return ToolResult(tool_call_id=call.tool_call_id, content=content, is_error=False)
         except ValidationError:
-            error = {"code": "INVALID_TOOL_ARGUMENTS", "message": "子任务参数不符合定义。"}
+            error: JsonObject = {
+                "code": "INVALID_TOOL_ARGUMENTS",
+                "message": "子任务参数不符合定义。",
+            }
         except AgentError as exc:
-            error = {"code": exc.code, "message": exc.message}
+            return failed_tool_result(call, exc, {"remediation": exc.remediation})
         return ToolResult(
             tool_call_id=call.tool_call_id,
             content=json.dumps(error, ensure_ascii=False),

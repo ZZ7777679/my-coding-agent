@@ -16,6 +16,8 @@ export type WorkspaceSelection = {
   sessionId: string | null
   /** 一次用户编辑入口，非持久化业务身份。 One UI edit request, not a persisted entity identity. */
   editTaskRequest?: string
+  /** 从任务固定入口返回设计。 Reopen team design from its fixed task entry. */
+  designRequest?: string
 }
 type Props = {
   projects: ProjectSummary[]
@@ -324,8 +326,30 @@ function ProjectBranch({
               {openTasks.has(task.task_id) && (
                 <div className="tree-sessions">
                   {sessions
-                    .filter((session) => session.task_id === task.task_id)
+                    .filter(
+                      (session) =>
+                        session.task_id === task.task_id && session.purpose !== 'team_design'
+                    )
                     .map(sessionButton)}
+                  <button
+                    className="text-button tree-team-design"
+                    onClick={() =>
+                      onSelect({
+                        projectId,
+                        taskId: task.task_id,
+                        sessionId: null,
+                        designRequest: crypto.randomUUID()
+                      })
+                    }
+                  >
+                    团队设计
+                    {sessions.some(
+                      (session) =>
+                        session.task_id === task.task_id &&
+                        session.purpose === 'team_design' &&
+                        session.run?.status === 'running'
+                    ) && ' · 进行中'}
+                  </button>
                   <button
                     className="text-button"
                     onClick={() => onSelect({ projectId, taskId: task.task_id, sessionId: null })}

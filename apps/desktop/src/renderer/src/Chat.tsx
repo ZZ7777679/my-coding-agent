@@ -11,6 +11,7 @@ import type { Attachment } from '../../generated/protocol'
 import type { QuestionMaterial } from './KnowledgeDetails'
 import { Workers } from './Workers'
 import { FailureNotice } from './FailureNotice'
+import type { EvolutionEntry } from './EvolutionQuick'
 import type {
   ChatEntry,
   ModelId,
@@ -36,6 +37,8 @@ import type { WorkspaceSelection } from './TaskNavigation'
 import defaults from '../../../../../src/my_agent/defaults.json'
 
 type Props = {
+  onReview: (entry: EvolutionEntry) => void
+  onSettings: () => void
   review?: ReactNode
   project: ProjectSummary | null
   selected: string | null
@@ -144,6 +147,11 @@ function HistoryEntry({
       <strong>
         {entry.kind === 'user' ? '你' : entry.model_id ? names[entry.model_id] : 'Agent'}
       </strong>
+      {entry.input_status && (
+        <small className="input-delivery">
+          追加要求 · {entry.input_status === 'queued' ? '已保存，等待处理' : '已纳入后续上下文'}
+        </small>
+      )}
       <Reasoning
         text={entry.reasoning ?? ''}
         open={reasoningOpen}
@@ -157,6 +165,8 @@ function HistoryEntry({
 
 /** 管理会话归属、快照交接与有界事件缓冲。 Manage session ownership and bounded snapshot handoff. */
 export function Chat({
+  onReview,
+  onSettings,
   review,
   project,
   selected,
@@ -173,6 +183,30 @@ export function Chat({
   const [older, setOlder] = useState<ChatEntry[]>([])
   const [olderCursor, setOlderCursor] = useState<number | null>(null)
   const [prompt, setPrompt] = useState('')
+  useEffect(() => {
+    /** 文件操作准备可编辑的请求，保留已有草稿及当前模式。
+     * Prepare an editable file request without discarding the draft or changing mode. */
+    function composeFileRun(event: Event) {
+      if (!(event instanceof CustomEvent)) return
+      const detail: unknown = event.detail
+      if (
+        !detail ||
+        typeof detail !== 'object' ||
+        !('sessionId' in detail) ||
+        detail.sessionId !== selected ||
+        !('path' in detail) ||
+        typeof detail.path !== 'string'
+      )
+        return
+      const request = `请运行项目文件 ${JSON.stringify(detail.path)} 的已保存版本。先确认合适的运行命令，使用项目已有环境，报告实际结果；需要长驻时使用服务或终端工具。`
+      setPrompt((draft) => (draft ? `${draft}\n\n${request}` : request))
+      requestAnimationFrame(() =>
+        document.querySelector<HTMLTextAreaElement>('[aria-label="输入问题"]')?.focus()
+      )
+    }
+    window.addEventListener('agent:compose-file-run', composeFileRun)
+    return () => window.removeEventListener('agent:compose-file-run', composeFileRun)
+  }, [selected])
   const attachmentInput = useRef<InputAttachmentHandle>(null)
   const visibility = useRef(visible)
   visibility.current = visible
@@ -384,7 +418,9 @@ export function Chat({
 
   const goalRunning = goal?.status === 'active'
   const localInterruption = goalRunning && active?.run?.status !== 'stopping'
-  const blockedByRun = !!active && !localInterruption
+  const supplementing =
+    active?.session_id === selected && active.run?.status === 'running' && !goalRunning
+  const blockedByRun = !!active && !localInterruption && !supplementing
   const unfinishedGoal = !!goal && goal.status !== 'completed' && goal.status !== 'cancelled'
 
   /** 只在发送动作生成操作 ID，失败不自动重发。 Generate operation IDs on explicit send only. */
@@ -902,6 +938,7 @@ export function Chat({
                         key={snapshot.stream_message_id ?? run.run_id}
                         progress={snapshot.model_progress}
                         active={run.status === 'running'}
+                        timeoutSeconds={run.limits.request_timeout_seconds}
                       />
                     </span>
                   )}
@@ -923,10 +960,31 @@ export function Chat({
                       cause_code: run.cause_code,
                       phase: run.failure_phase,
                       diagnostic_id: run.diagnostic_id,
+                      diagnostic_issue: run.diagnostic_issue,
                       tool_call_id: run.tool_call_id,
                       effect_state: run.effect_state
                     }}
                   >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onReview({
+                          origin: null,
+                          instruction:
+                            '分析这次失败的具体原因，区分服务、环境、输入与 Harness 缺陷，提出有证据的修复方案。',
+                          sources: [
+                            {
+                              session_id: selected!,
+                              run_id: run.run_id,
+                              scope: 'run',
+                              diagnostic_id: run.diagnostic_id
+                            }
+                          ]
+                        })
+                      }
+                    >
+                      调查这次失败
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -957,6 +1015,9 @@ export function Chat({
                     </button>
                     <button type="button" onClick={() => setShowCheckpoints(true)}>
                       查看回退点
+                    </button>
+                    <button type="button" onClick={onSettings}>
+                      设置与连接诊断
                     </button>
                   </FailureNotice>
                 ) : (
@@ -1042,13 +1103,15 @@ export function Chat({
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               placeholder={
-                mode === 'goal'
-                  ? '设定一个局部目标，Agent 将持续推进直到完成、停止或需要你答复…'
-                  : mode === 'plan'
-                    ? '讨论目标、约束和实现方案…'
-                    : goalRunning
-                      ? '插入普通问题，回答后继续原 Goal…'
-                      : '描述本次问题或需要实现的代码…'
+                supplementing
+                  ? '补充要求或纠正方向，将在当前模型回复／工具结束后处理…'
+                  : mode === 'goal'
+                    ? '设定一个局部目标，Agent 将持续推进直到完成、停止或需要你答复…'
+                    : mode === 'plan'
+                      ? '讨论目标、约束和实现方案…'
+                      : goalRunning
+                        ? '插入普通问题，回答后继续原 Goal…'
+                        : '描述本次问题或需要实现的代码…'
               }
               rows={2}
               disabled={!selected || !connected}
@@ -1076,7 +1139,7 @@ export function Chat({
                   aria-label="本次模式"
                   title="选择本次对话模式"
                   value={mode}
-                  disabled={busy || blockedByRun || !snapshot}
+                  disabled={busy || blockedByRun || supplementing || !snapshot}
                   onChange={(event) =>
                     setMode(
                       event.target.value === 'goal'
@@ -1130,7 +1193,7 @@ export function Chat({
                     aria-label="允许保存的计划文档"
                     title="留空只读；填写路径仅授权保存该计划文档"
                     value={planDocument}
-                    disabled={busy || blockedByRun}
+                    disabled={busy || blockedByRun || supplementing}
                     onChange={(event) => setPlanDocument(event.target.value)}
                     placeholder="计划文档路径（可选）"
                   />
@@ -1155,7 +1218,8 @@ export function Chat({
                   disabled={
                     (!snapshot?.summary.can_continue &&
                       snapshot?.summary.issue !== 'UNPAIRED_TOOL_CALLS' &&
-                      !localInterruption) ||
+                      !localInterruption &&
+                      !supplementing) ||
                     !project?.available ||
                     !connected ||
                     busy ||
@@ -1166,11 +1230,13 @@ export function Chat({
                 >
                   {busy
                     ? '正在处理…'
-                    : mode === 'goal'
-                      ? '启动 Goal'
-                      : goalRunning && mode === 'normal'
-                        ? '发送插话'
-                        : '发送'}
+                    : supplementing
+                      ? '追加要求'
+                      : mode === 'goal'
+                        ? '启动 Goal'
+                        : goalRunning && mode === 'normal'
+                          ? '发送插话'
+                          : '发送'}
                 </button>
               </div>
             </div>
@@ -1197,6 +1263,7 @@ export function Chat({
       )}
       {selected && project && (
         <Trace
+          onReview={onReview}
           key={`trace:${selected}`}
           sessionId={selected}
           projectId={project.project_id}

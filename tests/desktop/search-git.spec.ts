@@ -33,7 +33,7 @@ test('M5 search options and reversible project Git switch', async () => {
     // 等待异步会话导航完成后再切页，避免迟到导航覆盖测试的下一步。
     // Wait for session navigation before switching pages, rather than racing its response.
     await expect(page.getByLabel('输入问题')).toBeEnabled()
-    await page.getByRole('button', { name: '编码工作台', exact: true }).click()
+    await page.getByRole('button', { name: '项目文件', exact: true }).click()
     await page.getByLabel('快速打开文件').fill('^def\\s+')
     await page.locator('.workspace-search-options > summary').click()
     await page.getByLabel('正则表达式（rg）').check()
@@ -96,7 +96,7 @@ test('M5 search options and reversible project Git switch', async () => {
     app = await launch(data, project)
     page = await app.firstWindow()
     await expect(page.getByTestId('connection-status')).toHaveText('本地后端已连接')
-    await page.getByRole('button', { name: '编码工作台', exact: true }).click()
+    await page.getByRole('button', { name: '项目文件', exact: true }).click()
     await page
       .getByRole('navigation', { name: '编码工作台', exact: true })
       .getByRole('button', { name: '本地 Git', exact: true })

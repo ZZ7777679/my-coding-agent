@@ -33,6 +33,12 @@ from my_agent.local_git.types import (
     GitProjectParams,
 )
 from my_agent.rpc.dto import EmptyParams
+from my_agent.spaces.design_types import (
+    OpenTeamDesignParams,
+    SaveTeamDesignParams,
+    SendTeamDesignParams,
+    StartTeamDesignParams,
+)
 from my_agent.spaces.team_types import (
     CopyTeamTemplateParams,
     GenerateTeamParams,
@@ -66,6 +72,11 @@ M5_METHODS = (
     "spaces.work_graph_save",
     "spaces.work_graph_start",
     "spaces.generate",
+    "spaces.design_open",
+    "spaces.design_get",
+    "spaces.design_save",
+    "spaces.design_send",
+    "spaces.design_start",
     "spaces.chat_view",
     "spaces.chat",
     "spaces.start_round",
@@ -123,6 +134,16 @@ async def dispatch_m5(app: "RpcApplication", method: str, params: dict[str, obje
         return await app.team.work_graph.start(StartWorkGraphParams.model_validate(params))
     if method == "spaces.generate":
         return await app.team.generate(GenerateTeamParams.model_validate(params))
+    if method == "spaces.design_open":
+        return await app.team.design.open(OpenTeamDesignParams.model_validate(params))
+    if method == "spaces.design_get":
+        return await app.team.design.get(SpaceParams.model_validate(params))
+    if method == "spaces.design_save":
+        return await app.team.design.save(SaveTeamDesignParams.model_validate(params))
+    if method == "spaces.design_send":
+        return await app.team.design.send(SendTeamDesignParams.model_validate(params))
+    if method == "spaces.design_start":
+        return await app.team.design.start(StartTeamDesignParams.model_validate(params))
     if method == "spaces.chat_view":
         return await app.team.chat_view(SpaceChatPageParams.model_validate(params))
     if method == "spaces.chat":

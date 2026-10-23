@@ -6,12 +6,14 @@ export type Issue = string | null;
 export type Mode = "normal" | "plan";
 export type ModelId = "glm-5.3-flash" | "deepseek-v4.1-flash";
 export type ProjectId = string;
+export type Purpose = "conversation" | "team_design";
 export type Role = string;
 export type CauseCode = string | null;
 export type ChildRequests = number;
 export type ChildTools = number;
 export type Code = string | null;
 export type DiagnosticId = string | null;
+export type DiagnosticIssue = string | null;
 export type EffectState = ("not_executed" | "saved" | "partial" | "unknown") | null;
 export type FailurePhase = string | null;
 export type GoalId = string | null;
@@ -57,7 +59,7 @@ export type UpdatedAt = string;
 export type Sessions = SessionSummary[];
 export type AppVersion = string;
 export type Name = string;
-export type ProtocolVersion = 13;
+export type ProtocolVersion = 15;
 export type Stage = "M8";
 export type Accent = string | null;
 export type Preset = "graphite" | "light" | "nord" | "paper" | "mint";
@@ -90,7 +92,7 @@ export type Kind1 = "image" | "text";
 export type Mime = string;
 export type Name1 = string;
 export type Origin = "file" | "selection" | "upload";
-export type Purpose = string;
+export type Purpose1 = string;
 export type SessionId2 = string;
 export type SizeBytes = number;
 export type SourcePath = string | null;
@@ -408,7 +410,7 @@ export type ClientCreated = boolean;
 export type Code2 = string;
 export type FinishedAt1 = string;
 export type HttpStatus = number | null;
-export type ModelId2 = ("glm-5.3-flash" | "deepseek-v4.1-flash") | null;
+export type ModelId2 = ("glm-5.3-flash" | "deepseek-v4.1-flash") | "deepseek-flash" | null;
 export type ModelsConfirmed = boolean | null;
 export type ConnectMs = number | null;
 export type ElapsedMs = number;
@@ -472,7 +474,7 @@ export type Kind7 = string;
 export type Preview = string;
 export type PreviewComplete = boolean;
 /**
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "JsonValue".
  */
 export type JsonValue = unknown;
@@ -511,7 +513,7 @@ export type RequestId1 = string;
  *
  * Three disjoint branches let both Python and desktop reject invalid field combinations.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ControlGoalParams".
  */
 export type ControlGoalParams = GoalStateControl | GoalBudgetControl | GoalAnswerControl;
@@ -574,6 +576,32 @@ export type Code4 = string;
 export type Remediation2 = string;
 export type Status12 = "ok" | "warning" | "error" | "not_checked";
 export type Summary2 = string;
+export type At1 = string;
+export type CauseCode1 = string | null;
+export type Code5 = string | null;
+export type File = string;
+export type Function = string;
+export type Line = number;
+export type Frames = DiagnosticFrame[];
+export type Message3 = string;
+export type Parent = number | null;
+export type Relation = "error" | "cause" | "context" | "group";
+export type Type = string;
+export type Causes = DiagnosticCause[];
+export type Code6 = string;
+export type Component = string;
+export type DiagnosticId2 = string;
+export type EffectState1 = ("not_executed" | "saved" | "partial" | "unknown") | null;
+export type ExceptionTypes = string[];
+export type Frames1 = DiagnosticFrame[];
+export type Level = "warning" | "error";
+export type Message4 = string;
+export type Operation1 = string | null;
+export type Phase1 = string | null;
+export type ProjectId10 = string | null;
+export type RequestId2 = string | null;
+export type ToolCallId2 = string | null;
+export type DiagnosticId3 = string;
 export type AppVersion1 = string;
 export type AuthenticationVerified = "not_checked";
 export type CatalogReachable = "ok" | "error" | "not_checked";
@@ -594,7 +622,7 @@ export type After1 = string;
 export type Before = string;
 export type Current = string;
 export type CurrentExists = boolean;
-export type Message3 = string | null;
+export type Message5 = string | null;
 export type Restorable = boolean;
 export type BaseContent = string;
 export type Content = string;
@@ -611,7 +639,7 @@ export type Skipped = number;
 export type Truncated = boolean;
 export type Content1 = string;
 export type Destination1 = string | null;
-export type Operation1 = "create_file" | "create_directory" | "move" | "delete";
+export type Operation2 = "create_file" | "create_directory" | "move" | "delete";
 export type Path3 = string;
 export type Recursive = boolean;
 export type SessionId25 = string;
@@ -627,11 +655,11 @@ export type Query1 = string;
 export type Regex = boolean;
 export type SessionId27 = string;
 export type Backend = string;
-export type Line = number;
+export type Line1 = number;
 export type Text3 = string;
 export type ContextAfter = DocumentContextLine[];
 export type ContextBefore = DocumentContextLine[];
-export type Line1 = number;
+export type Line2 = number;
 export type Path5 = string;
 export type Text4 = string;
 export type Matches = DocumentMatch[];
@@ -646,13 +674,13 @@ export type Path6 = string;
 export type ReadAt = string;
 export type Drafts = DocumentDraft[];
 export type Enabled5 = boolean;
-export type ProjectId10 = string | null;
+export type ProjectId11 = string | null;
 export type SessionId29 = string | null;
 export type SkillId = string;
 export type EnvironmentId1 = string | null;
 export type EnvironmentPassthrough1 = string[];
 export type Mode8 = "direct" | "sandbox";
-export type ProjectId11 = string;
+export type ProjectId12 = string;
 /**
  * Legacy compatibility field; not an execution gate. Use the selected mode.
  */
@@ -678,11 +706,11 @@ export type Scope12 = "absolute" | "project";
 export type EnvironmentId2 = string;
 export type Name8 = string;
 export type CheckedAt1 = string;
-export type Code5 = string;
+export type Code7 = string;
 export type Interpreter3 = string | null;
 export type LauncherVersion = string | null;
-export type Message4 = string;
-export type ProjectId12 = string | null;
+export type Message6 = string;
+export type ProjectId13 = string | null;
 export type Version = string | null;
 export type Environments = EnvironmentView[];
 export type Revision3 = number;
@@ -693,21 +721,22 @@ export type MaxOutputBytes = number;
 export type ProbeTimeoutSeconds1 = number;
 export type ServiceReadyTimeoutSeconds = number;
 export type EnvironmentId3 = string;
-export type ProjectId13 = string | null;
 export type ProjectId14 = string | null;
-export type CauseCode1 = string | null;
-export type Code6 = string;
-export type DiagnosticId2 = string | null;
-export type EffectState1 = ("not_executed" | "saved" | "partial" | "unknown") | null;
-export type Phase1 = string | null;
+export type ProjectId15 = string | null;
+export type CauseCode2 = string | null;
+export type Code8 = string;
+export type DiagnosticId4 = string | null;
+export type DiagnosticIssue1 = string | null;
+export type EffectState2 = ("not_executed" | "saved" | "partial" | "unknown") | null;
+export type Phase2 = string | null;
 export type Remediation3 = string;
-export type ToolCallId2 = string | null;
+export type ToolCallId3 = string | null;
 export type After3 = string;
 export type AppliedAt = string | null;
 export type Before2 = string | null;
 export type CandidateId2 = string;
 export type ChangeIds = string[];
-export type At1 = string;
+export type At2 = string;
 export type ContentRevision1 = number | null;
 export type Method3 = "user" | "model" | "execution";
 export type Outcome4 = "not_checked" | "improved" | "unchanged" | "regressed" | "inconclusive";
@@ -717,10 +746,10 @@ export type ContentRevision2 = number;
 export type CreatedAt7 = string;
 export type FeedbackIds1 = string[];
 export type FindingId = string | null;
-export type Message5 = string;
+export type Message7 = string;
 export type ModelId10 = ("glm-5.3-flash" | "deepseek-v4.1-flash") | null;
 export type PendingAction = ("apply" | "revert") | null;
-export type ProjectId15 = string;
+export type ProjectId16 = string;
 export type Rationale1 = string;
 export type RecoveryDirectory = string | null;
 export type Version1 = string | null;
@@ -732,13 +761,13 @@ export type Status13 = "draft" | "applied" | "reverted" | "partial";
 export type Title6 = string;
 export type UpdatedAt9 = string;
 export type CandidateId3 = string;
-export type ProjectId16 = string;
+export type ProjectId17 = string;
 export type Issues1 = string[];
 export type Label1 = string;
 export type Items1 = EvolutionCatalogItem[];
 export type Action4 = "apply" | "revert";
 export type CandidateId4 = string;
-export type ProjectId17 = string;
+export type ProjectId18 = string;
 export type CandidateId5 = string;
 export type Command = ProgramCommand | ShellCommand;
 export type Arguments = string[];
@@ -749,14 +778,14 @@ export type Script = string;
 export type Cwd = string;
 export type TimeoutSeconds1 = number | null;
 export type Exclude = string[];
-export type ProjectId18 = string;
+export type ProjectId19 = string;
 export type ContextualSources = EvolutionSource[];
 export type CreatedAt8 = string;
 export type FeedbackId = string;
 export type Kind15 = "problem" | "success" | "instruction";
 export type Identity1 = string;
 export type Kind16 = "project" | "task" | "session";
-export type ProjectId19 = string;
+export type ProjectId20 = string;
 export type ReviewJobId1 = string | null;
 export type Sources1 = EvolutionSource[];
 export type Text5 = string;
@@ -805,6 +834,8 @@ export type RequestTimeoutSeconds1 = number | null;
 export type CandidateId6 = string | null;
 export type CandidateIds = string[];
 export type DetailsAvailable = boolean;
+export type DiagnosticId5 = string | null;
+export type DiagnosticIssue2 = string | null;
 export type ExperimentDirectory = string | null;
 export type Category = "rule" | "preference" | "skill" | "tool_usage" | "implementation" | "unknown";
 export type Explanation1 = string;
@@ -816,7 +847,7 @@ export type Title10 = string;
 export type Unknowns = string[];
 export type Findings = EvolutionFinding[];
 export type JobId1 = string;
-export type Message6 = string;
+export type Message8 = string;
 export type Mode9 = "investigate" | "propose";
 export type OmittedPaths = string[];
 export type ArchiveId = string | null;
@@ -826,7 +857,7 @@ export type Seq3 = number;
 export type Stream = "stdout" | "stderr";
 export type Text6 = string;
 export type Output = OutputChunk[];
-export type Code7 = string | null;
+export type Code9 = string | null;
 export type Command1 = ProgramCommand | ShellCommand;
 export type CreatedAt9 = string;
 export type Cwd1 = string;
@@ -838,27 +869,27 @@ export type ExitCode = number | null;
 export type FinishedAt4 = string | null;
 export type HttpStatus1 = number | null;
 export type Kind18 = "command" | "service";
-export type Message7 = string | null;
+export type Message9 = string | null;
 export type Mode10 = "direct" | "sandbox";
 export type Pid = number | null;
 export type ProgramId = string;
-export type ProjectId20 = string;
+export type ProjectId21 = string;
 export type ResolvedCommand = string[];
 export type Retained = boolean;
 export type RunId10 = string;
 export type SessionId30 = string;
 export type Status14 = "starting" | "running" | "ready" | "stopping" | "exited" | "stopped" | "failed" | "interrupted";
-export type ToolCallId3 = string | null;
+export type ToolCallId4 = string | null;
 export type Url = string | null;
 export type Truncated3 = boolean;
 export type Programs = ProgramView[];
-export type ProjectId21 = string;
+export type ProjectId22 = string;
 export type CandidateIds1 = string[];
 export type FeedbackIds2 = string[];
 export type FindingIds = string[];
 export type Instruction1 = string;
 export type Mode11 = "investigate" | "propose";
-export type ProjectId22 = string;
+export type ProjectId23 = string;
 export type ReviewJobId2 = string | null;
 export type Sources3 = EvolutionSource[];
 export type Requests5 = number;
@@ -868,28 +899,14 @@ export type Status15 = "running" | "completed" | "failed" | "cancelled" | "inter
 export type Summary4 = string;
 export type UpdatedAt10 = string;
 export type JobId2 = string;
-export type ProjectId23 = string;
+export type ProjectId24 = string;
 export type CandidateId7 = string;
 export type ContentRevision3 = number;
-export type Message8 = string;
+export type Message10 = string;
 export type Status16 = string;
 export type Title11 = string;
 export type UpdatedAt11 = string;
 export type Candidates1 = EvolutionCandidateSummary[];
-export type At2 = string;
-export type CauseCode2 = string | null;
-export type Code8 = string;
-export type Component = string;
-export type DiagnosticId3 = string;
-export type ExceptionTypes = string[];
-export type File = string;
-export type Function = string;
-export type Line2 = number;
-export type Frames = DiagnosticFrame[];
-export type Level = "warning" | "error";
-export type Message9 = string;
-export type Phase2 = string | null;
-export type ProjectId24 = string | null;
 export type Diagnostics = DiagnosticEvent[];
 export type Feedback = EvolutionFeedback[];
 export type Issues2 = string[];
@@ -932,6 +949,7 @@ export type Kind19 = "config" | "projects" | "diagnostics";
 export type Path7 = string | null;
 export type MemoryId = string;
 export type SessionId33 = string;
+export type Discussion = boolean;
 export type Objective4 = string;
 export type OperationId11 = string;
 export type Organisation1 = "central" | "hierarchical" | "peer";
@@ -944,7 +962,7 @@ export type AfterSeq = number;
 export type ProgramId1 = string;
 export type BeforeSeq4 = number | null;
 export type SessionId36 = string;
-export type Message10 = string;
+export type Message11 = string;
 export type ProjectId29 = string;
 export type CommitId = string;
 export type Output1 = string;
@@ -977,13 +995,13 @@ export type ProjectId37 = string;
 export type ProjectMetadataPresent = boolean;
 export type Available1 = boolean;
 export type Branch = string | null;
-export type Code9 = string | null;
+export type Code10 = string | null;
 export type IndexStatus = string;
 export type OriginalPath = string | null;
 export type Path10 = string;
 export type WorktreeStatus = string;
 export type Files1 = GitFileStatus[];
-export type Message11 = string | null;
+export type Message12 = string | null;
 export type ProjectId38 = string;
 export type ProjectRepository = boolean;
 export type Repository = boolean;
@@ -998,7 +1016,7 @@ export type Offset3 = number;
 export type ResultSeq1 = number | null;
 export type Seq5 = number;
 export type Text8 = string;
-export type ToolCallId4 = string | null;
+export type ToolCallId5 = string | null;
 export type ToolName = string | null;
 export type TotalChars1 = number;
 export type Items2 = HistoryItem[];
@@ -1021,20 +1039,20 @@ export type Data = string;
 export type Final = boolean;
 export type Mime1 = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
 export type Name9 = string;
-export type Purpose1 = string;
+export type Purpose2 = string;
 export type SessionId38 = string;
 export type Content5 = string | null;
 export type Draft1 = boolean;
 export type EndLine1 = number | null;
 export type Path11 = string;
-export type Purpose2 = string;
+export type Purpose3 = string;
 export type SessionId39 = string;
 export type StartLine1 = number | null;
 export type Content6 = string;
 export type TemplateId2 = string;
 export type AppVersion2 = string;
 export type DataSchemaVersion = 1;
-export type ProtocolVersion1 = 13;
+export type ProtocolVersion1 = 15;
 export type Capabilities = (
   | "spaces.work"
   | "spaces.work_graph"
@@ -1226,7 +1244,7 @@ export type Languages = string[];
 export type Program1 = string;
 export type ServerId1 = string;
 export type Servers = LanguageServer[];
-export type Message12 = string | null;
+export type Message13 = string | null;
 export type ServerId2 = string;
 export type Status19 = "not_started" | "running" | "failed";
 export type States = LanguageServerState[];
@@ -1291,14 +1309,18 @@ export type Prefix2 = string;
 export type Source6 = "none" | "environment" | "saved" | "oauth";
 export type BrowserExecutable = string;
 export type Command2 = string;
+export type Cwd2 = string;
 export type Description4 = string;
 export type Enabled8 = boolean;
 export type Name11 = string;
 export type PresetId1 = string;
 export type ProjectIds = string[];
+export type ProtocolMode = "auto" | "legacy";
 export type ServerId3 = string;
+export type StoredEnv = string[];
+export type StoredHeaders = string[];
 export type TimeoutSeconds3 = number;
-export type Transport = "stdio" | "http" | "browser";
+export type Transport = "stdio" | "http" | "sse" | "browser";
 export type Url1 = string;
 export type SuggestedEnv = string;
 export type Name12 = string;
@@ -1361,7 +1383,7 @@ export type Entries = MemoryEntry[];
 export type NextCursor3 = string | null;
 export type FinishedAt5 = string | null;
 export type JobId3 = string;
-export type Message13 = string;
+export type Message14 = string;
 export type ModelId13 = "glm-5.3-flash" | "deepseek-v4.1-flash";
 export type Requests6 = number;
 export type StartedAt1 = string;
@@ -1418,7 +1440,7 @@ export type ShadowedBy = string | null;
 export type SkillId1 = string;
 export type Source10 = "builtin" | "user" | "project";
 export type Version6 = string;
-export type Message14 = string;
+export type Message15 = string;
 export type OperationId13 = string;
 export type Issues4 = string[];
 export type PreviewId2 = string;
@@ -1436,31 +1458,34 @@ export type Status24 = "idle" | "running" | "ready" | "installed" | "failed" | "
  *
  * Require either a path or an existing ID, never both.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OpenProjectParams".
  */
 export type OpenProjectParams = OpenProjectByPath | OpenProjectById;
 export type Path21 = string;
 export type ProjectId53 = string;
+export type ModelId15 = "glm-5.3-flash" | "deepseek-v4.1-flash";
+export type TaskId11 = string;
 export type Cols = number;
 export type Command3 = ProgramCommand | ShellCommand;
-export type Cwd2 = string;
+export type Cwd3 = string;
 export type MemberId2 = string | null;
 export type ProjectId54 = string;
 export type Rows = number;
 export type SessionId51 = string | null;
 export type Url3 = string;
 export type CauseCode3 = string | null;
-export type Code10 = string;
-export type DiagnosticId4 = string | null;
-export type EffectState2 = ("not_executed" | "saved" | "partial" | "unknown") | null;
-export type Message15 = string;
+export type Code11 = string;
+export type DiagnosticId6 = string | null;
+export type DiagnosticIssue3 = string | null;
+export type EffectState3 = ("not_executed" | "saved" | "partial" | "unknown") | null;
+export type Message16 = string;
 export type Phase3 = string | null;
 export type Remediation4 = string;
-export type ToolCallId5 = string | null;
+export type ToolCallId6 = string | null;
 export type ChangeId4 = string | null;
-export type Code11 = string | null;
-export type Message16 = string | null;
+export type Code12 = string | null;
+export type Message17 = string | null;
 export type Path22 = string;
 export type Status25 = "applied" | "failed";
 export type Items3 = OperationItem[];
@@ -1484,7 +1509,7 @@ export type Content14 = string;
 export type OperationId14 = string;
 export type SourceSessionId6 = string;
 export type TargetSessionId5 = string;
-export type TaskId11 = string;
+export type TaskId12 = string;
 export type Messages = PeerMessage[];
 export type NextCursor4 = string | null;
 export type CheckpointId2 = string;
@@ -1516,14 +1541,14 @@ export type OperationId16 = string;
 export type Paths1 = string[] | null;
 export type SessionId54 = string;
 export type Diff1 = string;
-export type Message17 = string;
+export type Message18 = string;
 export type Path25 = string;
 export type Source11 = "agent" | "observed" | "other_session";
 export type Status26 = "ready" | "unchanged" | "conflict" | "restored" | "failed" | "skipped";
 export type Files3 = RestoreFile[];
 export type Issues5 = string[];
 export type Files4 = RestoreFile[];
-export type Message18 = string;
+export type Message19 = string;
 export type Prompt2 = string;
 export type Rewound = boolean;
 export type UndoCheckpointId = string;
@@ -1537,14 +1562,14 @@ export type Method5 = string;
  *
  * Strict union of success and failure responses, rejecting mixed envelopes.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RpcResponse".
  */
 export type RpcResponse = RpcSuccess | RpcFailure;
 export type Id3 = string;
 export type Jsonrpc2 = "2.0";
-export type Code12 = number;
-export type Message19 = string;
+export type Code13 = number;
+export type Message20 = string;
 export type Id4 = string | null;
 export type Jsonrpc3 = "2.0";
 export type BaseContent1 = string;
@@ -1603,23 +1628,29 @@ export type GraphOpen = boolean;
 export type X2 = number;
 export type Y2 = number;
 export type Zoom = number;
-export type TaskId12 = string;
-export type ExpectedRevision8 = number | null;
 export type TaskId13 = string;
+export type ExpectedRevision8 = number | null;
+export type TaskId14 = string;
+export type InputText = string | null;
+export type TaskId15 = string;
 export type Description7 = string;
 export type InitialWorkItems1 = WorkItem[];
+export type Objective5 = string | null;
 export type Name20 = string;
 export type TemplateId4 = string;
 export type ExpectedRevision9 = number;
 export type Items4 = WorkItem[];
 export type OperationId17 = string;
-export type TaskId14 = string;
-export type ModelId15 = "glm-5.3-flash" | "deepseek-v4.1-flash";
+export type TaskId16 = string;
+export type ModelId16 = "glm-5.3-flash" | "deepseek-v4.1-flash";
 export type OperationId18 = string;
 export type SessionId59 = string;
 export type ProjectId64 = string | null;
 export type Selected1 = string[];
 export type SessionId60 = string | null;
+export type Content18 = string;
+export type OperationId19 = string;
+export type TaskId17 = string;
 export type Jsonrpc4 = "2.0";
 export type Method6 = "session.event";
 export type DeltaIndex = number;
@@ -1639,7 +1670,8 @@ export type BeforeSeq7 = number | null;
 export type DeltaIndex1 = number;
 export type Abandoned = boolean;
 export type Name21 = string;
-export type ToolCallId6 = string;
+export type ToolCallId7 = string;
+export type InputStatus = ("queued" | "in_context") | null;
 export type Kind25 =
   | "user"
   | "assistant"
@@ -1651,12 +1683,12 @@ export type Kind25 =
   | "collaboration.request"
   | "session.recovered";
 export type MessageId3 = string | null;
-export type ModelId16 = ("glm-5.3-flash" | "deepseek-v4.1-flash") | null;
+export type ModelId17 = ("glm-5.3-flash" | "deepseek-v4.1-flash") | null;
 export type PartialText = string;
 export type Reasoning = string;
-export type Content18 = string;
+export type Content19 = string;
 export type IsError = boolean;
-export type ToolCallId7 = string;
+export type ToolCallId8 = string;
 export type RunId13 = string | null;
 export type Seq8 = number;
 export type Text11 = string;
@@ -1664,7 +1696,7 @@ export type WebResult = WebSearchResult | WebPageResult | null;
 export type ActualQueries = string[];
 export type ArchiveId1 = string | null;
 export type Kind26 = "web.search";
-export type ModelId17 = "glm-5.3-flash" | "deepseek-v4.1-flash";
+export type ModelId18 = ("glm-5.3-flash" | "deepseek-v4.1-flash") | "deepseek-flash";
 export type Query7 = string;
 export type RetrievedAt = string;
 export type SearchUses = number;
@@ -1676,7 +1708,7 @@ export type Sources5 = WebSource[];
 export type Summary5 = string;
 export type Truncated6 = boolean;
 export type ArchiveId2 = string | null;
-export type Content19 = string;
+export type Content20 = string;
 export type ContentType = string;
 export type DownloadTruncated = boolean;
 export type Kind27 = "web.page";
@@ -1702,7 +1734,7 @@ export type ProjectDirectory = string;
 export type RulePaths = string[];
 export type Selected2 = string[];
 export type UserDirectory = string;
-export type Content20 = string;
+export type Content21 = string;
 export type ProjectId65 = string | null;
 export type SessionId63 = string | null;
 export type ProjectId66 = string | null;
@@ -1728,25 +1760,25 @@ export type Title20 = string;
 export type Url8 = string;
 export type BeforeId = string | null;
 export type Limit14 = number;
-export type TaskId15 = string;
-export type Content21 = string;
+export type TaskId18 = string;
+export type Content22 = string;
 export type Mode13 = "normal" | "plan";
-export type OperationId19 = string;
+export type OperationId20 = string;
 export type TargetMemberIds = string[];
-export type TaskId16 = string;
+export type TaskId19 = string;
 export type WorkIds = string[];
 export type CreatedAt12 = string;
 export type Error6 = string | null;
 export type ExpectedRevision10 = number | null;
 export type RunId14 = string | null;
 export type Generations = TeamGeneration[];
-export type Content22 = string;
+export type Content23 = string;
 export type CreatedAt13 = string;
 export type Error7 = string | null;
 export type GoalId6 = string | null;
 export type MemberId3 = string;
-export type OperationId20 = string;
-export type RequestId2 = string | null;
+export type OperationId21 = string;
+export type RequestId3 = string | null;
 export type RunId15 = string | null;
 export type SessionId65 = string;
 export type Executions = SpaceExecution[];
@@ -1772,13 +1804,13 @@ export type WaitingFor1 = string | null;
 export type Outputs = SpacePublicOutput[];
 export type CreatedAt14 = string;
 export type Executions1 = SpaceExecution[];
-export type Objective5 = string;
+export type Objective6 = string;
 export type RoundId = string;
 export type Stopped = boolean;
 export type WorkIds2 = string[];
 export type Rounds = SpaceRound[];
-export type TaskId17 = string;
-export type TaskId18 = string;
+export type TaskId20 = string;
+export type TaskId21 = string;
 export type Error9 = string | null;
 export type MemberId5 = string;
 export type SessionId67 = string | null;
@@ -1788,25 +1820,27 @@ export type CreatedAt15 = string;
 export type Error10 = string | null;
 export type ProjectId67 = string;
 export type Revision8 = number;
-export type TaskId19 = string;
+export type TaskId22 = string;
 export type UpdatedAt13 = string;
-export type TaskId20 = string;
+export type TaskId23 = string;
 export type AttachmentIds1 = string[];
 export type Mode15 = "normal" | "plan";
-export type OperationId21 = string;
+export type OperationId22 = string;
 export type PlanDocument1 = string | null;
 export type Prompt3 = string;
 export type SessionId68 = string;
-export type Objective6 = string;
-export type OperationId22 = string;
+export type Objective7 = string;
+export type OperationId23 = string;
 export type TargetMemberIds2 = string[];
-export type TaskId21 = string;
+export type TaskId24 = string;
 export type WorkIds3 = string[];
+export type OperationId24 = string;
+export type TaskId25 = string;
 export type Continuous = boolean;
 export type Instruction2 = string;
 export type MemberId6 = string;
-export type OperationId23 = string;
-export type TaskId22 = string;
+export type OperationId25 = string;
+export type TaskId26 = string;
 /**
  * @minItems 1
  */
@@ -1819,52 +1853,63 @@ export type DataDir2 = string;
 export type ProjectDir1 = string;
 export type MemberId7 = string | null;
 export type RoundId1 = string | null;
-export type TaskId23 = string;
+export type TaskId27 = string;
 export type NextCursor7 = string | null;
 export type ProjectId68 = string;
 export type Revision9 = number;
 export type Status28 = "active" | "completed" | "archived";
-export type TaskId24 = string;
+export type TaskId28 = string;
 export type Title21 = string;
 export type Tasks = TaskSummary[];
 export type UnavailableCount5 = number;
-export type TaskId25 = string;
+export type TaskId29 = string;
+export type InitialModelId1 = "glm-5.3-flash" | "deepseek-v4.1-flash";
+export type InputText1 = string;
+export type Error11 = string | null;
+export type Objective8 = string;
+export type OperationId26 = string;
+export type Stage1 = "accepted" | "saved" | "assembled" | "started";
+export type Launches = TeamDesignLaunch[];
+export type Objective9 = string;
+export type Revision10 = number;
+export type SessionId69 = string;
+export type TaskId30 = string;
 export type Description8 = string;
 export type Name22 = string;
 export type SchemaVersion1 = 1;
 export type TemplateId5 = string;
 export type UpdatedAt14 = string;
-export type Content23 = string;
+export type Content24 = string;
 export type TemplateId6 = string;
 export type Templates = TeamTemplate[];
 export type Controller = "user" | "member";
 export type MemberId8 = string | null;
-export type SessionId69 = string | null;
+export type SessionId70 = string | null;
 export type TerminalId2 = string;
 export type ActiveCount1 = number;
 export type Available3 = boolean;
-export type Message20 = string | null;
-export type Code13 = string | null;
+export type Message21 = string | null;
+export type Code14 = string | null;
 export type Cols2 = number;
 export type Command4 = ProgramCommand | ShellCommand;
 export type Controller1 = "user" | "member";
 export type CreatedAt16 = string;
-export type Cwd3 = string;
+export type Cwd4 = string;
 export type DroppedBytes1 = number;
 export type EnvironmentName1 = string;
 export type ExitCode1 = number | null;
 export type FinishedAt6 = string | null;
 export type MemberId9 = string | null;
-export type Message21 = string | null;
+export type Message22 = string | null;
 export type Mode16 = "direct" | "sandbox";
 export type Pid1 = number | null;
 export type ProjectId69 = string;
 export type Rows2 = number;
 export type RunId17 = string | null;
-export type SessionId70 = string | null;
+export type SessionId71 = string | null;
 export type Status29 = "starting" | "running" | "stopping" | "exited" | "stopped" | "failed" | "interrupted";
 export type TerminalId3 = string;
-export type ToolCallId8 = string | null;
+export type ToolCallId9 = string | null;
 export type Terminals = TerminalSummary[];
 export type UnavailableCount6 = number;
 export type TerminalId4 = string;
@@ -1874,16 +1919,17 @@ export type Text13 = string;
 export type Output2 = TerminalChunk[];
 export type Truncated8 = boolean;
 export type At4 = string;
+export type DiagnosticIds = string[];
 export type DurationMs = number | null;
 export type GoalId7 = string | null;
 export type IsError1 = boolean;
 export type Kind28 = string;
-export type RequestId3 = string | null;
+export type RequestId4 = string | null;
 export type RunId18 = string | null;
 export type Seq11 = number;
 export type Status30 = string;
 export type Title22 = string;
-export type ToolCallId9 = string | null;
+export type ToolCallId10 = string | null;
 export type ToolName1 = string | null;
 export type UpdatedSeq = number;
 export type Identity2 = string;
@@ -1898,7 +1944,7 @@ export type TotalChars2 = number;
 export type Offset8 = number;
 export type Part = "detail" | "parameters" | "result";
 export type Seq13 = number;
-export type SessionId71 = string;
+export type SessionId72 = string;
 export type BeforeSeq8 = number | null;
 export type Items6 = TraceItem[];
 export type JobIssues = string[];
@@ -1911,24 +1957,24 @@ export type ErrorsOnly = boolean;
 export type JobOffset = number;
 export type Limit15 = number;
 export type RunId19 = string | null;
-export type SessionId72 = string;
+export type SessionId73 = string;
 export type Tool = string;
 export type WatchSeqs = number[];
-export type ModelId18 = "glm-5.3-flash" | "deepseek-v4.1-flash";
+export type ModelId19 = "glm-5.3-flash" | "deepseek-v4.1-flash";
 export type Action10 = "assign" | "claim" | "release" | "result";
 export type MemberId10 = string | null;
-export type OperationId24 = string;
+export type OperationId27 = string;
 export type Result3 = string | null;
 export type RunId20 = string | null;
 export type Status31 = ("planned" | "in_progress" | "completed" | "waiting") | null;
-export type TaskId26 = string;
+export type TaskId31 = string;
 export type WorkId3 = string;
 export type ExpectedRevision11 = number;
-export type OperationId25 = string;
-export type TaskId27 = string;
+export type OperationId28 = string;
+export type TaskId32 = string;
 export type ExpectedRevision12 = number;
-export type OperationId26 = string;
-export type TaskId28 = string;
+export type OperationId29 = string;
+export type TaskId33 = string;
 export type Goals1 = GoalView[];
 export type Issues7 = string[];
 export type Items7 = WorkItem[];
@@ -1941,20 +1987,24 @@ export type StyleId3 = string | null;
 export type ProjectId71 = string | null;
 export type Action11 = "stop" | "continue";
 export type Prompt4 = string;
-export type SessionId73 = string;
+export type SessionId74 = string;
 export type WorkerId = string;
 export type ActiveSeconds1 = number;
 export type ContextMode1 = "isolated" | "inherit";
 export type Mode17 = "normal" | "plan";
-export type Objective7 = string;
+/**
+ * Short work/role name for the worker card.
+ */
+export type Name23 = string;
+export type Objective10 = string;
 export type Role4 = "implement" | "research";
 export type Scope20 = string;
-export type Code14 = string | null;
+export type Code15 = string | null;
 export type CreatedAt17 = string;
 export type CauseCode4 = string | null;
-export type Code15 = string;
-export type DiagnosticId5 = string | null;
-export type Message22 = string;
+export type Code16 = string;
+export type DiagnosticId7 = string | null;
+export type Message23 = string;
 export type Phase4 = string | null;
 export type GoalId8 = string | null;
 export type HistoryIssue = string | null;
@@ -1962,26 +2012,26 @@ export type LastEventAt = string | null;
 export type LastSeq = number | null;
 export type LastTool = string | null;
 export type LastToolStatus = ("running" | "completed" | "failed" | "skipped") | null;
-export type ModelId19 = "glm-5.3-flash" | "deepseek-v4.1-flash";
+export type ModelId20 = "glm-5.3-flash" | "deepseek-v4.1-flash";
 export type OwnerRunId = string;
 export type OwnerSessionId = string;
 export type PendingMessages = string[];
 export type Requests7 = number;
 export type Result4 = string;
 export type RunId21 = string | null;
-export type SessionId74 = string;
+export type SessionId75 = string;
 export type Status32 = "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted" | "budget_exceeded";
 export type Tools3 = number;
 export type UpdatedAt15 = string;
 export type WorkerId1 = string;
 export type Workers = WorkerRecord[];
-export type SessionId75 = string;
+export type SessionId76 = string;
 export type Issues9 = string[];
 export type Templates1 = WorkflowTemplate[];
 export type TerminalId5 = string;
 export type Text15 = string;
 
-export interface ProtocolV13 {
+export interface ProtocolV15 {
   ActiveRunResult: ActiveRunResult;
   AppInfo: AppInfo;
   AppearanceSettings: AppearanceSettings;
@@ -2030,6 +2080,8 @@ export interface ProtocolV13 {
   CreateTaskResult: CreateTaskResult;
   CredentialInfo: CredentialInfo;
   DiagnosticCheck: DiagnosticCheck;
+  DiagnosticEvent: DiagnosticEvent;
+  DiagnosticQuery: DiagnosticQuery;
   DiagnosticReport: DiagnosticReport;
   DiagnosticsParams: DiagnosticsParams;
   DirectorySelection: DirectorySelection;
@@ -2125,6 +2177,7 @@ export interface ProtocolV13 {
   OnlineSkillSearch: OnlineSkillSearch;
   OnlineSkillStatus: OnlineSkillStatus;
   OpenProjectParams: OpenProjectParams;
+  OpenTeamDesignParams: OpenTeamDesignParams;
   OpenTerminalParams: OpenTerminalParams;
   OpenWebUrlParams: OpenWebUrlParams;
   OperationError: OperationError;
@@ -2165,6 +2218,7 @@ export interface ProtocolV13 {
   SaveSkillParams: SaveSkillParams;
   SaveSpaceLayoutParams: SaveSpaceLayoutParams;
   SaveSpaceParams: SaveSpaceParams;
+  SaveTeamDesignParams: SaveTeamDesignParams;
   SaveTeamTemplateParams: SaveTeamTemplateParams;
   SaveWorkGraphParams: SaveWorkGraphParams;
   SaveWorkStyle: SaveWorkStyle;
@@ -2172,6 +2226,7 @@ export interface ProtocolV13 {
   SelectSessionModelParams: SelectSessionModelParams;
   SelectSkillsParams: SelectSkillsParams;
   SendMessageParams: SendMessageParams;
+  SendTeamDesignParams: SendTeamDesignParams;
   SessionEventNotification: SessionEventNotification;
   SessionPage: SessionPage;
   SessionParams: SessionParams;
@@ -2194,6 +2249,7 @@ export interface ProtocolV13 {
   SpaceStartParams: SpaceStartParams;
   StartRunParams: StartRunParams;
   StartSpaceRoundParams: StartSpaceRoundParams;
+  StartTeamDesignParams: StartTeamDesignParams;
   StartWorkGraphParams: StartWorkGraphParams;
   StartupPaths: StartupPaths;
   StartupPathsParams: StartupPathsParams;
@@ -2203,6 +2259,7 @@ export interface ProtocolV13 {
   TaskPage: TaskPage;
   TaskParams: TaskParams;
   TaskView: TaskView;
+  TeamDesignView: TeamDesignView;
   TeamGeneration: TeamGeneration;
   TeamTemplate: TeamTemplate;
   TeamTemplateExport: TeamTemplateExport;
@@ -2239,7 +2296,7 @@ export interface ProtocolV13 {
  *
  * Active runs per session remain independently stoppable across views.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ActiveRunResult".
  */
 export interface ActiveRunResult {
@@ -2250,7 +2307,7 @@ export interface ActiveRunResult {
  *
  * Session list entry without native provider state.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SessionSummary".
  */
 export interface SessionSummary {
@@ -2260,6 +2317,7 @@ export interface SessionSummary {
   mode?: Mode;
   model_id: ModelId;
   project_id: ProjectId;
+  purpose?: Purpose;
   role?: Role;
   run: RunView | null;
   scope?: Scope;
@@ -2273,7 +2331,7 @@ export interface SessionSummary {
  *
  * Public counts and explicit unknown usage.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RunView".
  */
 export interface RunView {
@@ -2282,6 +2340,7 @@ export interface RunView {
   child_tools?: ChildTools;
   code: Code;
   diagnostic_id?: DiagnosticId;
+  diagnostic_issue?: DiagnosticIssue;
   effect_state?: EffectState;
   failure_phase?: FailurePhase;
   goal_id?: GoalId;
@@ -2310,7 +2369,7 @@ export interface RunView {
  *
  * Cumulative budgets may be unlimited; network and file capacities remain independent.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RunLimits".
  */
 export interface RunLimits {
@@ -2336,7 +2395,7 @@ export interface RunLimits {
  *
  * Expose the application version, protocol version and implemented stage.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "AppInfo".
  */
 export interface AppInfo {
@@ -2350,7 +2409,7 @@ export interface AppInfo {
  *
  * Electron persists appearance independently from project business settings.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "AppearanceSettings".
  */
 export interface AppearanceSettings {
@@ -2364,7 +2423,7 @@ export interface AppearanceSettings {
  *
  * Adopt definitions while keeping goals and run history.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ApplyWorkStyle".
  */
 export interface ApplyWorkStyle {
@@ -2379,7 +2438,7 @@ export interface ApplyWorkStyle {
  *
  * User-initiated handoff or review, with stop identities limited to transferred work.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ArrangeSessionWorkParams".
  */
 export interface ArrangeSessionWorkParams {
@@ -2398,7 +2457,7 @@ export interface ArrangeSessionWorkParams {
  *
  * User-defined membership, not history access grants.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "AssignSessionParams".
  */
 export interface AssignSessionParams {
@@ -2412,7 +2471,7 @@ export interface AssignSessionParams {
  * 文件快照或图片元信息，字节单独保存。
  * File snapshot or image metadata with separately stored bytes.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "Attachment".
  */
 export interface Attachment {
@@ -2424,7 +2483,7 @@ export interface Attachment {
   mime: Mime;
   name: Name1;
   origin?: Origin;
-  purpose?: Purpose;
+  purpose?: Purpose1;
   session_id: SessionId2;
   size_bytes: SizeBytes;
   source_path?: SourcePath;
@@ -2435,7 +2494,7 @@ export interface Attachment {
  *
  * Saved materials returned by the native picker; cancellation returns an empty collection.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "AttachmentPage".
  */
 export interface AttachmentPage {
@@ -2444,7 +2503,7 @@ export interface AttachmentPage {
 /**
  * 按所属会话读取一个附件。 Read an attachment within its owning session.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "AttachmentParams".
  */
 export interface AttachmentParams {
@@ -2456,7 +2515,7 @@ export interface AttachmentParams {
  * 上传进度不表示模型已经看图。
  * Upload progress never means the model has inspected the image.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "AttachmentUpload".
  */
 export interface AttachmentUpload {
@@ -2469,7 +2528,7 @@ export interface AttachmentUpload {
  * View saved text or images; image data is returned only for explicit
  * preview.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "AttachmentView".
  */
 export interface AttachmentView {
@@ -2484,7 +2543,7 @@ export interface AttachmentView {
  *
  * Persist the user's default environment and execution mode.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "BindEnvironmentParams".
  */
 export interface BindEnvironmentParams {
@@ -2499,7 +2558,7 @@ export interface BindEnvironmentParams {
 /**
  * 原生沙箱的明确目录授权与网络能力。 Explicit native sandbox paths and network capabilities.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SandboxSettings".
  */
 export interface SandboxSettings {
@@ -2513,7 +2572,7 @@ export interface SandboxSettings {
  *
  * Explicitly bind a session or idempotently create one.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "BindSpaceMemberParams".
  */
 export interface BindSpaceMemberParams {
@@ -2527,7 +2586,7 @@ export interface BindSpaceMemberParams {
  *
  * Cancel the specified run only.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CancelRunParams".
  */
 export interface CancelRunParams {
@@ -2536,7 +2595,7 @@ export interface CancelRunParams {
 /**
  * 从任务生成预览，尚不写入模板库。 Preview a task-derived blueprint before library save.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CaptureWorkStyle".
  */
 export interface CaptureWorkStyle {
@@ -2549,7 +2608,7 @@ export interface CaptureWorkStyle {
 /**
  * 差异元数据页，损坏记录明确计数。 Metadata page with explicit unreadable-record count.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ChangePage".
  */
 export interface ChangePage {
@@ -2563,7 +2622,7 @@ export interface ChangePage {
  *
  * Provenance and outcome; prepared is not success.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ChangeSummary".
  */
 export interface ChangeSummary {
@@ -2585,7 +2644,7 @@ export interface ChangeSummary {
 /**
  * 历史修改的有界 diff；不代表当前磁盘内容。 Bounded historical diff, not live disk contents.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ChangeView".
  */
 export interface ChangeView {
@@ -2596,7 +2655,7 @@ export interface ChangeView {
 /**
  * 列出可恢复点和局部不可读记录。 List restore points and unreadable entries.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CheckpointPage".
  */
 export interface CheckpointPage {
@@ -2606,7 +2665,7 @@ export interface CheckpointPage {
 /**
  * 检查点来源与覆盖事实，不向模型暴露内容摘要键。 Checkpoint provenance and actual coverage.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "FileCheckpointSummary".
  */
 export interface FileCheckpointSummary {
@@ -2626,7 +2685,7 @@ export interface FileCheckpointSummary {
 /**
  * 读取所选会话的代码起点。 Read code starting points for a selected session.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CheckpointParams".
  */
 export interface CheckpointParams {
@@ -2637,7 +2696,7 @@ export interface CheckpointParams {
  *
  * Limit the trusted directory picker to its declared purpose.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ChooseDirectoryParams".
  */
 export interface ChooseDirectoryParams {
@@ -2648,7 +2707,7 @@ export interface ChooseDirectoryParams {
  *
  * Select existing environment paths through a trusted picker.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ChooseEnvironmentPathParams".
  */
 export interface ChooseEnvironmentPathParams {
@@ -2659,7 +2718,7 @@ export interface ChooseEnvironmentPathParams {
  *
  * Read permitted public history with pagination and provenance.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CollaborationHistoryParams".
  */
 export interface CollaborationHistoryParams {
@@ -2673,7 +2732,7 @@ export interface CollaborationHistoryParams {
  *
  * A session access agreement with task ownership and modification time.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CollaborationLink".
  */
 export interface CollaborationLink {
@@ -2690,7 +2749,7 @@ export interface CollaborationLink {
  *
  * Status visible to both parties without reversing access grants.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CollaborationPage".
  */
 export interface CollaborationPage {
@@ -2712,7 +2771,7 @@ export interface CollaborationPage {
  *
  * Request lifecycle and exact run provenance; results come from durable run facts.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CollaborationRequest".
  */
 export interface CollaborationRequest {
@@ -2740,7 +2799,7 @@ export interface CollaborationRequest {
  *
  * A brief from durable facts; artifact snapshots are not current disk contents.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SessionWorkBrief".
  */
 export interface SessionWorkBrief {
@@ -2758,7 +2817,7 @@ export interface SessionWorkBrief {
  *
  * Goal state and cumulative usage, independent of task completion.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GoalView".
  */
 export interface GoalView {
@@ -2781,7 +2840,7 @@ export interface GoalView {
  *
  * Optional cumulative budgets coexist with run limits without a fixed continuation count.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GoalBudget".
  */
 export interface GoalBudget {
@@ -2794,7 +2853,7 @@ export interface GoalBudget {
  *
  * A user-defined criterion optionally referenced, never rewritten, by model results.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GoalCriterion".
  */
 export interface GoalCriterion {
@@ -2806,7 +2865,7 @@ export interface GoalCriterion {
  *
  * A structured work-run result that never changes the user's objective or task status.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkReport".
  */
 export interface WorkReport {
@@ -2824,7 +2883,7 @@ export interface WorkReport {
  *
  * Per-criterion model judgments distinguish unmet, unchecked and user acceptance.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CriterionResult".
  */
 export interface CriterionResult {
@@ -2838,7 +2897,7 @@ export interface CriterionResult {
  *
  * Model-declared source kinds and uses are not host-verified success.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvidenceRef".
  */
 export interface EvidenceRef {
@@ -2853,7 +2912,7 @@ export interface EvidenceRef {
  *
  * Task-local decisions distinguish user direction from proposals.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SharedDecision".
  */
 export interface SharedDecision {
@@ -2865,7 +2924,7 @@ export interface SharedDecision {
  *
  * A specific question and its impact, never answered by chatter or elapsed time.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "HumanQuestion".
  */
 export interface HumanQuestion {
@@ -2879,7 +2938,7 @@ export interface HumanQuestion {
  *
  * A meaningful work unit with dependencies and feedback, not an individual tool call.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkItem".
  */
 export interface WorkItem {
@@ -2904,7 +2963,7 @@ export interface WorkItem {
  *
  * User-saved graph position, independent of scheduling.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkPosition".
  */
 export interface WorkPosition {
@@ -2916,7 +2975,7 @@ export interface WorkPosition {
  *
  * Input still waiting for an answer, never displayed as already executed.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GoalInputView".
  */
 export interface GoalInputView {
@@ -2928,7 +2987,7 @@ export interface GoalInputView {
  *
  * Count durable starts; reserve unknown durations separately without charging offline time.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GoalUsage".
  */
 export interface GoalUsage {
@@ -2943,7 +3002,7 @@ export interface GoalUsage {
 /**
  * 任务当前版本与可追溯来源。 Current task revision with traceable provenance.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TaskView".
  */
 export interface TaskView {
@@ -2965,7 +3024,7 @@ export interface TaskView {
  *
  * User-maintained shared facts and artifact notes.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TaskFields".
  */
 export interface TaskFields {
@@ -2983,7 +3042,7 @@ export interface TaskFields {
  *
  * Current task work graph and latest report; task revisions preserve history.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TaskWork".
  */
 export interface TaskWork {
@@ -3001,7 +3060,7 @@ export interface TaskWork {
  *
  * Host-saved work assignments remain separate from model reports and task-versioned.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkAssignment".
  */
 export interface WorkAssignment {
@@ -3019,7 +3078,7 @@ export interface WorkAssignment {
  *
  * Shared decisions retain sources without replacing user fields.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SourcedDecision".
  */
 export interface SourcedDecision {
@@ -3031,7 +3090,7 @@ export interface SourcedDecision {
  *
  * Optional model-supplied references; the host records the report's own provenance separately.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EventRef".
  */
 export interface EventRef {
@@ -3044,7 +3103,7 @@ export interface EventRef {
  *
  * Host-attached provenance distinguishes a model judgment from its source facts.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SourcedWorkItem".
  */
 export interface SourcedWorkItem {
@@ -3057,7 +3116,7 @@ export interface SourcedWorkItem {
  *
  * Each member's latest report and host provenance.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "MemberProgress".
  */
 export interface MemberProgress {
@@ -3070,7 +3129,7 @@ export interface MemberProgress {
  *
  * Persist snapshot, current stage and assignments.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TaskWorkflow".
  */
 export interface TaskWorkflow {
@@ -3086,7 +3145,7 @@ export interface SessionStages {
  *
  * Shareable template without machine-specific paths.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkflowTemplate".
  */
 export interface WorkflowTemplate {
@@ -3100,7 +3159,7 @@ export interface WorkflowTemplate {
  *
  * Stages describe work without gating execution.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkflowStage".
  */
 export interface WorkflowStage {
@@ -3118,7 +3177,7 @@ export interface WorkflowStage {
  *
  * Reusable definitions without sessions, runs or results.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkStyle".
  */
 export interface WorkStyle {
@@ -3135,7 +3194,7 @@ export interface WorkStyle {
  *
  * Editable organisation, members and graph allowing cycles.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpaceConfig".
  */
 export interface SpaceConfig {
@@ -3150,7 +3209,7 @@ export interface SpaceConfig {
  *
  * Descriptive directed links, not communication grants.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpaceEdge".
  */
 export interface SpaceEdge {
@@ -3165,7 +3224,7 @@ export interface SpaceEdge {
  *
  * Stable member identity and duties independent of sessions.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpaceMember".
  */
 export interface SpaceMember {
@@ -3182,7 +3241,7 @@ export interface SpaceMember {
  *
  * User-saved node coordinates.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpacePosition".
  */
 export interface SpacePosition {
@@ -3194,7 +3253,7 @@ export interface SpacePosition {
  *
  * A bounded assignment and return requirements with an idempotent operation ID.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CollaborationRequestParams".
  */
 export interface CollaborationRequestParams {
@@ -3211,7 +3270,7 @@ export interface CollaborationRequestParams {
  *
  * Page this session's agreements and requests.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CollaborationPageParams".
  */
 export interface CollaborationPageParams {
@@ -3225,7 +3284,7 @@ export interface CollaborationPageParams {
  *
  * Record evaluation and evidence, not invented checks.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CompareEvolutionCandidate".
  */
 export interface CompareEvolutionCandidate {
@@ -3240,7 +3299,7 @@ export interface CompareEvolutionCandidate {
  *
  * Reference selected facts without copying a session.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionSource".
  */
 export interface EvolutionSource {
@@ -3260,7 +3319,7 @@ export interface EvolutionSource {
  *
  * Save compaction settings for subsequent requests.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ConfigureContextParams".
  */
 export interface ConfigureContextParams {
@@ -3272,7 +3331,7 @@ export interface ConfigureContextParams {
  *
  * Absolute token policy, separate from model capacity and generation allowance.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ContextSettings".
  */
 export interface ContextSettings {
@@ -3292,7 +3351,7 @@ export interface ContextSettings {
 /**
  * 只限制检查点覆盖范围，不限制编码任务。 Bound checkpoint coverage, never coding execution.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RollbackSettings".
  */
 export interface RollbackSettings {
@@ -3305,7 +3364,7 @@ export interface RollbackSettings {
  *
  * Toggle Git with recoverable metadata relocation.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ConfigureGitParams".
  */
 export interface ConfigureGitParams {
@@ -3317,7 +3376,7 @@ export interface ConfigureGitParams {
  *
  * Save session use, contribution and experiment settings.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ConfigureMemoryParams".
  */
 export interface ConfigureMemoryParams {
@@ -3329,7 +3388,7 @@ export interface ConfigureMemoryParams {
  *
  * Independent use/contribution controls; experiments start disabled.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "MemorySettings".
  */
 export interface MemorySettings {
@@ -3348,7 +3407,7 @@ export interface MemorySettings {
  *
  * Save delegation settings for subsequent assignments.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ConfigureWorkersParams".
  */
 export interface ConfigureWorkersParams {
@@ -3360,7 +3419,7 @@ export interface ConfigureWorkersParams {
  *
  * Disabled by default; concurrency is an adjustable resource setting.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkerSettings".
  */
 export interface WorkerSettings {
@@ -3372,7 +3431,7 @@ export interface WorkerSettings {
  *
  * A user-defined directional agreement; disabling affects subsequent access.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ConnectSessionsParams".
  */
 export interface ConnectSessionsParams {
@@ -3385,7 +3444,7 @@ export interface ConnectSessionsParams {
 /**
  * 每次手动探测明确指定总等待时间。 Specify the total timeout for one manual probe.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ConnectionProbeParams".
  */
 export interface ConnectionProbeParams {
@@ -3394,7 +3453,7 @@ export interface ConnectionProbeParams {
 /**
  * 持久化复用偏好与手动探测等待时间。 Persist reuse preference and manual probe timeout.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ConnectionSettings".
  */
 export interface ConnectionSettings {
@@ -3406,7 +3465,7 @@ export interface ConnectionSettings {
  *
  * Backend-owned lifecycle state, without claiming a count of live sockets.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ConnectionStatus".
  */
 export interface ConnectionStatus {
@@ -3423,7 +3482,7 @@ export interface ConnectionStatus {
  *
  * A sanitized observation of one operation, never a guarantee of current connectivity.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ConnectionObservation".
  */
 export interface ConnectionObservation {
@@ -3437,7 +3496,7 @@ export interface ConnectionObservation {
 /**
  * 请求阶段与单调时钟耗时，不包含网络原文。 Request phases and timings without raw payloads.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ModelProgress".
  */
 export interface ModelProgress {
@@ -3457,7 +3516,7 @@ export interface ModelProgress {
  *
  * Per-model test progress and last result, not a separate physical connection.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ModelConnectionState".
  */
 export interface ModelConnectionState {
@@ -3471,7 +3530,7 @@ export interface ModelConnectionState {
  *
  * Public facts from one real model test, excluding prompts and responses.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ModelConnectionResult".
  */
 export interface ModelConnectionResult {
@@ -3485,7 +3544,7 @@ export interface ModelConnectionResult {
 /**
  * 服务实际返回的用量；未知保留 null。 Reported usage; unknown remains null.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TokenUsage".
  */
 export interface TokenUsage {
@@ -3498,7 +3557,7 @@ export interface TokenUsage {
  *
  * Identify a session window.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ContextParams".
  */
 export interface ContextParams {
@@ -3509,7 +3568,7 @@ export interface ContextParams {
  *
  * Token observations, byte processing sizes and compaction facts for the composer.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ContextView".
  */
 export interface ContextView {
@@ -3536,7 +3595,7 @@ export interface ContextView {
  *
  * Durable derived summary; raw events stay intact.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "Checkpoint".
  */
 export interface Checkpoint {
@@ -3553,7 +3612,7 @@ export interface Checkpoint {
  *
  * Actual maintenance state and cumulative usage.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ContextJob".
  */
 export interface ContextJob {
@@ -3585,7 +3644,7 @@ export interface ContextJob {
  *
  * Fixed facts for the latest request, unaffected by later settings.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ContextRequest".
  */
 export interface ContextRequest {
@@ -3599,7 +3658,7 @@ export interface ContextRequest {
  *
  * Persist actual materials and separately labelled token estimates at the request boundary.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ContextManifest".
  */
 export interface ContextManifest {
@@ -3615,7 +3674,7 @@ export interface ContextManifest {
  *
  * Adopted source references and bounded previews, never native conversation state.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ContextMaterial".
  */
 export interface ContextMaterial {
@@ -3631,7 +3690,7 @@ export interface ContextMaterial {
   title: Title4;
 }
 /**
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "JsonObject".
  */
 export interface JsonObject {
@@ -3642,7 +3701,7 @@ export interface JsonObject {
  *
  * Reported input for one main request, alongside the separate catalog window.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ContextTokens".
  */
 export interface ContextTokens {
@@ -3657,7 +3716,7 @@ export interface ContextTokens {
  *
  * Separate reported tokens from unknown usage.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "UsageSummary".
  */
 export interface UsageSummary {
@@ -3672,7 +3731,7 @@ export interface UsageSummary {
  *
  * Cancel a request or explicitly release an unstarted held item.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ControlCollaborationParams".
  */
 export interface ControlCollaborationParams {
@@ -3682,7 +3741,7 @@ export interface ControlCollaborationParams {
 /**
  * 无附带预算或答复的状态控制。 State controls without hidden budgets or answers.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GoalStateControl".
  */
 export interface GoalStateControl {
@@ -3695,7 +3754,7 @@ export interface GoalStateControl {
 /**
  * 明确替换累计预算，不自动接续。 Explicitly replace cumulative budgets without resuming.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GoalBudgetControl".
  */
 export interface GoalBudgetControl {
@@ -3711,7 +3770,7 @@ export interface GoalBudgetControl {
  *
  * Answer only the named HITL question, never interpreting ordinary chatter as an answer.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GoalAnswerControl".
  */
 export interface GoalAnswerControl {
@@ -3728,7 +3787,7 @@ export interface GoalAnswerControl {
  *
  * Explicitly copy a template into an independent snapshot.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CopyTeamTemplateParams".
  */
 export interface CopyTeamTemplateParams {
@@ -3741,7 +3800,7 @@ export interface CopyTeamTemplateParams {
  *
  * Create a draft from the actual current resource.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CreateEvolutionCandidate".
  */
 export interface CreateEvolutionCandidate {
@@ -3757,7 +3816,7 @@ export interface CreateEvolutionCandidate {
  *
  * Explicit resource identity resolved against the project.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionTarget".
  */
 export interface EvolutionTarget {
@@ -3770,7 +3829,7 @@ export interface EvolutionTarget {
  *
  * Create a user goal in an existing session without creating a formal session.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CreateGoalParams".
  */
 export interface CreateGoalParams {
@@ -3788,7 +3847,7 @@ export interface CreateGoalParams {
  *
  * Select project and model without starting a run.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CreateSessionParams".
  */
 export interface CreateSessionParams {
@@ -3804,7 +3863,7 @@ export interface CreateSessionParams {
  *
  * Reserve the first session for idempotent creation.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CreateTaskParams".
  */
 export interface CreateTaskParams {
@@ -3821,7 +3880,7 @@ export interface CreateTaskParams {
  *
  * Distinguish task saving from session creation.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CreateTaskResult".
  */
 export interface CreateTaskResult {
@@ -3834,7 +3893,7 @@ export interface CreateTaskResult {
  *
  * Expose only credential source and presence; null means access was restricted.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CredentialInfo".
  */
 export interface CredentialInfo {
@@ -3847,7 +3906,7 @@ export interface CredentialInfo {
  *
  * Public outcome, impact and sanitized evidence for one diagnostic check.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DiagnosticCheck".
  */
 export interface DiagnosticCheck {
@@ -3863,11 +3922,80 @@ export interface Evidence2 {
   [k: string]: string | boolean | number | null;
 }
 /**
+ * 一次诊断的实际原因和归属。
+ *
+ * Actual cause and ownership of one diagnostic.
+ *
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
+ * via the `definition` "DiagnosticEvent".
+ */
+export interface DiagnosticEvent {
+  at: At1;
+  cause_code?: CauseCode1;
+  causes?: Causes;
+  code: Code6;
+  component: Component;
+  details?: JsonObject;
+  diagnostic_id: DiagnosticId2;
+  effect_state?: EffectState1;
+  exception_types?: ExceptionTypes;
+  frames?: Frames1;
+  level: Level;
+  message: Message4;
+  operation?: Operation1;
+  phase?: Phase1;
+  project_id?: ProjectId10;
+  request_id?: RequestId2;
+  source?: EvolutionSource;
+  tool_call_id?: ToolCallId2;
+}
+/**
+ * 每层异常的具体消息、位置与父原因关系。
+ *
+ * Concrete message, locations and parent relationship for each exception layer.
+ *
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
+ * via the `definition` "DiagnosticCause".
+ */
+export interface DiagnosticCause {
+  code?: Code5;
+  details?: JsonObject;
+  frames?: Frames;
+  message: Message3;
+  parent?: Parent;
+  relation?: Relation;
+  type: Type;
+}
+/**
+ * 异常位置，不保存源码行或局部变量。
+ *
+ * Exception location without source lines or locals.
+ *
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
+ * via the `definition` "DiagnosticFrame".
+ */
+export interface DiagnosticFrame {
+  file: File;
+  function: Function;
+  line: Line;
+}
+/**
+ * 按真实诊断身份读取，不扫描其他记录。
+ *
+ * Read an actual diagnostic identity without scanning unrelated records.
+ *
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
+ * via the `definition` "DiagnosticQuery".
+ */
+export interface DiagnosticQuery {
+  diagnostic_id: DiagnosticId3;
+}
+/**
  * 区分凭据存在与目录可达；M0 尚未验证认证或真实工具回合。
  *
  * Separate key presence and catalog access from auth and tool calls, unverified in M0.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DiagnosticReport".
  */
 export interface DiagnosticReport {
@@ -3887,7 +4015,7 @@ export interface DiagnosticReport {
  *
  * Declare optional probes explicitly to prevent implicit networking or writes.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DiagnosticsParams".
  */
 export interface DiagnosticsParams {
@@ -3901,7 +4029,7 @@ export interface DiagnosticsParams {
  *
  * Return the selected directory, with null explicitly representing cancellation.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DirectorySelection".
  */
 export interface DirectorySelection {
@@ -3912,7 +4040,7 @@ export interface DirectorySelection {
  *
  * Select one historical change.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DocumentChangeParams".
  */
 export interface DocumentChangeParams {
@@ -3924,7 +4052,7 @@ export interface DocumentChangeParams {
  *
  * Present historical snapshots and current disk separately.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DocumentDiff".
  */
 export interface DocumentDiff {
@@ -3932,7 +4060,7 @@ export interface DocumentDiff {
   before: Before;
   current: Current;
   current_exists: CurrentExists;
-  message?: Message3;
+  message?: Message5;
   restorable: Restorable;
   summary: ChangeSummary;
 }
@@ -3941,7 +4069,7 @@ export interface DocumentDiff {
  *
  * Persist an unsaved buffer and its recovery baseline.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DocumentDraft".
  */
 export interface DocumentDraft {
@@ -3956,7 +4084,7 @@ export interface DocumentDraft {
  *
  * Bounded file discovery and quick-open filtering.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DocumentListParams".
  */
 export interface DocumentListParams {
@@ -3970,7 +4098,7 @@ export interface DocumentListParams {
  *
  * Discovered files and directories with explicit truncation.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DocumentListing".
  */
 export interface DocumentListing {
@@ -3984,13 +4112,13 @@ export interface DocumentListing {
  *
  * An explicitly selected file operation and destination.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DocumentOperationParams".
  */
 export interface DocumentOperationParams {
   content?: Content1;
   destination?: Destination1;
-  operation: Operation1;
+  operation: Operation2;
   path: Path3;
   recursive?: Recursive;
   session_id: SessionId25;
@@ -4000,7 +4128,7 @@ export interface DocumentOperationParams {
  *
  * Select a file without scanning outside the project.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DocumentParams".
  */
 export interface DocumentParams {
@@ -4012,7 +4140,7 @@ export interface DocumentParams {
  *
  * Project text search shared with model tools.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DocumentSearchParams".
  */
 export interface DocumentSearchParams {
@@ -4031,7 +4159,7 @@ export interface DocumentSearchParams {
  *
  * Search matches and unreadable counts.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DocumentSearchResult".
  */
 export interface DocumentSearchResult {
@@ -4045,24 +4173,24 @@ export interface DocumentSearchResult {
  *
  * A match location and current line text.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DocumentMatch".
  */
 export interface DocumentMatch {
   context_after?: ContextAfter;
   context_before?: ContextBefore;
-  line: Line1;
+  line: Line2;
   path: Path5;
   text: Text4;
 }
 /**
  * 带行号的搜索上下文。 Numbered search context.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DocumentContextLine".
  */
 export interface DocumentContextLine {
-  line: Line;
+  line: Line1;
   text: Text3;
 }
 /**
@@ -4070,7 +4198,7 @@ export interface DocumentContextLine {
  *
  * Locate projects and drafts by session.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DocumentSessionParams".
  */
 export interface DocumentSessionParams {
@@ -4081,7 +4209,7 @@ export interface DocumentSessionParams {
  *
  * Complete editable text with read facts.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DocumentView".
  */
 export interface DocumentView {
@@ -4097,7 +4225,7 @@ export interface DocumentView {
  *
  * Recoverable drafts for a session.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "DraftPage".
  */
 export interface DraftPage {
@@ -4108,19 +4236,19 @@ export interface DraftPage {
  *
  * Represent parameterless methods and reject every extra field.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EmptyParams".
  */
 export interface EmptyParams {}
 /**
  * 保存一项资源的启停。 Persist resource enablement.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EnableSkillParams".
  */
 export interface EnableSkillParams {
   enabled: Enabled5;
-  project_id?: ProjectId10;
+  project_id?: ProjectId11;
   session_id?: SessionId29;
   skill_id: SkillId;
 }
@@ -4129,7 +4257,7 @@ export interface EnableSkillParams {
  *
  * Public environment settings and current project binding.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EnvironmentCatalog".
  */
 export interface EnvironmentCatalog {
@@ -4144,14 +4272,14 @@ export interface EnvironmentCatalog {
  *
  * A project's default environment and future execution policy.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ProjectExecution".
  */
 export interface ProjectExecution {
   environment_id: EnvironmentId1;
   environment_passthrough?: EnvironmentPassthrough1;
   mode: Mode8;
-  project_id: ProjectId11;
+  project_id: ProjectId12;
   sandbox?: SandboxSettings;
   trusted?: Trusted1;
 }
@@ -4160,7 +4288,7 @@ export interface ProjectExecution {
  *
  * Registration and live path availability, without claiming unperformed probes.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EnvironmentView".
  */
 export interface EnvironmentView {
@@ -4177,7 +4305,7 @@ export interface EnvironmentView {
  *
  * Persist environment references, not env secrets.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EnvironmentRecord".
  */
 export interface EnvironmentRecord {
@@ -4191,7 +4319,7 @@ export interface EnvironmentRecord {
  *
  * Explicit existing system-tool selection.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SystemEnvironment".
  */
 export interface SystemEnvironment {
@@ -4202,7 +4330,7 @@ export interface SystemEnvironment {
  *
  * Existing interpreter with launch-time project paths.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "PythonEnvironment".
  */
 export interface PythonEnvironment {
@@ -4215,7 +4343,7 @@ export interface PythonEnvironment {
  *
  * Explicit Conda launcher and environment prefix.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "CondaEnvironment".
  */
 export interface CondaEnvironment {
@@ -4229,7 +4357,7 @@ export interface CondaEnvironment {
  *
  * Register uv and an existing interpreter.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "UvEnvironment".
  */
 export interface UvEnvironment {
@@ -4243,16 +4371,16 @@ export interface UvEnvironment {
  *
  * Explicit probe evidence with its actual path context.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EnvironmentProbe".
  */
 export interface EnvironmentProbe {
   checked_at: CheckedAt1;
-  code: Code5;
+  code: Code7;
   interpreter: Interpreter3;
   launcher_version: LauncherVersion;
-  message: Message4;
-  project_id: ProjectId12;
+  message: Message6;
+  project_id: ProjectId13;
   version: Version;
 }
 /**
@@ -4260,7 +4388,7 @@ export interface EnvironmentProbe {
  *
  * Adjustable launch budgets; retained services have no command-lifetime timeout.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ExecutionSettings".
  */
 export interface ExecutionSettings {
@@ -4275,47 +4403,48 @@ export interface ExecutionSettings {
  *
  * Identify a registered environment, not a command.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EnvironmentParams".
  */
 export interface EnvironmentParams {
   environment_id: EnvironmentId3;
-  project_id: ProjectId13;
+  project_id: ProjectId14;
 }
 /**
  * 可选项目用于解析相对环境。
  *
  * Optional project context for relative environments.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EnvironmentProjectParams".
  */
 export interface EnvironmentProjectParams {
-  project_id: ProjectId14;
+  project_id: ProjectId15;
 }
 /**
  * RPC 错误的稳定业务码与修复说明。
  *
  * Stable application error code and remediation inside an RPC error.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ErrorData".
  */
 export interface ErrorData {
-  cause_code?: CauseCode1;
-  code: Code6;
-  diagnostic_id?: DiagnosticId2;
-  effect_state?: EffectState1;
-  phase?: Phase1;
+  cause_code?: CauseCode2;
+  code: Code8;
+  diagnostic_id?: DiagnosticId4;
+  diagnostic_issue?: DiagnosticIssue1;
+  effect_state?: EffectState2;
+  phase?: Phase2;
   remediation: Remediation3;
-  tool_call_id?: ToolCallId2;
+  tool_call_id?: ToolCallId3;
 }
 /**
  * 修改版本与采用事实，独立于原业务结果。
  *
  * Candidate revision and adoption separate from task outcomes.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionCandidate".
  */
 export interface EvolutionCandidate {
@@ -4329,10 +4458,10 @@ export interface EvolutionCandidate {
   created_at: CreatedAt7;
   feedback_ids?: FeedbackIds1;
   finding_id?: FindingId;
-  message?: Message5;
+  message?: Message7;
   model_id?: ModelId10;
   pending_action?: PendingAction;
-  project_id: ProjectId15;
+  project_id: ProjectId16;
   rationale: Rationale1;
   recovery_directory?: RecoveryDirectory;
   resource_sources?: ResourceSources;
@@ -4350,11 +4479,11 @@ export interface EvolutionCandidate {
  *
  * Actual comparison or feedback without invented scores.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionComparison".
  */
 export interface EvolutionComparison {
-  at: At1;
+  at: At2;
   content_revision?: ContentRevision1;
   method?: Method3;
   outcome: Outcome4;
@@ -4366,7 +4495,7 @@ export interface EvolutionComparison {
  *
  * Identity and version of an actually read resource, supplied by the host.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionResourceReference".
  */
 export interface EvolutionResourceReference {
@@ -4378,19 +4507,19 @@ export interface EvolutionResourceReference {
  *
  * Load one candidate on demand.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionCandidateParams".
  */
 export interface EvolutionCandidateParams {
   candidate_id: CandidateId3;
-  project_id: ProjectId16;
+  project_id: ProjectId17;
 }
 /**
  * 不携带资源全文的目录。
  *
  * Resource directory without full content.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionCatalog".
  */
 export interface EvolutionCatalog {
@@ -4402,7 +4531,7 @@ export interface EvolutionCatalog {
  *
  * Display names and identities of available resources.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionCatalogItem".
  */
 export interface EvolutionCatalogItem {
@@ -4414,34 +4543,34 @@ export interface EvolutionCatalogItem {
  *
  * Control an explicit candidate, not the whole project.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionControl".
  */
 export interface EvolutionControl {
   action: Action4;
   candidate_id: CandidateId4;
-  project_id: ProjectId17;
+  project_id: ProjectId18;
 }
 /**
  * 同一命令在原版与候选副本各执行一次。
  *
  * Run the same command once against each isolated baseline/candidate copy.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionExperimentParams".
  */
 export interface EvolutionExperimentParams {
   candidate_id: CandidateId5;
   command: RunCommandArgs;
   exclude?: Exclude;
-  project_id: ProjectId18;
+  project_id: ProjectId19;
 }
 /**
  * 命令在项目内 cwd 运行，超时可按需要覆盖。
  *
  * Run in a project cwd with an optional timeout.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RunCommandArgs".
  */
 export interface RunCommandArgs {
@@ -4454,7 +4583,7 @@ export interface RunCommandArgs {
  *
  * Execute an explicit program and argument array.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ProgramCommand".
  */
 export interface ProgramCommand {
@@ -4467,7 +4596,7 @@ export interface ProgramCommand {
  *
  * Explicit PowerShell, distinct from argv.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ShellCommand".
  */
 export interface ShellCommand {
@@ -4479,7 +4608,7 @@ export interface ShellCommand {
  *
  * Preserve feedback and time independently of candidates.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionFeedback".
  */
 export interface EvolutionFeedback {
@@ -4488,7 +4617,7 @@ export interface EvolutionFeedback {
   feedback_id: FeedbackId;
   kind?: Kind15;
   origin?: EvolutionScope | null;
-  project_id: ProjectId19;
+  project_id: ProjectId20;
   review_job_id?: ReviewJobId1;
   source?: EvolutionSource;
   sources?: Sources1;
@@ -4500,7 +4629,7 @@ export interface EvolutionFeedback {
  *
  * Contextual scope identity, expanded and frozen when a review is accepted.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionScope".
  */
 export interface EvolutionScope {
@@ -4512,7 +4641,7 @@ export interface EvolutionScope {
  *
  * Shared preview/review input; jobs retain the accepted snapshot.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionInput".
  */
 export interface EvolutionInput {
@@ -4534,7 +4663,7 @@ export interface EvolutionInput {
  *
  * Count actual reading of selected Trace bodies, excluding index-only access.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionCoverage".
  */
 export interface EvolutionCoverage {
@@ -4548,7 +4677,7 @@ export interface EvolutionCoverage {
  *
  * One reference with provenance and the exact included content.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionMaterial".
  */
 export interface EvolutionMaterial {
@@ -4566,7 +4695,7 @@ export interface EvolutionMaterial {
  *
  * Actual resource content and version information.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionResource".
  */
 export interface EvolutionResource {
@@ -4581,7 +4710,7 @@ export interface EvolutionResource {
  *
  * Local screening leads, never a claim of model findings or verified causes.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionEpisode".
  */
 export interface EvolutionEpisode {
@@ -4597,7 +4726,7 @@ export interface EvolutionEpisode {
  *
  * Accepted selection scope; counts represent events rather than text usage.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionSelection".
  */
 export interface EvolutionSelection {
@@ -4610,7 +4739,7 @@ export interface EvolutionSelection {
  *
  * Background improvement has independent state and cost.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionJob".
  */
 export interface EvolutionJob {
@@ -4619,15 +4748,17 @@ export interface EvolutionJob {
   candidate_id?: CandidateId6;
   candidate_ids?: CandidateIds;
   details_available?: DetailsAvailable;
+  diagnostic_id?: DiagnosticId5;
+  diagnostic_issue?: DiagnosticIssue2;
   experiment_directory?: ExperimentDirectory;
   findings?: Findings;
   job_id: JobId1;
-  message?: Message6;
+  message?: Message8;
   mode?: Mode9;
   omitted_paths?: OmittedPaths;
   origin?: EvolutionScope | null;
   programs?: Programs;
-  project_id: ProjectId21;
+  project_id: ProjectId22;
   request?: GenerateEvolutionCandidate | null;
   requests?: Requests5;
   response_text?: ResponseText;
@@ -4643,7 +4774,7 @@ export interface EvolutionJob {
  *
  * Independent per-job budgets, defaulted without reading ordinary chat settings.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionBudget".
  */
 export interface EvolutionBudget {
@@ -4663,7 +4794,7 @@ export interface EvolutionBudget {
  *
  * Evidence-based finding and related targets, without claiming a verified root cause.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionFinding".
  */
 export interface EvolutionFinding {
@@ -4681,7 +4812,7 @@ export interface EvolutionFinding {
  *
  * Bounded output page and actual process state.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ProgramView".
  */
 export interface ProgramView {
@@ -4697,7 +4828,7 @@ export interface ProgramView {
  *
  * Numbered output chunks rendered as plain text.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OutputChunk".
  */
 export interface OutputChunk {
@@ -4710,11 +4841,11 @@ export interface OutputChunk {
  *
  * Program identity and outcome; a saved PID is not authority to reclaim a process.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ProgramSummary".
  */
 export interface ProgramSummary {
-  code: Code7;
+  code: Code9;
   command: Command1;
   created_at: CreatedAt9;
   cwd: Cwd1;
@@ -4726,17 +4857,17 @@ export interface ProgramSummary {
   finished_at: FinishedAt4;
   http_status: HttpStatus1;
   kind: Kind18;
-  message: Message7;
+  message: Message9;
   mode?: Mode10;
   pid: Pid;
   program_id: ProgramId;
-  project_id: ProjectId20;
+  project_id: ProjectId21;
   resolved_command: ResolvedCommand;
   retained: Retained;
   run_id: RunId10;
   session_id: SessionId30;
   status: Status14;
-  tool_call_id?: ToolCallId3;
+  tool_call_id?: ToolCallId4;
   url: Url;
 }
 /**
@@ -4744,7 +4875,7 @@ export interface ProgramSummary {
  *
  * Investigate evidence first, or propose changes to an explicit resource.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GenerateEvolutionCandidate".
  */
 export interface GenerateEvolutionCandidate {
@@ -4754,7 +4885,7 @@ export interface GenerateEvolutionCandidate {
   instruction?: Instruction1;
   mode?: Mode11;
   origin?: EvolutionScope | null;
-  project_id: ProjectId22;
+  project_id: ProjectId23;
   review_job_id?: ReviewJobId2;
   sources?: Sources3;
   target?: EvolutionTarget | null;
@@ -4764,19 +4895,19 @@ export interface GenerateEvolutionCandidate {
  *
  * Stop one explicit maintenance job.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionJobControl".
  */
 export interface EvolutionJobControl {
   job_id: JobId2;
-  project_id: ProjectId23;
+  project_id: ProjectId24;
 }
 /**
  * 桌面概览保留局部读取问题。
  *
  * Desktop overview retains individual read issues.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionPage".
  */
 export interface EvolutionPage {
@@ -4794,60 +4925,25 @@ export interface EvolutionPage {
  *
  * List entries omit patches and resource bodies.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionCandidateSummary".
  */
 export interface EvolutionCandidateSummary {
   candidate_id: CandidateId7;
   comparison?: EvolutionComparison | null;
   content_revision?: ContentRevision3;
-  message: Message8;
+  message: Message10;
   status: Status16;
   target: EvolutionTarget;
   title: Title11;
   updated_at: UpdatedAt11;
 }
 /**
- * 一次诊断的实际原因和归属。
- *
- * Actual cause and ownership of one diagnostic.
- *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
- * via the `definition` "DiagnosticEvent".
- */
-export interface DiagnosticEvent {
-  at: At2;
-  cause_code?: CauseCode2;
-  code: Code8;
-  component: Component;
-  diagnostic_id: DiagnosticId3;
-  exception_types?: ExceptionTypes;
-  frames?: Frames;
-  level: Level;
-  message: Message9;
-  phase?: Phase2;
-  project_id?: ProjectId24;
-  source?: EvolutionSource;
-}
-/**
- * 异常位置，不保存源码行或局部变量。
- *
- * Exception location without source lines or locals.
- *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
- * via the `definition` "DiagnosticFrame".
- */
-export interface DiagnosticFrame {
-  file: File;
-  function: Function;
-  line: Line2;
-}
-/**
  * 项目的复盘与采用选择，不影响普通任务。
  *
  * Project learning choices do not gate normal work.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionSettings".
  */
 export interface EvolutionSettings {
@@ -4863,7 +4959,7 @@ export interface EvolutionSettings {
  *
  * Read project records with a cursor.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionQuery".
  */
 export interface EvolutionQuery {
@@ -4878,7 +4974,7 @@ export interface EvolutionQuery {
  *
  * Read a current resource or prepare a new one.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionResourceQuery".
  */
 export interface EvolutionResourceQuery {
@@ -4890,7 +4986,7 @@ export interface EvolutionResourceQuery {
  *
  * Session totals and matching run page, leaving bodies on demand.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionRunsPage".
  */
 export interface EvolutionRunsPage {
@@ -4908,7 +5004,7 @@ export interface EvolutionRunsPage {
  *
  * Prompt, status, positions and event counts needed to select a run.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionRunItem".
  */
 export interface EvolutionRunItem {
@@ -4925,7 +5021,7 @@ export interface EvolutionRunItem {
  *
  * Page runs independently of how many tool events each run contains.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EvolutionRunsQuery".
  */
 export interface EvolutionRunsQuery {
@@ -4940,7 +5036,7 @@ export interface EvolutionRunsQuery {
  *
  * Show owned work before application shutdown.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ExecutionStatus".
  */
 export interface ExecutionStatus {
@@ -4952,7 +5048,7 @@ export interface ExecutionStatus {
  *
  * Select a public export category whose content comes from the backend.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ExportParams".
  */
 export interface ExportParams {
@@ -4963,7 +5059,7 @@ export interface ExportParams {
  *
  * Return the exported file location, or null when the user cancels.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ExportResult".
  */
 export interface ExportResult {
@@ -4974,7 +5070,7 @@ export interface ExportResult {
  *
  * Delete entry content, not conversation history.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ForgetMemoryParams".
  */
 export interface ForgetMemoryParams {
@@ -4986,10 +5082,11 @@ export interface ForgetMemoryParams {
  *
  * Generate through a selected existing read-only session.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GenerateTeamParams".
  */
 export interface GenerateTeamParams {
+  discussion?: Discussion;
   objective: Objective4;
   operation_id: OperationId11;
   organisation?: Organisation1;
@@ -4999,7 +5096,7 @@ export interface GenerateTeamParams {
 /**
  * 按成果身份与字符游标读取差异。 Read a change by identity and character cursor.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GetChangeParams".
  */
 export interface GetChangeParams {
@@ -5012,7 +5109,7 @@ export interface GetChangeParams {
  *
  * Continue reading after the last observed output sequence.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GetProgramParams".
  */
 export interface GetProgramParams {
@@ -5024,7 +5121,7 @@ export interface GetProgramParams {
  *
  * Explicit history cursor; null loads the latest page.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GetSessionParams".
  */
 export interface GetSessionParams {
@@ -5036,11 +5133,11 @@ export interface GetSessionParams {
  *
  * Commit existing index without staging.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GitCommitParams".
  */
 export interface GitCommitParams {
-  message: Message10;
+  message: Message11;
   project_id: ProjectId29;
 }
 /**
@@ -5048,7 +5145,7 @@ export interface GitCommitParams {
  *
  * Actual HEAD and output after commit.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GitCommitResult".
  */
 export interface GitCommitResult {
@@ -5061,7 +5158,7 @@ export interface GitCommitResult {
  *
  * Current local diff displayed as plain text.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GitDiff".
  */
 export interface GitDiff {
@@ -5076,7 +5173,7 @@ export interface GitDiff {
  *
  * Read one worktree or index path diff.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GitDiffParams".
  */
 export interface GitDiffParams {
@@ -5089,7 +5186,7 @@ export interface GitDiffParams {
  *
  * Local commit list.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GitHistory".
  */
 export interface GitHistory {
@@ -5101,7 +5198,7 @@ export interface GitHistory {
  *
  * Local commit identity and concise history.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GitCommit".
  */
 export interface GitCommit {
@@ -5115,7 +5212,7 @@ export interface GitCommit {
  *
  * Adjustable local-history query size.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GitHistoryParams".
  */
 export interface GitHistoryParams {
@@ -5127,7 +5224,7 @@ export interface GitHistoryParams {
  *
  * Operate on explicit paths only.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GitPathsParams".
  */
 export interface GitPathsParams {
@@ -5139,7 +5236,7 @@ export interface GitPathsParams {
  *
  * Registered project identity.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GitProjectParams".
  */
 export interface GitProjectParams {
@@ -5150,7 +5247,7 @@ export interface GitProjectParams {
  *
  * Switch and actual backup facts, without parent discovery.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GitSettings".
  */
 export interface GitSettings {
@@ -5164,15 +5261,15 @@ export interface GitSettings {
  *
  * Availability and repository facts without remote.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GitStatus".
  */
 export interface GitStatus {
   available: Available1;
   branch: Branch;
-  code?: Code9;
+  code?: Code10;
   files: Files1;
-  message?: Message11;
+  message?: Message12;
   project_id: ProjectId38;
   project_repository?: ProjectRepository;
   repository: Repository;
@@ -5183,7 +5280,7 @@ export interface GitStatus {
  *
  * Git's separate worktree and index status columns.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GitFileStatus".
  */
 export interface GitFileStatus {
@@ -5197,7 +5294,7 @@ export interface GitFileStatus {
  *
  * Page goals by descending creation sequence without overwriting older objectives.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "GoalPage".
  */
 export interface GoalPage {
@@ -5209,7 +5306,7 @@ export interface GoalPage {
  *
  * Expandable material index and match count.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "HistoryPage".
  */
 export interface HistoryPage {
@@ -5225,7 +5322,7 @@ export interface HistoryPage {
  *
  * Public fragment with original sequence and continuation.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "HistoryItem".
  */
 export interface HistoryItem {
@@ -5236,7 +5333,7 @@ export interface HistoryItem {
   result_seq?: ResultSeq1;
   seq: Seq5;
   text: Text8;
-  tool_call_id?: ToolCallId4;
+  tool_call_id?: ToolCallId5;
   tool_name?: ToolName;
   total_chars: TotalChars1;
 }
@@ -5245,7 +5342,7 @@ export interface HistoryItem {
  *
  * Read a selected session's history from the desktop.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "HistoryParams".
  */
 export interface HistoryParams {
@@ -5266,7 +5363,7 @@ export interface HistoryParams {
  * completed
  * uploads.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ImageChunk".
  */
 export interface ImageChunk {
@@ -5275,14 +5372,14 @@ export interface ImageChunk {
   final: Final;
   mime: Mime1;
   name: Name9;
-  purpose?: Purpose1;
+  purpose?: Purpose2;
   session_id: SessionId38;
 }
 /**
  * 显式选择文件，或从编辑器提交未保存选区。
  * Explicit file selection or an unsaved editor selection.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ImportAttachment".
  */
 export interface ImportAttachment {
@@ -5290,7 +5387,7 @@ export interface ImportAttachment {
   draft?: Draft1;
   end_line?: EndLine1;
   path: Path11;
-  purpose?: Purpose2;
+  purpose?: Purpose3;
   session_id: SessionId39;
   start_line?: StartLine1;
 }
@@ -5299,7 +5396,7 @@ export interface ImportAttachment {
  *
  * Import JSON as a new local template without session bindings.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ImportTeamTemplateParams".
  */
 export interface ImportTeamTemplateParams {
@@ -5311,7 +5408,7 @@ export interface ImportTeamTemplateParams {
  *
  * Client compatibility information, keeping app and protocol versions distinct.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "InitializeParams".
  */
 export interface InitializeParams {
@@ -5324,7 +5421,7 @@ export interface InitializeParams {
  *
  * Return initialized public state and the methods currently supported.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "InitializeResult".
  */
 export interface InitializeResult {
@@ -5339,7 +5436,7 @@ export interface InitializeResult {
  *
  * Renderer-visible model configuration without credential values.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "PublicConfig".
  */
 export interface PublicConfig {
@@ -5359,7 +5456,7 @@ export interface PublicConfig {
  *
  * Return active and recent projects, allowing an empty first-launch state.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ProjectsView".
  */
 export interface ProjectsView {
@@ -5371,7 +5468,7 @@ export interface ProjectsView {
  *
  * Expose project metadata and availability without internal filesystem identity fields.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ProjectSummary".
  */
 export interface ProjectSummary {
@@ -5388,7 +5485,7 @@ export interface ProjectSummary {
  *
  * Expose the effective data root, its source and storage availability.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "StorageInfo".
  */
 export interface StorageInfo {
@@ -5402,7 +5499,7 @@ export interface StorageInfo {
  *
  * Scope service operations to the current project.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "IntelligenceParams".
  */
 export interface IntelligenceParams {
@@ -5413,7 +5510,7 @@ export interface IntelligenceParams {
  *
  * Positions use LSP zero-based UTF-16; absent text reads disk.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "LanguageQuery".
  */
 export interface LanguageQuery {
@@ -5432,7 +5529,7 @@ export interface LanguageQuery {
  *
  * Return native data and input provenance, not test results.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "LanguageResult".
  */
 export interface LanguageResult {
@@ -5452,7 +5549,7 @@ export interface LanguageResult {
  *
  * Text snapshots for rename suggestions, retaining local errors when unavailable.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "LanguageDocumentSnapshot".
  */
 export interface LanguageDocumentSnapshot {
@@ -5467,7 +5564,7 @@ export interface LanguageDocumentSnapshot {
  *
  * Display configuration separately from actual state.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "LanguageServerCatalog".
  */
 export interface LanguageServerCatalog {
@@ -5481,7 +5578,7 @@ export interface LanguageServerCatalog {
  *
  * An explicit stdio server, never installed on startup.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "LanguageServer".
  */
 export interface LanguageServer {
@@ -5504,18 +5601,18 @@ export interface Settings {
  *
  * Actual connection state and last error.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "LanguageServerState".
  */
 export interface LanguageServerState {
-  message?: Message12;
+  message?: Message13;
   server_id: ServerId2;
   status: Status19;
 }
 /**
  * 会话内分页，不接受文件系统路径。 Page by session without filesystem path input.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ListChangesParams".
  */
 export interface ListChangesParams {
@@ -5528,7 +5625,7 @@ export interface ListChangesParams {
 /**
  * 按事实游标读取有界目标列表。 Read bounded goals by fact cursor.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ListGoalsParams".
  */
 export interface ListGoalsParams {
@@ -5541,7 +5638,7 @@ export interface ListGoalsParams {
  *
  * Desktop memory lookup.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ListMemoryParams".
  */
 export interface ListMemoryParams {
@@ -5558,7 +5655,7 @@ export interface ListMemoryParams {
  *
  * User query scope; tools also check session ownership.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ListProgramsParams".
  */
 export interface ListProgramsParams {
@@ -5572,7 +5669,7 @@ export interface ListProgramsParams {
  *
  * Page sessions by project.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ListSessionsParams".
  */
 export interface ListSessionsParams {
@@ -5583,7 +5680,7 @@ export interface ListSessionsParams {
 /**
  * 列出指定项目保留的终端。 List retained terminals for one project.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ListTerminalsParams".
  */
 export interface ListTerminalsParams {
@@ -5594,7 +5691,7 @@ export interface ListTerminalsParams {
  *
  * Manual maintenance can explicitly select old history.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "MaintainMemoryParams".
  */
 export interface MaintainMemoryParams {
@@ -5608,7 +5705,7 @@ export interface MaintainMemoryParams {
  *
  * Image byte chunks stay below protocol frame limits.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "McpArtifact".
  */
 export interface McpArtifact {
@@ -5621,7 +5718,7 @@ export interface McpArtifact {
  *
  * Page an image by owned artifact identity.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "McpArtifactParams".
  */
 export interface McpArtifactParams {
@@ -5635,7 +5732,7 @@ export interface McpArtifactParams {
  *
  * Public catalog excludes resolved credentials.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "McpCatalog".
  */
 export interface McpCatalog {
@@ -5651,7 +5748,7 @@ export interface McpCatalog {
  *
  * Supply editable service presets and official setup information.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "McpPreset".
  */
 export interface McpPreset {
@@ -5671,7 +5768,7 @@ export interface McpPreset {
  *
  * Store credential references and connection snapshots.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "McpServer".
  */
 export interface McpServer {
@@ -5680,6 +5777,7 @@ export interface McpServer {
   auth?: McpAuth;
   browser_executable?: BrowserExecutable;
   command?: Command2;
+  cwd?: Cwd2;
   description?: Description4;
   enabled?: Enabled8;
   env_refs?: EnvRefs;
@@ -5688,7 +5786,10 @@ export interface McpServer {
   name: Name11;
   preset_id?: PresetId1;
   project_ids?: ProjectIds;
+  protocol_mode?: ProtocolMode;
   server_id: ServerId3;
+  stored_env?: StoredEnv;
+  stored_headers?: StoredHeaders;
   timeout_seconds?: TimeoutSeconds3;
   transport?: Transport;
   url?: Url1;
@@ -5698,7 +5799,7 @@ export interface McpServer {
  *
  * Store HTTP authentication source and formatting, never the token.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "McpAuth".
  */
 export interface McpAuth {
@@ -5713,7 +5814,7 @@ export interface McpAuth {
  *
  * Public OAuth registration options; an empty identity uses server registration.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "McpOAuthConfig".
  */
 export interface McpOAuthConfig {
@@ -5739,7 +5840,7 @@ export interface Headers {
  *
  * Suggested toolsets do not restrict the server's actual definitions.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "McpToolset".
  */
 export interface McpToolset {
@@ -5751,7 +5852,7 @@ export interface McpToolset {
  *
  * Display configuration separately from actual status.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "McpServerView".
  */
 export interface McpServerView {
@@ -5769,7 +5870,7 @@ export interface McpServerView {
  *
  * Expose authorization status and a temporary browser link to management UI only.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "McpOAuthView".
  */
 export interface McpOAuthView {
@@ -5785,7 +5886,7 @@ export interface McpOAuthView {
  *
  * Control a selected connection or browser installation.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "McpControlParams".
  */
 export interface McpControlParams {
@@ -5799,7 +5900,7 @@ export interface McpControlParams {
  *
  * Settings and sessions share one catalog.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "McpParams".
  */
 export interface McpParams {
@@ -5811,12 +5912,13 @@ export interface McpParams {
  *
  * Management/retrieval results with local read failures.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "MemoryPage".
  */
 export interface MemoryPage {
   entries: Entries;
   next_cursor: NextCursor3;
+  recall_notes?: RecallNotes;
   state: MemoryState;
   totals?: UsageSummary;
   unavailable_count?: UnavailableCount2;
@@ -5826,7 +5928,7 @@ export interface MemoryPage {
  *
  * Independent memory with scope and revision provenance.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "MemoryEntry".
  */
 export interface MemoryEntry {
@@ -5860,7 +5962,7 @@ export interface MemoryEntry {
  *
  * Host-read improvement revision and outcome record; adoption does not imply improvement.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "MemoryEvolutionSource".
  */
 export interface MemoryEvolutionSource {
@@ -5875,19 +5977,22 @@ export interface MemoryEvolutionSource {
  *
  * A session fact actually read by the host, never authored by the model.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "MemoryTraceSource".
  */
 export interface MemoryTraceSource {
   seq: Seq6;
   session_id: SessionId49;
 }
+export interface RecallNotes {
+  [k: string]: string;
+}
 /**
  * 会话贡献起点与最近维护事实。
  *
  * Session contribution boundary and latest maintenance facts.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "MemoryState".
  */
 export interface MemoryState {
@@ -5903,13 +6008,13 @@ export interface MemoryState {
  *
  * Maintenance cost/state separate from finished runs.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "MemoryJob".
  */
 export interface MemoryJob {
   finished_at?: FinishedAt5;
   job_id: JobId3;
-  message?: Message13;
+  message?: Message14;
   model_id: ModelId13;
   requests?: Requests6;
   started_at: StartedAt1;
@@ -5922,7 +6027,7 @@ export interface MemoryJob {
  *
  * Manage memory within the current project.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "MemoryParams".
  */
 export interface MemoryParams {
@@ -5931,7 +6036,7 @@ export interface MemoryParams {
 /**
  * 显式选择被测模型，不沿用当前会话选择。 Select the tested model explicitly.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ModelConnectionProbeParams".
  */
 export interface ModelConnectionProbeParams {
@@ -5941,7 +6046,7 @@ export interface ModelConnectionProbeParams {
 /**
  * 导航项的明确身份及显示名。 Explicit navigation identity and display name.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "NavigationItemName".
  */
 export interface NavigationItemName {
@@ -5952,7 +6057,7 @@ export interface NavigationItemName {
 /**
  * 只取消指定在线操作。 Cancel only the identified online operation.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OnlineSkillCancel".
  */
 export interface OnlineSkillCancel {
@@ -5963,7 +6068,7 @@ export interface OnlineSkillCancel {
  *
  * Bounded previews; installation keeps full files.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OnlineSkillDocument".
  */
 export interface OnlineSkillDocument {
@@ -5977,7 +6082,7 @@ export interface OnlineSkillDocument {
  *
  * Download a source with optional ref/path overrides.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OnlineSkillInspect".
  */
 export interface OnlineSkillInspect {
@@ -5992,7 +6097,7 @@ export interface OnlineSkillInspect {
  *
  * Explicitly install a user or project skill.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OnlineSkillInstall".
  */
 export interface OnlineSkillInstall {
@@ -6006,7 +6111,7 @@ export interface OnlineSkillInstall {
  *
  * Read a downloaded snapshot without a remote refresh.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OnlineSkillRead".
  */
 export interface OnlineSkillRead {
@@ -6018,7 +6123,7 @@ export interface OnlineSkillRead {
  *
  * Search a public catalog without application credentials.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OnlineSkillSearch".
  */
 export interface OnlineSkillSearch {
@@ -6031,7 +6136,7 @@ export interface OnlineSkillSearch {
  *
  * Shared operation facts survive navigation.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OnlineSkillStatus".
  */
 export interface OnlineSkillStatus {
@@ -6039,7 +6144,7 @@ export interface OnlineSkillStatus {
   error_code?: ErrorCode;
   hits?: Hits;
   installed?: SkillItem | null;
-  message?: Message14;
+  message?: Message15;
   operation_id?: OperationId13;
   preview?: OnlineSkillPreview | null;
   query?: Query6;
@@ -6050,7 +6155,7 @@ export interface OnlineSkillStatus {
  *
  * Website hits; bodies come from repository snapshots.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OnlineSkillHit".
  */
 export interface OnlineSkillHit {
@@ -6062,7 +6167,7 @@ export interface OnlineSkillHit {
 /**
  * 来源、覆盖关系及资源位置。 Provenance, shadowing and resource location.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SkillItem".
  */
 export interface SkillItem {
@@ -6080,7 +6185,7 @@ export interface SkillItem {
 /**
  * 记录下载来源，不作为执行门槛。 Record download provenance without an execution gate.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SkillOrigin".
  */
 export interface SkillOrigin {
@@ -6093,7 +6198,7 @@ export interface SkillOrigin {
 /**
  * 预览身份指向当前保留的 ZIP。 Preview identity points to the retained ZIP.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OnlineSkillPreview".
  */
 export interface OnlineSkillPreview {
@@ -6106,7 +6211,7 @@ export interface OnlineSkillPreview {
 /**
  * 仓库中实际存在的 Skill。 A skill actually present in the repository.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OnlineSkillCandidate".
  */
 export interface OnlineSkillCandidate {
@@ -6121,7 +6226,7 @@ export interface OnlineSkillCandidate {
  *
  * Open a project using a user-selected directory path.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OpenProjectByPath".
  */
 export interface OpenProjectByPath {
@@ -6132,24 +6237,36 @@ export interface OpenProjectByPath {
  *
  * Restore a recorded project by ID and let the service revalidate its directory.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OpenProjectById".
  */
 export interface OpenProjectById {
   project_id: ProjectId53;
 }
 /**
+ * 首次打开时选择模型，已有会话保留选择。
+ *
+ * Choose the initial model without resetting existing sessions.
+ *
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
+ * via the `definition` "OpenTeamDesignParams".
+ */
+export interface OpenTeamDesignParams {
+  model_id: ModelId15;
+  task_id: TaskId11;
+}
+/**
  * 明确程序、项目与可选成员归属。
  *
  * Explicit program, project and optional member ownership.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OpenTerminalParams".
  */
 export interface OpenTerminalParams {
   cols?: Cols;
   command: Command3;
-  cwd?: Cwd2;
+  cwd?: Cwd3;
   member_id?: MemberId2;
   project_id: ProjectId54;
   rows?: Rows;
@@ -6160,7 +6277,7 @@ export interface OpenTerminalParams {
  *
  * Open an HTTP(S) source on a user click; the host also validates the URL.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OpenWebUrlParams".
  */
 export interface OpenWebUrlParams {
@@ -6171,25 +6288,26 @@ export interface OpenWebUrlParams {
  *
  * Public desktop-operation error without a raw exception traceback.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OperationError".
  */
 export interface OperationError {
   cause_code?: CauseCode3;
-  code: Code10;
-  diagnostic_id?: DiagnosticId4;
-  effect_state?: EffectState2;
-  message: Message15;
+  code: Code11;
+  diagnostic_id?: DiagnosticId6;
+  diagnostic_issue?: DiagnosticIssue3;
+  effect_state?: EffectState3;
+  message: Message16;
   phase?: Phase3;
   remediation: Remediation4;
-  tool_call_id?: ToolCallId5;
+  tool_call_id?: ToolCallId6;
 }
 /**
  * 保留部分成功与未执行项数量。
  *
  * Preserve partial success and unattempted counts.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OperationResult".
  */
 export interface OperationResult {
@@ -6202,20 +6320,20 @@ export interface OperationResult {
  *
  * Actual success or failure for one file.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "OperationItem".
  */
 export interface OperationItem {
   change_id?: ChangeId4;
-  code?: Code11;
-  message?: Message16;
+  code?: Code12;
+  message?: Message17;
   path: Path22;
   status: Status25;
 }
 /**
  * 导入仅解析预览，不隐式安装资源。 Parse imported text without installing resources.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ParseWorkStyle".
  */
 export interface ParseWorkStyle {
@@ -6224,7 +6342,7 @@ export interface ParseWorkStyle {
 /**
  * 导入文本由同一后端契约解析，不立即保存。 Parse imported text without persisting it.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ParseWorkflowParams".
  */
 export interface ParseWorkflowParams {
@@ -6235,7 +6353,7 @@ export interface ParseWorkflowParams {
  *
  * Exact patches across multiple files.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "PatchDocumentsParams".
  */
 export interface PatchDocumentsParams {
@@ -6247,7 +6365,7 @@ export interface PatchDocumentsParams {
  *
  * Replace unique current text; accept legacy hashes only.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "EditFileArgs".
  */
 export interface EditFileArgs {
@@ -6260,7 +6378,7 @@ export interface EditFileArgs {
  *
  * The host records provenance and request-boundary delivery state.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "PeerMessage".
  */
 export interface PeerMessage {
@@ -6268,14 +6386,14 @@ export interface PeerMessage {
   delivered_run_id?: DeliveredRunId;
   message_id: MessageId1;
   params: SendMessageParams;
-  task_id: TaskId11;
+  task_id: TaskId12;
 }
 /**
  * 普通交流不等同工作请求，不唤醒空闲会话。
  *
  * Ordinary messages are not work requests and never wake idle sessions.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SendMessageParams".
  */
 export interface SendMessageParams {
@@ -6289,7 +6407,7 @@ export interface SendMessageParams {
  *
  * Traceable incoming and outgoing ordinary messages.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "PeerMessagePage".
  */
 export interface PeerMessagePage {
@@ -6299,7 +6417,7 @@ export interface PeerMessagePage {
 /**
  * 预览回到所选请求之前的代码变化。 Preview code changes back to a selected request.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "PreviewCheckpointParams".
  */
 export interface PreviewCheckpointParams {
@@ -6311,7 +6429,7 @@ export interface PreviewCheckpointParams {
  *
  * Query project/session cards with damage counts.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ProgramPage".
  */
 export interface ProgramPage {
@@ -6325,7 +6443,7 @@ export interface ProgramPage {
  *
  * Address a managed program by identity only.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ProgramParams".
  */
 export interface ProgramParams {
@@ -6334,7 +6452,7 @@ export interface ProgramParams {
 /**
  * 从已消费序号后读取有界输出。 Read bounded output after an observed sequence.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ReadTerminalParams".
  */
 export interface ReadTerminalParams {
@@ -6346,7 +6464,7 @@ export interface ReadTerminalParams {
  *
  * Explicitly rebind an existing project identity, retaining sessions and memory.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RelocateProjectParams".
  */
 export interface RelocateProjectParams {
@@ -6358,7 +6476,7 @@ export interface RelocateProjectParams {
  *
  * Remove a reference without uninstalling its environment.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RemoveEnvironmentParams".
  */
 export interface RemoveEnvironmentParams {
@@ -6371,7 +6489,7 @@ export interface RemoveEnvironmentParams {
  *
  * Remove a template without changing existing tasks.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RemoveWorkflowParams".
  */
 export interface RemoveWorkflowParams {
@@ -6382,7 +6500,7 @@ export interface RemoveWorkflowParams {
  *
  * User rename, distinct from directory moves or membership changes.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RenameNavigationParams".
  */
 export interface RenameNavigationParams {
@@ -6394,7 +6512,7 @@ export interface RenameNavigationParams {
 /**
  * 更新实际 ConPTY 字符尺寸。 Resize the actual ConPTY character grid.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ResizeTerminalParams".
  */
 export interface ResizeTerminalParams {
@@ -6407,7 +6525,7 @@ export interface ResizeTerminalParams {
  *
  * Restore without automatically running a new prompt.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RestoreCheckpointParams".
  */
 export interface RestoreCheckpointParams {
@@ -6421,7 +6539,7 @@ export interface RestoreCheckpointParams {
 /**
  * 恢复范围、提示与来源。 Restore scope, limitations and provenance.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RestorePreview".
  */
 export interface RestorePreview {
@@ -6434,12 +6552,12 @@ export interface RestorePreview {
  *
  * Per-file preview/result with honest provenance.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RestoreFile".
  */
 export interface RestoreFile {
   diff?: Diff1;
-  message?: Message17;
+  message?: Message18;
   path: Path25;
   source: Source11;
   status: Status26;
@@ -6447,12 +6565,12 @@ export interface RestoreFile {
 /**
  * 逐文件结果与反向检查点，对话未成功回退时如实显示。 Per-file outcomes and undo checkpoint.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RestoreResult".
  */
 export interface RestoreResult {
   files: Files4;
-  message: Message18;
+  message: Message19;
   prompt?: Prompt2;
   rewound: Rewound;
   undo_checkpoint_id: UndoCheckpointId;
@@ -6462,7 +6580,7 @@ export interface RestoreResult {
  *
  * JSON-RPC notification requiring no reply, distinct from an identified request.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RpcNotification".
  */
 export interface RpcNotification {
@@ -6478,7 +6596,7 @@ export interface Params {
  *
  * JSON-RPC request with a correlation ID; method dispatch validates parameters further.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RpcRequest".
  */
 export interface RpcRequest {
@@ -6495,7 +6613,7 @@ export interface Params1 {
  *
  * Associate a request ID with its result, which still needs method-specific validation.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RpcSuccess".
  */
 export interface RpcSuccess {
@@ -6508,7 +6626,7 @@ export interface RpcSuccess {
  *
  * Associate a request with a public error, allowing null when its ID is unknown.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RpcFailure".
  */
 export interface RpcFailure {
@@ -6521,20 +6639,20 @@ export interface RpcFailure {
  *
  * Keep JSON-RPC numeric codes distinct from application error information.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "RpcError".
  */
 export interface RpcError {
-  code: Code12;
+  code: Code13;
   data: ErrorData;
-  message: Message19;
+  message: Message20;
 }
 /**
  * 保存时核对编辑器实际基线正文。
  *
  * Check the actual editor base text when saving.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SaveDocumentParams".
  */
 export interface SaveDocumentParams {
@@ -6548,7 +6666,7 @@ export interface SaveDocumentParams {
  *
  * Import references with revision checks.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SaveEnvironmentParams".
  */
 export interface SaveEnvironmentParams {
@@ -6563,7 +6681,7 @@ export interface SaveEnvironmentParams {
  *
  * Save editable candidate content.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SaveEvolutionCandidate".
  */
 export interface SaveEvolutionCandidate {
@@ -6579,7 +6697,7 @@ export interface SaveEvolutionCandidate {
  *
  * Minimal feedback needs a project and text.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SaveEvolutionFeedback".
  */
 export interface SaveEvolutionFeedback {
@@ -6597,7 +6715,7 @@ export interface SaveEvolutionFeedback {
  *
  * Affect future launches without restarting programs.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SaveExecutionSettings".
  */
 export interface SaveExecutionSettings {
@@ -6610,7 +6728,7 @@ export interface SaveExecutionSettings {
  *
  * Save project registrations for subsequent queries.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SaveLanguageServers".
  */
 export interface SaveLanguageServers {
@@ -6623,22 +6741,41 @@ export interface SaveLanguageServers {
  *
  * Explicit server registration or update.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SaveMcpParams".
  */
 export interface SaveMcpParams {
   clear_credential?: ClearCredential;
+  connection_values?: McpConnectionValues | null;
   credential_value?: CredentialValue;
   project_id?: ProjectId62;
   server: McpServer;
   session_id?: SessionId56;
 }
 /**
+ * 仅写入的连接变量，普通配置只存名称。
+ *
+ * Write-only connection values; public configuration stores names only.
+ *
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
+ * via the `definition` "McpConnectionValues".
+ */
+export interface McpConnectionValues {
+  env?: Env;
+  headers?: Headers1;
+}
+export interface Env {
+  [k: string]: string;
+}
+export interface Headers1 {
+  [k: string]: string;
+}
+/**
  * 显式保存知识，可更新已知条目。
  *
  * Explicit knowledge save or update.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SaveMemoryParams".
  */
 export interface SaveMemoryParams {
@@ -6651,7 +6788,7 @@ export interface SaveMemoryParams {
  *
  * Editable knowledge; the host supplies provenance.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "MemoryFields".
  */
 export interface MemoryFields {
@@ -6673,7 +6810,7 @@ export interface MemoryFields {
 /**
  * 显式创建或修改用户 / 项目资源。 Explicit user/project resource edits.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SaveSkillParams".
  */
 export interface SaveSkillParams {
@@ -6690,19 +6827,19 @@ export interface SaveSkillParams {
  *
  * Save reading position without replacing team edits or session bindings.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SaveSpaceLayoutParams".
  */
 export interface SaveSpaceLayoutParams {
   layout: SpaceLayout;
-  task_id: TaskId12;
+  task_id: TaskId13;
 }
 /**
  * 与团队草稿独立保存的图展示设置。
  *
  * Graph presentation settings saved separately from team drafts.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpaceLayout".
  */
 export interface SpaceLayout {
@@ -6714,7 +6851,7 @@ export interface SpaceLayout {
  *
  * Graph reading position and zoom.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpaceViewport".
  */
 export interface SpaceViewport {
@@ -6727,18 +6864,31 @@ export interface SpaceViewport {
  *
  * Save a draft; a null revision creates the first snapshot.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SaveSpaceParams".
  */
 export interface SaveSpaceParams {
   config: SpaceConfig;
   expected_revision: ExpectedRevision8;
-  task_id: TaskId13;
+  task_id: TaskId14;
+}
+/**
+ * 保存未发送输入或当前图，不创建成员。
+ *
+ * Save unsent input or the current graph without creating members.
+ *
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
+ * via the `definition` "SaveTeamDesignParams".
+ */
+export interface SaveTeamDesignParams {
+  config?: SpaceConfig | null;
+  input_text?: InputText;
+  task_id: TaskId15;
 }
 /**
  * 保存或更新一个团队模板。 Save or update one team template.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SaveTeamTemplateParams".
  */
 export interface SaveTeamTemplateParams {
@@ -6752,19 +6902,20 @@ export interface SaveTeamTemplateParams {
  *
  * Model-authored editable team without session creation.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SaveTeamDraftArgs".
  */
 export interface SaveTeamDraftArgs {
   config: SpaceConfig;
   initial_work_items?: InitialWorkItems1;
+  objective?: Objective5;
 }
 /**
  * 编辑任务定义，版本冲突保留草稿。
  *
  * Edit task definitions with draft-preserving revisions.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SaveWorkGraphParams".
  */
 export interface SaveWorkGraphParams {
@@ -6772,7 +6923,7 @@ export interface SaveWorkGraphParams {
   items: Items4;
   operation_id: OperationId17;
   owner_changes?: OwnerChanges;
-  task_id: TaskId14;
+  task_id: TaskId16;
 }
 export interface OwnerChanges {
   /**
@@ -6784,7 +6935,7 @@ export interface OwnerChanges {
 /**
  * 保存用户编辑的组合蓝图。 Save an edited composite blueprint.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SaveWorkStyle".
  */
 export interface SaveWorkStyle {
@@ -6795,7 +6946,7 @@ export interface SaveWorkStyle {
  *
  * Save or copy one template.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SaveWorkflowParams".
  */
 export interface SaveWorkflowParams {
@@ -6806,18 +6957,18 @@ export interface SaveWorkflowParams {
  *
  * Select a session's next model without creating sessions or sending requests.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SelectSessionModelParams".
  */
 export interface SelectSessionModelParams {
-  model_id: ModelId15;
+  model_id: ModelId16;
   operation_id: OperationId18;
   session_id: SessionId59;
 }
 /**
  * 会话引用不复制正文。 Session references do not copy bodies.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SelectSkillsParams".
  */
 export interface SelectSkillsParams {
@@ -6826,11 +6977,24 @@ export interface SelectSkillsParams {
   session_id?: SessionId60;
 }
 /**
+ * 在专用会话讨论或追加要求。
+ *
+ * Discuss or steer in the dedicated session.
+ *
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
+ * via the `definition` "SendTeamDesignParams".
+ */
+export interface SendTeamDesignParams {
+  content: Content18;
+  operation_id: OperationId19;
+  task_id: TaskId17;
+}
+/**
  * 唯一支持的后端事件通知形状。
  *
  * The sole supported backend notification envelope.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SessionEventNotification".
  */
 export interface SessionEventNotification {
@@ -6843,7 +7007,7 @@ export interface SessionEventNotification {
  *
  * Lightweight notifications: resync durable changes and order transient text deltas.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SessionSignal".
  */
 export interface SessionSignal {
@@ -6862,7 +7026,7 @@ export interface SessionSignal {
  *
  * Cursor page of project sessions.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SessionPage".
  */
 export interface SessionPage {
@@ -6876,7 +7040,7 @@ export interface SessionPage {
  *
  * Constrain session identity.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SessionParams".
  */
 export interface SessionParams {
@@ -6887,7 +7051,7 @@ export interface SessionParams {
  *
  * Bounded snapshot with history watermark and live preview.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SessionView".
  */
 export interface SessionView {
@@ -6908,16 +7072,17 @@ export interface SessionView {
  *
  * Explicitly projected public history record.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ChatEntry".
  */
 export interface ChatEntry {
   abandoned?: Abandoned;
   call: ToolCall | null;
   goal_result?: GoalView | null;
+  input_status?: InputStatus;
   kind: Kind25;
   message_id: MessageId3;
-  model_id?: ModelId16;
+  model_id?: ModelId17;
   partial_text?: PartialText;
   program_result?: ProgramView | null;
   reasoning?: Reasoning;
@@ -6930,38 +7095,38 @@ export interface ChatEntry {
 /**
  * 完整参数对象，仍需工具权限校验。 Complete arguments still requiring tool policy checks.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ToolCall".
  */
 export interface ToolCall {
   arguments: JsonObject;
   name: Name21;
-  tool_call_id: ToolCallId6;
+  tool_call_id: ToolCallId7;
 }
 /**
  * 按调用标识关联可公开工具结果。 Associate public tool output with its call ID.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "ToolResult".
  */
 export interface ToolResult {
-  content: Content18;
+  content: Content19;
   is_error: IsError;
-  tool_call_id: ToolCallId7;
+  tool_call_id: ToolCallId8;
 }
 /**
  * 原生搜索结果；模型总结和实际来源分别呈现。
  *
  * Native search results distinguish model summaries from actual sources.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WebSearchResult".
  */
 export interface WebSearchResult {
   actual_queries: ActualQueries;
   archive_id?: ArchiveId1;
   kind: Kind26;
-  model_id: ModelId17;
+  model_id: ModelId18;
   query: Query7;
   retrieved_at: RetrievedAt;
   search_uses: SearchUses;
@@ -6975,7 +7140,7 @@ export interface WebSearchResult {
  *
  * Retain actual sources and available excerpts, excluding opaque provider fields.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WebSource".
  */
 export interface WebSource {
@@ -6989,12 +7154,12 @@ export interface WebSource {
  *
  * A public text excerpt and retrieval status, without claiming script execution.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WebPageResult".
  */
 export interface WebPageResult {
   archive_id?: ArchiveId2;
-  content: Content19;
+  content: Content20;
   content_type: ContentType;
   download_truncated: DownloadTruncated;
   kind: Kind27;
@@ -7011,7 +7176,7 @@ export interface WebPageResult {
 /**
  * 轻量目录与明确的局部错误。 Lightweight catalog with explicit local errors.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SkillCatalog".
  */
 export interface SkillCatalog {
@@ -7025,17 +7190,17 @@ export interface SkillCatalog {
 /**
  * 资源详情与原文。 Resource details and original text.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SkillDocument".
  */
 export interface SkillDocument {
-  content: Content20;
+  content: Content21;
   item: SkillItem;
 }
 /**
  * 指定项目与可选会话。 Identify a project and optional session.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SkillParams".
  */
 export interface SkillParams {
@@ -7045,7 +7210,7 @@ export interface SkillParams {
 /**
  * 读取一项原始文本。 Read one original resource.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SkillReadParams".
  */
 export interface SkillReadParams {
@@ -7056,7 +7221,7 @@ export interface SkillReadParams {
 /**
  * 用户导航动作。 User navigation actions.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SkillSiteControl".
  */
 export interface SkillSiteControl {
@@ -7068,7 +7233,7 @@ export interface SkillSiteControl {
  *
  * Native view bounds and owner for navigation cleanup.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SkillSiteLayout".
  */
 export interface SkillSiteLayout {
@@ -7082,7 +7247,7 @@ export interface SkillSiteLayout {
 /**
  * 仅返回来源链接，不发送整页正文。 Return source links, not the entire page body.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SkillSiteSources".
  */
 export interface SkillSiteSources {
@@ -7092,7 +7257,7 @@ export interface SkillSiteSources {
 /**
  * 用户当前页面中的可导入来源。 An import source on the user's current page.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SkillSiteSource".
  */
 export interface SkillSiteSource {
@@ -7104,7 +7269,7 @@ export interface SkillSiteSource {
  *
  * Page facts, not navigation requests claimed as completion.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SkillSiteState".
  */
 export interface SkillSiteState {
@@ -7120,28 +7285,28 @@ export interface SkillSiteState {
  *
  * Read older history by actual message or round identity.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpaceChatPageParams".
  */
 export interface SpaceChatPageParams {
   before_id?: BeforeId;
   limit?: Limit14;
-  task_id: TaskId15;
+  task_id: TaskId18;
 }
 /**
  * 普通消息仅路由给明确接收成员。
  *
  * Route ordinary messages only to selected recipients.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpaceChatParams".
  */
 export interface SpaceChatParams {
-  content: Content21;
+  content: Content22;
   mode?: Mode13;
-  operation_id: OperationId19;
+  operation_id: OperationId20;
   target_member_ids?: TargetMemberIds;
-  task_id: TaskId16;
+  task_id: TaskId19;
   work_ids?: WorkIds;
 }
 /**
@@ -7149,7 +7314,7 @@ export interface SpaceChatParams {
  *
  * Message and round history with real execution projections.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpaceChatView".
  */
 export interface SpaceChatView {
@@ -7158,14 +7323,14 @@ export interface SpaceChatView {
   next_before?: NextBefore;
   outputs?: Outputs;
   rounds?: Rounds;
-  task_id: TaskId17;
+  task_id: TaskId20;
 }
 /**
  * 真实生成请求及待用户采用的草稿。
  *
  * Real generation request and a draft awaiting user adoption.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TeamGeneration".
  */
 export interface TeamGeneration {
@@ -7179,11 +7344,11 @@ export interface TeamGeneration {
 /**
  * 持久用户消息与接收对象快照。 Durable user message and recipient snapshots.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpaceChatMessage".
  */
 export interface SpaceChatMessage {
-  content: Content22;
+  content: Content23;
   created_at: CreatedAt13;
   executions?: Executions;
   message_id: MessageId4;
@@ -7196,15 +7361,15 @@ export interface SpaceChatMessage {
  *
  * Host-recorded delivery and execution references.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpaceExecution".
  */
 export interface SpaceExecution {
   error?: Error7;
   goal_id?: GoalId6;
   member_id: MemberId3;
-  operation_id: OperationId20;
-  request_id?: RequestId2;
+  operation_id: OperationId21;
+  request_id?: RequestId3;
   run_id?: RunId15;
   session_id: SessionId65;
 }
@@ -7213,7 +7378,7 @@ export interface SpaceExecution {
  *
  * Public answers from exact runs, with internals in Trace.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpacePublicOutput".
  */
 export interface SpacePublicOutput {
@@ -7236,7 +7401,7 @@ export interface SpacePublicOutput {
  *
  * A space round references existing goals without another loop.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpaceRound".
  */
 export interface SpaceRound {
@@ -7244,7 +7409,7 @@ export interface SpaceRound {
   created_at: CreatedAt14;
   executions?: Executions1;
   limits?: RunLimits | null;
-  objective: Objective5;
+  objective: Objective6;
   round_id: RoundId;
   stopped?: Stopped;
   work_ids?: WorkIds2;
@@ -7254,18 +7419,18 @@ export interface SpaceRound {
  *
  * Lookup a task space without migrating old tasks.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpaceParams".
  */
 export interface SpaceParams {
-  task_id: TaskId18;
+  task_id: TaskId21;
 }
 /**
  * 缺失空间和已保存空间分别表达。
  *
  * Distinguish absent spaces from durable snapshots.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpaceResult".
  */
 export interface SpaceResult {
@@ -7276,7 +7441,7 @@ export interface SpaceResult {
  *
  * Space snapshot with bindings preserved by config saves.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpaceView".
  */
 export interface SpaceView {
@@ -7287,7 +7452,7 @@ export interface SpaceView {
   layout?: SpaceLayout;
   project_id: ProjectId67;
   revision: Revision8;
-  task_id: TaskId19;
+  task_id: TaskId22;
   updated_at: UpdatedAt13;
 }
 /**
@@ -7295,7 +7460,7 @@ export interface SpaceView {
  *
  * Current session and retained history with explicit errors.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpaceBinding".
  */
 export interface SpaceBinding {
@@ -7309,25 +7474,25 @@ export interface SpaceBinding {
  *
  * Explicitly assemble member sessions without model calls.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpaceStartParams".
  */
 export interface SpaceStartParams {
-  task_id: TaskId20;
+  task_id: TaskId23;
 }
 /**
  * 幂等操作 ID 独立于 RPC ID。
  *
  * Idempotent operation identity is separate from RPC identity.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "StartRunParams".
  */
 export interface StartRunParams {
   attachment_ids?: AttachmentIds1;
   limits: RunLimits | null;
   mode?: Mode15;
-  operation_id: OperationId21;
+  operation_id: OperationId22;
   plan_document?: PlanDocument1;
   prompt: Prompt3;
   session_id: SessionId68;
@@ -7337,24 +7502,37 @@ export interface StartRunParams {
  *
  * Explicitly start a cooperative goal via the receiver.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "StartSpaceRoundParams".
  */
 export interface StartSpaceRoundParams {
   budget?: GoalBudget;
   limits?: RunLimits | null;
-  objective: Objective6;
-  operation_id: OperationId22;
+  objective: Objective7;
+  operation_id: OperationId23;
   target_member_ids?: TargetMemberIds2;
-  task_id: TaskId21;
+  task_id: TaskId24;
   work_ids?: WorkIds3;
+}
+/**
+ * 确认当前图并启动，操作身份用于避免重复工作。
+ *
+ * Confirm the graph and start with an idempotent operation identity.
+ *
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
+ * via the `definition` "StartTeamDesignParams".
+ */
+export interface StartTeamDesignParams {
+  config: SpaceConfig;
+  operation_id: OperationId24;
+  task_id: TaskId25;
 }
 /**
  * 用户选择工作范围与执行方式。
  *
  * Explicitly select work scope and execution mode.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "StartWorkGraphParams".
  */
 export interface StartWorkGraphParams {
@@ -7362,8 +7540,8 @@ export interface StartWorkGraphParams {
   continuous?: Continuous;
   instruction?: Instruction2;
   member_id: MemberId6;
-  operation_id: OperationId23;
-  task_id: TaskId22;
+  operation_id: OperationId25;
+  task_id: TaskId26;
   work_ids: WorkIds4;
 }
 /**
@@ -7371,7 +7549,7 @@ export interface StartWorkGraphParams {
  *
  * Distinguish saved next-launch paths from the current effective data root.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "StartupPaths".
  */
 export interface StartupPaths {
@@ -7385,7 +7563,7 @@ export interface StartupPaths {
  *
  * Describe next-launch directories without migrating data or registering projects.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "StartupPathsParams".
  */
 export interface StartupPathsParams {
@@ -7397,20 +7575,20 @@ export interface StartupPathsParams {
  *
  * Stop a member or round without retrying failures.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "StopSpaceRoundParams".
  */
 export interface StopSpaceRoundParams {
   member_id?: MemberId7;
   round_id?: RoundId1;
-  task_id: TaskId23;
+  task_id: TaskId27;
 }
 /**
  * 按项目分页；损坏任务单独计数，不冒充空任务。
  *
  * Project page with explicit unreadable records.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TaskPage".
  */
 export interface TaskPage {
@@ -7423,31 +7601,64 @@ export interface TaskPage {
  *
  * Navigation metadata; shared details load on demand.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TaskSummary".
  */
 export interface TaskSummary {
   project_id: ProjectId68;
   revision: Revision9;
   status: Status28;
-  task_id: TaskId24;
+  task_id: TaskId28;
   title: Title21;
 }
 /**
  * 任务查询身份。 Task lookup identity.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TaskParams".
  */
 export interface TaskParams {
-  task_id: TaskId25;
+  task_id: TaskId29;
+}
+/**
+ * 保存设计关联，不复制会话日志。
+ *
+ * Persist design associations without duplicating session logs.
+ *
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
+ * via the `definition` "TeamDesignView".
+ */
+export interface TeamDesignView {
+  config?: SpaceConfig | null;
+  initial_model_id: InitialModelId1;
+  input_text?: InputText1;
+  launches?: Launches;
+  objective?: Objective9;
+  revision?: Revision10;
+  session_id: SessionId69;
+  task_id: TaskId30;
+}
+/**
+ * 保留逐步启动事实和局部失败。
+ *
+ * Retain launch steps and partial failures.
+ *
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
+ * via the `definition` "TeamDesignLaunch".
+ */
+export interface TeamDesignLaunch {
+  config: SpaceConfig;
+  error?: Error11;
+  objective: Objective8;
+  operation_id: OperationId26;
+  stage?: Stage1;
 }
 /**
  * 可分享的团队配置快照，不包含实际会话绑定。
  *
  * Shareable team configuration without actual session bindings.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TeamTemplate".
  */
 export interface TeamTemplate {
@@ -7463,16 +7674,16 @@ export interface TeamTemplate {
  *
  * UTF-8 JSON text for explicit user export.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TeamTemplateExport".
  */
 export interface TeamTemplateExport {
-  content: Content23;
+  content: Content24;
 }
 /**
  * 按稳定身份读取模板。 Read a template by stable identity.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TeamTemplateParams".
  */
 export interface TeamTemplateParams {
@@ -7481,7 +7692,7 @@ export interface TeamTemplateParams {
 /**
  * 本机模板目录。 Local team template catalog.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TeamTemplatesResult".
  */
 export interface TeamTemplatesResult {
@@ -7492,13 +7703,13 @@ export interface TeamTemplatesResult {
  *
  * Explicitly take over or return member-session control.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TerminalControlParams".
  */
 export interface TerminalControlParams {
   controller: Controller;
   member_id?: MemberId8;
-  session_id?: SessionId69;
+  session_id?: SessionId70;
   terminal_id: TerminalId2;
 }
 /**
@@ -7506,13 +7717,13 @@ export interface TerminalControlParams {
  *
  * Project terminals and optional capability availability.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TerminalPage".
  */
 export interface TerminalPage {
   active_count: ActiveCount1;
   available: Available3;
-  message: Message20;
+  message: Message21;
   terminals: Terminals;
   unavailable_count: UnavailableCount6;
 }
@@ -7521,36 +7732,36 @@ export interface TerminalPage {
  *
  * Real state without prompt-based success guesses.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TerminalSummary".
  */
 export interface TerminalSummary {
-  code?: Code13;
+  code?: Code14;
   cols: Cols2;
   command: Command4;
   controller: Controller1;
   created_at: CreatedAt16;
-  cwd: Cwd3;
+  cwd: Cwd4;
   dropped_bytes?: DroppedBytes1;
   environment_name: EnvironmentName1;
   exit_code: ExitCode1;
   finished_at: FinishedAt6;
   member_id: MemberId9;
-  message?: Message21;
+  message?: Message22;
   mode?: Mode16;
   pid: Pid1;
   project_id: ProjectId69;
   rows: Rows2;
   run_id: RunId17;
-  session_id: SessionId70;
+  session_id: SessionId71;
   status: Status29;
   terminal_id: TerminalId3;
-  tool_call_id: ToolCallId8;
+  tool_call_id: ToolCallId9;
 }
 /**
  * 使用终端身份而非任意 PID。 Address an owned terminal, never an arbitrary PID.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TerminalParams".
  */
 export interface TerminalParams {
@@ -7559,7 +7770,7 @@ export interface TerminalParams {
 /**
  * 公开状态与按帧分页的输出。 Public state and frame-paged output.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TerminalView".
  */
 export interface TerminalView {
@@ -7571,7 +7782,7 @@ export interface TerminalView {
 /**
  * 顺序编号的合并 PTY 输出，不冒充独立 stderr。 Ordered merged PTY output.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TerminalChunk".
  */
 export interface TerminalChunk {
@@ -7583,7 +7794,7 @@ export interface TerminalChunk {
  *
  * Copyable public detail chunk, excluding native provider state.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TraceDetail".
  */
 export interface TraceDetail {
@@ -7598,21 +7809,22 @@ export interface TraceDetail {
 /**
  * 轻量轨迹行及精确关联。 Compact trace row with exact associations.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TraceItem".
  */
 export interface TraceItem {
   at: At4;
+  diagnostic_ids?: DiagnosticIds;
   duration_ms?: DurationMs;
   goal_id?: GoalId7;
   is_error?: IsError1;
   kind: Kind28;
-  request_id?: RequestId3;
+  request_id?: RequestId4;
   run_id: RunId18;
   seq: Seq11;
   status: Status30;
   title: Title22;
-  tool_call_id?: ToolCallId9;
+  tool_call_id?: ToolCallId10;
   tool_name?: ToolName1;
   updated_seq?: UpdatedSeq;
   usage?: TokenUsage | null;
@@ -7620,7 +7832,7 @@ export interface TraceItem {
 /**
  * 来自已保存结果的成果引用。 Artifact references from saved results.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TraceLink".
  */
 export interface TraceLink {
@@ -7631,19 +7843,19 @@ export interface TraceLink {
 /**
  * 通过真实序号分段读取详情。 Read detail chunks by real fact identity.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TraceDetailParams".
  */
 export interface TraceDetailParams {
   offset?: Offset8;
   part?: Part;
   seq: Seq13;
-  session_id: SessionId71;
+  session_id: SessionId72;
 }
 /**
  * 轨迹摘要页，不携带全部工具正文。 Trace summaries without full tool bodies.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TracePage".
  */
 export interface TracePage {
@@ -7658,7 +7870,7 @@ export interface TracePage {
 /**
  * 按运行与事实游标筛选轨迹。 Filter trace by run and fact cursor.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "TraceParams".
  */
 export interface TraceParams {
@@ -7667,7 +7879,7 @@ export interface TraceParams {
   job_offset?: JobOffset;
   limit?: Limit15;
   run_id?: RunId19;
-  session_id: SessionId72;
+  session_id: SessionId73;
   tool?: Tool;
   watch_seqs?: WatchSeqs;
 }
@@ -7676,11 +7888,11 @@ export interface TraceParams {
  *
  * Allow saving only one supported default model ID.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "UpdateConfigParams".
  */
 export interface UpdateConfigParams {
-  model_id: ModelId18;
+  model_id: ModelId19;
   run?: RunLimits | null;
 }
 /**
@@ -7688,43 +7900,43 @@ export interface UpdateConfigParams {
  *
  * Single-writer updates to optional work ownership without changing goal admission.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "UpdateSpaceWorkParams".
  */
 export interface UpdateSpaceWorkParams {
   action: Action10;
   member_id?: MemberId10;
-  operation_id: OperationId24;
+  operation_id: OperationId27;
   result?: Result3;
   run_id?: RunId20;
   status?: Status31;
-  task_id: TaskId26;
+  task_id: TaskId31;
   work_id: WorkId3;
 }
 /**
  * 以版本和操作 ID 防止旧页面覆盖新结论。 Guard edits with a revision and operation identity.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "UpdateTaskParams".
  */
 export interface UpdateTaskParams {
   expected_revision: ExpectedRevision11;
   fields: TaskFields;
-  operation_id: OperationId25;
-  task_id: TaskId27;
+  operation_id: OperationId28;
+  task_id: TaskId32;
 }
 /**
  * 用户修改任务流程；复用任务版本，不改运行报告。
  *
  * Edit task workflow using task revisions.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "UpdateTaskWorkflowParams".
  */
 export interface UpdateTaskWorkflowParams {
   expected_revision: ExpectedRevision12;
-  operation_id: OperationId26;
-  task_id: TaskId28;
+  operation_id: OperationId29;
+  task_id: TaskId33;
   workflow: TaskWorkflow | null;
 }
 /**
@@ -7732,7 +7944,7 @@ export interface UpdateTaskWorkflowParams {
  *
  * Definitions, progress and existing execution references.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkGraphView".
  */
 export interface WorkGraphView {
@@ -7748,7 +7960,7 @@ export interface WorkGraphView {
  *
  * Catalog with project default and explicit issues.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkStyleCatalog".
  */
 export interface WorkStyleCatalog {
@@ -7759,7 +7971,7 @@ export interface WorkStyleCatalog {
 /**
  * 显式设置或清除未来任务默认。 Set or clear the default for future tasks.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkStyleDefault".
  */
 export interface WorkStyleDefault {
@@ -7769,7 +7981,7 @@ export interface WorkStyleDefault {
 /**
  * 全局目录可选附带项目默认。 Global catalog optionally includes a project default.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkStyleQuery".
  */
 export interface WorkStyleQuery {
@@ -7780,13 +7992,13 @@ export interface WorkStyleQuery {
  *
  * Stop or continue identified internal work.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkerControlParams".
  */
 export interface WorkerControlParams {
   action: Action11;
   prompt?: Prompt4;
-  session_id: SessionId73;
+  session_id: SessionId74;
   worker_id: WorkerId;
 }
 /**
@@ -7794,7 +8006,7 @@ export interface WorkerControlParams {
  *
  * Worker cards, excluded from the formal session tree.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkerPage".
  */
 export interface WorkerPage {
@@ -7806,13 +8018,13 @@ export interface WorkerPage {
  *
  * Internal identity, original assignment and result references.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkerRecord".
  */
 export interface WorkerRecord {
   active_seconds?: ActiveSeconds1;
   assignment: SpawnWorkerArgs;
-  code?: Code14;
+  code?: Code15;
   created_at: CreatedAt17;
   failure?: WorkerFailure | null;
   goal_id: GoalId8;
@@ -7821,7 +8033,7 @@ export interface WorkerRecord {
   last_seq?: LastSeq;
   last_tool?: LastTool;
   last_tool_status?: LastToolStatus;
-  model_id: ModelId19;
+  model_id: ModelId20;
   model_progress?: ModelProgress | null;
   owner_run_id: OwnerRunId;
   owner_session_id: OwnerSessionId;
@@ -7829,7 +8041,7 @@ export interface WorkerRecord {
   requests?: Requests7;
   result?: Result4;
   run_id?: RunId21;
-  session_id: SessionId74;
+  session_id: SessionId75;
   status: Status32;
   tools?: Tools3;
   updated_at: UpdatedAt15;
@@ -7840,13 +8052,14 @@ export interface WorkerRecord {
  *
  * One bounded independent assignment, without benefit scores.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "SpawnWorkerArgs".
  */
 export interface SpawnWorkerArgs {
   context_mode?: ContextMode1;
   mode?: Mode17;
-  objective: Objective7;
+  name?: Name23;
+  objective: Objective10;
   role?: Role4;
   scope?: Scope20;
 }
@@ -7855,14 +8068,14 @@ export interface SpawnWorkerArgs {
  *
  * Preserve the child run's actual failure separately from partial output.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkerFailure".
  */
 export interface WorkerFailure {
   cause_code?: CauseCode4;
-  code: Code15;
-  diagnostic_id?: DiagnosticId5;
-  message: Message22;
+  code: Code16;
+  diagnostic_id?: DiagnosticId7;
+  message: Message23;
   phase?: Phase4;
 }
 /**
@@ -7870,18 +8083,18 @@ export interface WorkerFailure {
  *
  * Worker access within an owning user session.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkerSessionParams".
  */
 export interface WorkerSessionParams {
-  session_id: SessionId75;
+  session_id: SessionId76;
 }
 /**
  * 模板目录与单独的加载问题。
  *
  * Template catalog and optional loading issues.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WorkflowCatalog".
  */
 export interface WorkflowCatalog {
@@ -7893,7 +8106,7 @@ export interface WorkflowCatalog {
  *
  * Write to the current controller's real input channel.
  *
- * This interface was referenced by `ProtocolV13`'s JSON-Schema
+ * This interface was referenced by `ProtocolV15`'s JSON-Schema
  * via the `definition` "WriteTerminalParams".
  */
 export interface WriteTerminalParams {

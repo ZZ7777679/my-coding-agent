@@ -10,7 +10,7 @@ import httpx
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
 from my_agent.credentials import ResolvedCredential
-from my_agent.errors import AgentError, http_error_code
+from my_agent.errors import AgentError, http_error_code, redact_error_text
 from my_agent.models.endpoints import current_base_url, messages_url
 from my_agent.models.failures import ModelResponseError, request_failure
 from my_agent.models.http import ModelHttpPool, public_request_headers
@@ -373,7 +373,17 @@ class GoClient:
         except (TimeoutError, httpx.HTTPError) as exc:
             failure = request_failure(exc, timing, limits.request_timeout_seconds)
             code = failure.code
-            raise buffered_turn.failure(failure.code, failure.message, phase=failure.phase) from exc
+            # 转换为带用量的错误时保留诊断和建议，不再丢掉传输层已确认的事实。
+            # Keep transport diagnostics and guidance when adding partial usage to the failure.
+            raise ModelResponseError(
+                failure.code,
+                failure.message,
+                buffered_turn.usage,
+                buffered_turn.finish_reason,
+                phase=failure.phase,
+                remediation=failure.remediation,
+                details=failure.details,
+            ) from exc
         except (ValidationError, ValueError, UnicodeError) as exc:
             code = "MODEL_PROTOCOL"
             raise buffered_turn.failure(
@@ -400,8 +410,35 @@ class GoClient:
 
         Preserve rejection categories and redacted parameter reasons, never raw bodies or auth text.
         """
-        kind, detail, parameter = await self._error_details(response)
+        read_error: httpx.HTTPError | None = None
+        try:
+            kind, detail, parameter, truncated = await self._error_details(response)
+        except httpx.HTTPError as exc:
+            # 头部已经给出拒绝状态；正文断流不能把它改写为一个无状态的连接错误。
+            # Headers already establish rejection; a body read failure must not erase that status.
+            read_error = exc
+            kind, detail, parameter, truncated = None, None, None, False
+        try:
+            endpoint = str(response.request.url.copy_with(query=None))
+        except RuntimeError:
+            endpoint = None  # 离线构造的响应可能无请求。 Synthetic responses may lack a request.
         code = http_error_code(response.status_code, kind)
+        details: JsonObject = {
+            "http_status": response.status_code,
+            "service_code": kind,
+            "service_message": detail,
+            "parameter": parameter,
+            "response_truncated": truncated,
+            "request_id": self._redact_error_text(
+                response.headers.get("x-request-id", response.headers.get("request-id", ""))
+            ),
+            "operation": operation,
+            "endpoint": endpoint,
+        }
+        if read_error is not None:
+            details["body_read_error"] = self._redact_error_text(
+                f"{type(read_error).__name__}: {read_error}"
+            )
         if kind == "api_key_expired" and response.status_code == 401:
             return AgentError(
                 code,
@@ -409,6 +446,7 @@ class GoClient:
                 "请在 OpenCode Console 新建 API key，更新应用使用的凭据后重试。",
                 cause_code=kind,
                 phase="response_headers",
+                details=details,
             )
         message = f"{operation}失败（HTTP {response.status_code}）。"
         if kind:
@@ -416,8 +454,14 @@ class GoClient:
         if parameter:
             message += f" 参数：{parameter}。"
         if detail:
-            message += f" 服务说明：{detail}"
-        return AgentError(
+            message += f" 服务说明：{detail[:512]}" + (
+                "…（完整已获取说明见诊断）" if len(detail) > 512 else ""
+            )
+        if truncated:
+            message += " 错误响应超过诊断读取范围，未取得完整正文。"
+        if read_error is not None:
+            message += " 已收到拒绝状态，但错误正文读取失败，具体原因见诊断。"
+        error = AgentError(
             code,
             message,
             "检查服务指出的参数或请求格式后显式重试。"
@@ -425,11 +469,15 @@ class GoClient:
             else "检查认证、Go 额度或服务状态后显式重试。",
             cause_code=kind,
             phase="response_headers",
+            details=details,
         )
+        if read_error is not None:
+            error.__cause__ = read_error
+        return error
 
     async def _error_details(
         self, response: httpx.Response
-    ) -> tuple[str | None, str | None, str | None]:
+    ) -> tuple[str | None, str | None, str | None, bool]:
         """只读错误对象的类别／参数／说明；长度限制仅约束诊断文本。
 
         Read only error category, parameter and message; size bounds apply solely to diagnostics.
@@ -437,31 +485,46 @@ class GoClient:
         raw = bytearray()
         async for chunk in response.aiter_bytes(4096):
             if len(raw) + len(chunk) > 16384:
-                return None, None, None
+                return None, None, None, True
             raw.extend(chunk)
         try:
             value = json.loads(raw)
             error = value.get("error") if isinstance(value, dict) else None
             if isinstance(error, dict) and response.status_code == 401:
                 message = error.get("message")
-                # 仅识别已观察到的过期说明，不把服务商响应原文带入 UI。
-                # Recognize the observed expiry notice without forwarding provider text to the UI.
+                # 仅按已观察到的明确过期说明分类，正文仍需脱敏。
+                # Classify only the observed explicit expiry notice; sanitize its text.
                 if isinstance(message, str) and message.startswith("This API key has expired."):
-                    return "api_key_expired", None, None
+                    return "api_key_expired", self._redact_error_text(message), None, False
             kind = error.get("type", error.get("code")) if isinstance(error, dict) else None
             parameter = error.get("param") if isinstance(error, dict) else None
-            message = error.get("message") if isinstance(error, dict) else None
-            # 认证／HTML／任意整份输入不回显，仅对参数拒绝保留错误说明。
-            # Omit auth bodies, HTML and input objects; detail is for request rejection only.
+            message = (
+                error.get("message")
+                if isinstance(error, dict)
+                else value.get("message")
+                if isinstance(value, dict)
+                else None
+            )
+            # 所有 HTTP 拒绝都保留脱敏说明，不保存完整输入／HTML 响应。
+            # Retain sanitized reasons for every HTTP rejection, not complete inputs or HTML.
             return (
                 self._error_identifier(kind),
-                self._redact_error_text(message)
-                if response.status_code in {400, 422} and isinstance(message, str)
-                else None,
+                self._redact_error_text(message) if isinstance(message, str) else None,
                 self._error_identifier(parameter),
+                False,
             )
         except ValueError:
-            return None, None, None
+            # 普通文本错误可帮助定位网关拒绝；HTML 仅报告格式，避免整页进入诊断。
+            # Plain-text errors can explain gateway rejection; HTML remains a format observation.
+            text = raw.decode("utf-8", errors="replace").strip()
+            return (
+                None,
+                self._redact_error_text(text)
+                if text and not text.startswith("<")
+                else "服务未返回可解析的 JSON 错误说明。",
+                None,
+                False,
+            )
 
     def _error_identifier(self, value: object) -> str | None:
         """错误类别和字段名只接收短标识，凭据不成为诊断身份。
@@ -475,24 +538,12 @@ class GoClient:
         return value if self._redact_error_text(value) == value else None
 
     def _redact_error_text(self, value: str) -> str:
-        """清除当前模型凭据与常见认证值，再限制公开错误说明长度。
+        """清除当前模型凭据与常见认证值，保留已获取说明。
 
-        Remove the current model credential and common auth values before bounding public detail.
+        Remove model credentials and common auth values while retaining acquired details.
         """
         secret = self.credential.secret
-        if secret and secret.get_secret_value():
-            value = value.replace(secret.get_secret_value(), "[redacted]")
-        value = re.sub(r"(?i)\bBearer\s+[^\s\"',;]+", "Bearer [redacted]", value)
-        value = re.sub(r"(?i)\b(?:sk-|gh[pousr]_|github_pat_)[A-Za-z0-9_-]+", "[redacted]", value)
-        value = re.sub(
-            r"""(?ix)\b(?:api[_-]?key|token|password|secret|authorization|cookie)\b
-                [\"']?\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)""",
-            "[redacted]",
-            value,
-        )
-        value = re.sub(r"(\w+://)[^\s/@]+:[^\s/@]+@", r"\1[redacted]@", value)
-        value = " ".join(value.split())
-        return value[:512] + ("…" if len(value) > 512 else "")
+        return redact_error_text(value, (secret.get_secret_value(),) if secret else ())
 
     async def _stream(
         self,

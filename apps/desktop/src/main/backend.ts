@@ -8,12 +8,12 @@ import path from 'node:path'
 import { existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import defaults from '../../../../src/my_agent/defaults.json'
+import type { Protocol } from '../generated/schema'
 import type {
   DiagnosticReport,
   DiagnosticsParams,
   InitializeResult,
   OperationError,
-  ProtocolV13,
   SessionSignal
 } from '../generated/protocol'
 import { validate } from '../shared/validation'
@@ -325,12 +325,12 @@ export class Backend {
    * 按方法校验短控制响应，诊断与运行使用独立等待。
    * Validate short control responses independently of diagnostic and run waiting.
    */
-  async call<K extends keyof ProtocolV13>(
+  async call<K extends keyof Protocol>(
     method: string,
     params: object,
     resultType: K,
     timeoutMs: number | null = defaults.desktop_connection.request_timeout_ms
-  ): Promise<ProtocolV13[K]> {
+  ): Promise<Protocol[K]> {
     // M1 的诊断与模型运行独立，取消请求立即进入控制通道。
     // M1 diagnostics and model runs are independent; cancellation goes directly to control.
     const key = sharedReads.has(method) ? JSON.stringify([method, params, timeoutMs]) : null

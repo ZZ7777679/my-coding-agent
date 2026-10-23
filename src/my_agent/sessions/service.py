@@ -18,16 +18,17 @@ from uuid import uuid4
 
 from my_agent.config import load_config
 from my_agent.delegation.types import DelegatedUsage
-from my_agent.errors import AgentError, recovery_hint
+from my_agent.errors import AgentError, exception_message, recovery_hint
 from my_agent.evolution.types import EvolutionSource
 from my_agent.goals.ledger import check_budget, usage
 from my_agent.goals.state import states
 from my_agent.goals.types import GoalInputQueued, GoalRunBinding
 from my_agent.models.failures import ModelResponseError
-from my_agent.models.types import ModelClient, ModelId, ModelProgress
+from my_agent.models.types import JsonObject, ModelClient, ModelId, ModelProgress
 from my_agent.projects import ProjectService
 from my_agent.runtime.context import SharedContext
 from my_agent.runtime.loop import run_loop
+from my_agent.runtime.messages import input_message
 from my_agent.runtime.modes import RunMode, system_prompt
 from my_agent.runtime.settings import RunLimits, minimum_limit
 from my_agent.runtime.tools import ToolContext, ToolExecutor
@@ -43,6 +44,8 @@ from my_agent.sessions.types import (
     RequestStarted,
     RunAccepted,
     RunFinished,
+    RunInputApplied,
+    RunInputQueued,
     RunWaitChanged,
     SessionAssigned,
     SessionCreated,
@@ -291,6 +294,10 @@ class SessionService:
         if driver is not None:
             return driver.log
         if self.last_log and self.last_log.session_id == session_id:
+            if self.last_log.issue:
+                # 一次追加被拒不代表磁盘历史损坏；重新读取事实，不清除真实损坏或重放工具。
+                # A rejected append need not mean corrupt history; reread without replaying.
+                self.last_log = await self.worker.call(self.store.load, session_id)
             return self.last_log
         return await self.worker.call(self.store.load, session_id)
 
@@ -322,6 +329,7 @@ class SessionService:
         scope: str = "",
         worker_owner_session_id: str | None = None,
         inherited_context: str = "",
+        purpose: Literal["conversation", "team_design"] = "conversation",
     ) -> SessionSummary:
         """验证项目后保存会话头，不调用模型。
 
@@ -340,6 +348,7 @@ class SessionService:
                 initial_mode="normal",
                 worker_owner_session_id=worker_owner_session_id,
                 inherited_context=inherited_context,
+                purpose=purpose,
             )
             if self.store.path(identity).exists():
                 existing = await self._load(identity)
@@ -586,7 +595,7 @@ class SessionService:
             async with self.lock:
                 existing_log = await self._load(session_id)
                 repeated = any(
-                    isinstance(fact.data, (RunAccepted, GoalInputQueued))
+                    isinstance(fact.data, (RunAccepted, GoalInputQueued, RunInputQueued))
                     and fact.data.operation_id == operation_id
                     for fact in existing_log.facts
                 )
@@ -596,6 +605,17 @@ class SessionService:
             if self.closing:
                 raise AgentError("APP_CLOSING", "应用正在退出，不接纳新的运行。")
             log = await self._load(session_id)
+            for fact in log.facts:
+                if isinstance(fact.data, RunInputQueued) and fact.data.operation_id == operation_id:
+                    if (
+                        fact.data.prompt != prompt
+                        or fact.data.attachment_ids != (attachment_ids or [])
+                        or fact.data.mode != mode
+                        or fact.data.plan_document != plan_document
+                        or fact.data.requested_limits != requested_limits
+                    ):
+                        raise AgentError("OPERATION_CONFLICT", "同一补充标识已用于不同输入。")
+                    return summarize(log, active=self.active_for(session_id) is not None)
             if (
                 goal is None
                 and collaboration_id is None
@@ -645,8 +665,31 @@ class SessionService:
                 )
                 if queued is not None:
                     return queued
-            if self.active_for(session_id) is not None:
-                raise AgentError("RUN_BUSY", "此会话已有运行，请先停止或等待结束。")
+            running = self.active_for(session_id)
+            if running is not None:
+                if goal is not None or collaboration_id is not None:
+                    raise AgentError("RUN_BUSY", "此会话正在处理当前安排。")
+                if running.stop.is_set() or running.cancel.is_set():
+                    raise AgentError(
+                        "RUN_STOPPING", "当前运行正在结束清理，输入仍保留，请稍后发送。"
+                    )
+                if mode != running.mode or plan_document != running.plan_document:
+                    raise AgentError("MODE_INVALID", "追加内容沿用当前运行模式；切换模式请先停止。")
+                await self.worker.call(
+                    self.store.append,
+                    log,
+                    RunInputQueued(
+                        operation_id=operation_id,
+                        prompt=prompt,
+                        attachment_ids=attachment_ids or [],
+                        mode=mode,
+                        plan_document=plan_document,
+                        requested_limits=requested_limits,
+                    ),
+                    running.run_id,
+                )
+                self._signal(running)
+                return summarize(log, active=True)
             if collaboration_id is not None:
                 if self.collaboration is None:
                     raise AgentError("COLLABORATION_UNAVAILABLE", "协作服务尚未装配。")
@@ -706,6 +749,9 @@ class SessionService:
                     summary.run.run_id,
                 )
             run_id = str(uuid4())
+            # 显式新请求接续旧补充，按先后顺序放在本次用户输入之前。
+            # Explicit continuation consumes old supplements before the new user message.
+            await self._consume_inputs_locked(log, None)
             if self.memory:
                 await self.memory.observe(log)
             if self.delegations:
@@ -901,6 +947,32 @@ class SessionService:
                 None,
             )
 
+    async def _consume_inputs_locked(
+        self, log: SessionLog, run_id: str | None
+    ) -> builtins.list[JsonObject]:
+        """在持锁完整边界接纳待处理补充，不发模型请求或重放工具。
+
+        Consume pending supplements at a locked complete boundary without invoking models/tools.
+        """
+        messages: builtins.list[JsonObject] = []
+        for fact in log.pending_inputs():
+            if isinstance(fact.data, RunInputQueued):
+                await self.worker.call(
+                    self.store.append, log, RunInputApplied(input_seq=fact.seq), run_id
+                )
+                messages.append(input_message(fact.data))
+        if messages:
+            self.signal_log(log)
+        return messages
+
+    async def _receive_input(self, active: ActiveRun) -> builtins.list[JsonObject]:
+        """在后续模型请求前刷新追加输入，保留同一运行和预算。
+
+        Refresh supplements before a subsequent model request within the same run/budget.
+        """
+        async with self.lock:
+            return await self._consume_inputs_locked(active.log, active.run_id)
+
     async def _drive(self, active: ActiveRun, root: Path, model_id: ModelId) -> None:
         """协调取消、总时限和终态保存，所有终态只提交一次。
 
@@ -1016,6 +1088,8 @@ class SessionService:
                     terminal=tools.finished,
                     prepare_tools=capability_tools.refresh if capability_tools else None,
                     yield_requested=lambda: active.yield_requested,
+                    input_pending=lambda: bool(active.log.pending_inputs()),
+                    receive_input=lambda: self._receive_input(active),
                     window_provider=(
                         lambda current, definitions, request_model: contexts.prepare(
                             active, sink, current, definitions, request_model
@@ -1049,6 +1123,7 @@ class SessionService:
                     cause_code=active.dependency_error.cause_code,
                     failure_phase=active.dependency_error.phase,
                     diagnostic_id=active.dependency_error.diagnostic_id,
+                    diagnostic_issue=active.dependency_error.diagnostic_issue,
                     remediation=active.dependency_error.remediation,
                     tool_call_id=active.dependency_error.tool_call_id,
                     effect_state=active.dependency_error.effect_state,
@@ -1061,29 +1136,28 @@ class SessionService:
                 )
             )
         except AgentError as exc:
-            diagnostic_id = exc.diagnostic_id or (
-                await self.worker.call(
-                    self.diagnostics.record,
-                    exc.code,
-                    exc.message,
+            failure = exc
+            if self.diagnostics:
+                failure = await self.worker.call(
+                    self.diagnostics.capture,
+                    exc,
                     component="runtime",
-                    exception=exc,
                     project_id=summarize(active.log).project_id,
                     source=EvolutionSource(session_id=active.log.session_id, run_id=active.run_id),
+                    operation="run",
+                    request_id=active.message_id,
                 )
-                if self.diagnostics and not exc.code.startswith("BUDGET_")
-                else None
-            )
             finished = RunFinished(
-                status="budget_exceeded" if exc.code.startswith("BUDGET_") else "failed",
-                code=exc.code,
-                message=exc.message,
-                cause_code=exc.cause_code,
-                failure_phase=exc.phase,
-                diagnostic_id=diagnostic_id,
-                remediation=exc.remediation,
-                tool_call_id=exc.tool_call_id,
-                effect_state=exc.effect_state,
+                status="budget_exceeded" if failure.code.startswith("BUDGET_") else "failed",
+                code=failure.code,
+                message=failure.message,
+                cause_code=failure.cause_code,
+                failure_phase=failure.phase,
+                diagnostic_id=failure.diagnostic_id,
+                diagnostic_issue=failure.diagnostic_issue,
+                remediation=failure.remediation,
+                tool_call_id=failure.tool_call_id,
+                effect_state=failure.effect_state,
                 failed_request_id=active.message_id
                 if isinstance(exc, ModelResponseError)
                 else None,
@@ -1092,26 +1166,35 @@ class SessionService:
                 else None,
             )
         except Exception as exc:
-            # 保留异常类别与运行关联，不记录可能含秘密的原始异常消息。
-            # Retain exception class and run correlation without potentially secret messages.
-            diagnostic_id = (
+            error = (
                 await self.worker.call(
-                    self.diagnostics.record,
-                    "RUN_INTERNAL_ERROR",
-                    "运行发生内部错误。",
+                    self.diagnostics.capture,
+                    exc,
+                    code="RUN_INTERNAL_ERROR",
                     component="runtime",
-                    exception=exc,
                     project_id=summarize(active.log).project_id,
                     source=EvolutionSource(session_id=active.log.session_id, run_id=active.run_id),
+                    operation="run",
+                    request_id=active.message_id,
+                    phase="runtime",
                 )
                 if self.diagnostics
-                else None
+                else AgentError(
+                    "RUN_INTERNAL_ERROR",
+                    f"{type(exc).__name__}: {exception_message(exc)}",
+                    cause_code=type(exc).__name__,
+                    phase="runtime",
+                )
             )
             finished = RunFinished(
                 status="failed",
-                code="RUN_INTERNAL_ERROR",
-                message="运行发生内部错误，已保留进度；可查看诊断，处理后继续。",
-                diagnostic_id=diagnostic_id,
+                code=error.code,
+                message=error.message,
+                cause_code=error.cause_code,
+                failure_phase=error.phase,
+                remediation=error.remediation,
+                diagnostic_id=error.diagnostic_id,
+                diagnostic_issue=error.diagnostic_issue,
             )
         finally:
             active.stop.set()
@@ -1132,8 +1215,48 @@ class SessionService:
             if self.finish_run is not None:
                 try:
                     await self.finish_run(active.run_id)
-                except AgentError as exc:
-                    finished = RunFinished(status="failed", code=exc.code, message=exc.message)
+                except Exception as exc:
+                    error = (
+                        await self.worker.call(
+                            self.diagnostics.capture,
+                            exc,
+                            code="RUN_CLEANUP_FAILED",
+                            component="execution",
+                            project_id=summarize(active.log).project_id,
+                            source=EvolutionSource(
+                                session_id=active.log.session_id, run_id=active.run_id
+                            ),
+                            operation="finish_run",
+                            phase="cleanup",
+                        )
+                        if self.diagnostics
+                        else AgentError("RUN_CLEANUP_FAILED", exception_message(exc))
+                    )
+                    if finished.status == "failed":
+                        # 清理失败保留自己的诊断，但不能覆盖最初的业务原因。
+                        # Preserve cleanup diagnostics without replacing the original failure.
+                        finished = finished.model_copy(
+                            update={
+                                "message": (finished.message or "")
+                                + f"；清理另有失败：{error.message}"
+                                + (
+                                    f"（诊断 {error.diagnostic_id}）" if error.diagnostic_id else ""
+                                ),
+                                "diagnostic_issue": finished.diagnostic_issue
+                                or error.diagnostic_issue,
+                            }
+                        )
+                    else:
+                        finished = RunFinished(
+                            status="failed",
+                            code=error.code,
+                            message=error.message,
+                            cause_code=error.cause_code,
+                            failure_phase=error.phase,
+                            remediation=error.remediation,
+                            diagnostic_id=error.diagnostic_id,
+                            diagnostic_issue=error.diagnostic_issue,
+                        )
             if self.attachments is not None:
                 self.attachments.pending.pop(active.run_id, None)
             try:
@@ -1157,6 +1280,18 @@ class SessionService:
             except AgentError as exc:
                 active.log.issue = exc.code
                 active.fatal_error = exc.code
+                if self.diagnostics:
+                    await self.worker.call(
+                        self.diagnostics.capture,
+                        exc,
+                        component="session_storage",
+                        project_id=summarize(active.log).project_id,
+                        source=EvolutionSource(
+                            session_id=active.log.session_id, run_id=active.run_id
+                        ),
+                        operation="save_run_outcome",
+                        phase="persistence",
+                    )
             if not active.log.issue:
                 try:
                     async with self.lock:
@@ -1247,6 +1382,25 @@ class ServiceSink:
 
         Publish and return the exact persisted fact, awaiting writes even during cancellation.
         """
+        if isinstance(data, RequestFailed) and data._exception and self.service.diagnostics:
+            error = await self.service.worker.call(
+                self.service.diagnostics.capture,
+                data._exception,
+                component="model",
+                project_id=summarize(self.active.log).project_id,
+                source=EvolutionSource(
+                    session_id=self.active.log.session_id, run_id=self.active.run_id
+                ),
+                operation="model.complete",
+                request_id=data.message_id,
+            )
+            data = data.model_copy(
+                update={
+                    "message": error.message,
+                    "diagnostic_id": error.diagnostic_id,
+                    "diagnostic_issue": error.diagnostic_issue,
+                }
+            )
         async with self.service.lock:
             if self.service.delegations:
                 await self.service.delegations.charge_locked(self.active, data)
@@ -1375,7 +1529,8 @@ class ServiceSink:
 
         Keep phases in memory until a durable end fact, without delaying the first token.
         """
-        self.active.message_id = message_id
+        # 辅助搜索也报告进度，但它不是待提交的主对话回答；不能覆盖主请求身份。
+        # Auxiliary searches report progress too, but must not replace the pending chat identity.
         self.active.model_progress = progress
         self.active.progress_at = time.monotonic()
         self.service._signal(self.active, "model.progress")

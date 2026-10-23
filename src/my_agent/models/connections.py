@@ -4,7 +4,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from my_agent.models.types import ModelId, ModelProgress, TokenUsage
+from my_agent.models.types import AuxiliaryModelId, ModelId, ModelProgress, TokenUsage
 
 
 class ConnectionSettings(BaseModel):
@@ -36,7 +36,7 @@ class ConnectionObservation(BaseModel):
     http_status: Annotated[int, Field(ge=100, le=599)] | None
     models_confirmed: bool | None
     progress: ModelProgress
-    model_id: ModelId | None = None
+    model_id: AuxiliaryModelId | None = None
 
 
 class ModelConnectionProbeParams(ConnectionProbeParams):

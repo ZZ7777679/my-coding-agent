@@ -573,10 +573,22 @@ class InvestigationEvidence:
             "tool_name": row.item.tool_name,
             "run_status": row.run_status,
             "error_code": row.error_code,
+            "diagnostic_ids": list(row.item.diagnostic_ids),
             "through_seq": row.source.through_seq,
             "body_read": bool(row.chunks),
             "fully_read": row.complete(),
         }
+
+    def diagnostic_ids(self) -> list[str]:
+        """仅返回已冻结所选事件引用的诊断，不扫描其他运行。
+
+        Return diagnostics referenced by frozen selected events, never scan other runs.
+        """
+        return list(
+            dict.fromkeys(
+                identity for row in self._rows.values() for identity in row.item.diagnostic_ids
+            )
+        )
 
 
 def _validate_page(offset: int, limit: int) -> None:

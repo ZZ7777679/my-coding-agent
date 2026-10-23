@@ -1,5 +1,5 @@
 /** M5 已登记的明确 IPC 能力。 Explicit registered M5 IPC capabilities. */
-import type { ProtocolV13 as P } from '../generated/protocol'
+import type { Protocol as P } from '../generated/schema'
 import type { Backend } from './backend'
 import { validate } from '../shared/validation'
 import defaults from '../../../../src/my_agent/defaults.json'
@@ -30,6 +30,11 @@ const routes: ReadonlyArray<readonly [string, string, keyof P, keyof P]> = [
   ['agent:m5-startWorkGraph', 'spaces.work_graph_start', 'StartWorkGraphParams', 'SpaceChatView'],
   ['agent:m5-updateSpaceWork', 'spaces.work', 'UpdateSpaceWorkParams', 'TaskView'],
   ['agent:m5-generateTeam', 'spaces.generate', 'GenerateTeamParams', 'TeamGeneration'],
+  ['agent:m5-openTeamDesign', 'spaces.design_open', 'OpenTeamDesignParams', 'TeamDesignView'],
+  ['agent:m5-getTeamDesign', 'spaces.design_get', 'SpaceParams', 'TeamDesignView'],
+  ['agent:m5-saveTeamDesign', 'spaces.design_save', 'SaveTeamDesignParams', 'TeamDesignView'],
+  ['agent:m5-sendTeamDesign', 'spaces.design_send', 'SendTeamDesignParams', 'TeamDesignView'],
+  ['agent:m5-startTeamDesign', 'spaces.design_start', 'StartTeamDesignParams', 'TeamDesignView'],
   ['agent:m5-getSpaceChat', 'spaces.chat_view', 'SpaceChatPageParams', 'SpaceChatView'],
   ['agent:m5-sendSpaceChat', 'spaces.chat', 'SpaceChatParams', 'SpaceChatView'],
   ['agent:m5-startSpaceRound', 'spaces.start_round', 'StartSpaceRoundParams', 'SpaceChatView'],

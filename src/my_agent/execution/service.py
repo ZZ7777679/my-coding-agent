@@ -14,7 +14,7 @@ from uuid import uuid4
 
 import httpx
 
-from my_agent.errors import AgentError
+from my_agent.errors import AgentError, exception_message
 from my_agent.execution.commands import command_line, working_directory
 from my_agent.execution.environments import EnvironmentStore, execution_environment
 from my_agent.execution.listeners import listener_pids, local_endpoint, owns_listener
@@ -221,8 +221,13 @@ class ProgramService:
         except AgentError as exc:
             owned.failure = exc
         except Exception as exc:
-            logging.getLogger(__name__).error("PROGRAM_INTERNAL type=%s", type(exc).__name__)
-            owned.failure = AgentError("PROGRAM_INTERNAL", "程序管理发生内部错误，已停止本次进程。")
+            owned.failure = AgentError(
+                "PROGRAM_INTERNAL",
+                f"{type(exc).__name__}: {exception_message(exc)}",
+                cause_code=type(exc).__name__,
+                phase="program_monitor",
+            )
+            owned.failure.__cause__ = exc
         finally:
             try:
                 if owned.preview_task is not None:
@@ -280,6 +285,15 @@ class ProgramService:
                 owned.record.summary.message = owned.failure.message
                 owned.record.summary.status = "failed"
             finally:
+                if owned.failure:
+                    owned.failure.details.update(
+                        {
+                            "program_id": owned.record.summary.program_id,
+                            "exit_code": owned.record.summary.exit_code,
+                            "status": owned.record.summary.status,
+                            "output_tool": "read_program",
+                        }
+                    )
                 owned.done.set()
 
     async def _launch(

@@ -9,7 +9,7 @@ import httpx
 
 from my_agent import __version__
 from my_agent.models.connections import ConnectionObservation, ConnectionStatus
-from my_agent.models.types import ModelId, ModelProgress
+from my_agent.models.types import AuxiliaryModelId, ModelProgress
 
 
 def public_request_headers(session_id: str) -> dict[str, str]:
@@ -137,7 +137,7 @@ class ModelHttpPool:
         probe: bool = False,
         http_status: int | None = None,
         models_confirmed: bool | None = None,
-        model_id: ModelId | None = None,
+        model_id: AuxiliaryModelId | None = None,
     ) -> None:
         """只保留最近脱敏时序，不保存消息、头或异常原文。 Retain timing and stable codes only."""
         observation = ConnectionObservation(

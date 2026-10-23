@@ -20,7 +20,7 @@ from my_agent.config import DEFAULTS, MODEL_DEFAULTS
 from my_agent.credentials import resolve_credential
 from my_agent.errors import AgentError
 from my_agent.models import go
-from my_agent.runtime.loop import SYSTEM_PROMPT
+from my_agent.runtime.modes import system_prompt
 from my_agent.runtime.settings import RunLimits
 from my_agent.tools.read_only import ReadTools
 
@@ -119,7 +119,7 @@ def observe(timing, pool):
         timing.status = response.status_code
         response.stream = TimedStream(response.stream, timing)
 
-    async def accept(buffer, value, on_text, limit):
+    async def accept(buffer, value, on_text, limit, on_reasoning=None):
         """计时公开字段与思考字段的首次到达，仅保存字符数。
 
         Time first public/reasoning fields while retaining character counts only.
@@ -137,7 +137,7 @@ def observe(timing, pool):
                 timing.counts["text_chars"] += len(content)
             if delta.get("tool_calls"):
                 timing.first("first_tool_fragment")
-        return await original_accept(buffer, value, on_text, limit)
+        return await original_accept(buffer, value, on_text, limit, on_reasoning)
 
     client.event_hooks["request"].append(request_event)
     client.event_hooks["response"].append(response_event)
@@ -150,7 +150,53 @@ def observe(timing, pool):
         client.event_hooks["response"].remove(response_event)
 
 
-async def measure(case, root, pool, session_id):
+def synthetic_messages(history_kib):
+    """生成有完整工具配对的合成历史，不读取用户文件或会话。
+
+    Build synthetic paired tool history without reading user files or sessions.
+    """
+    messages = [{"role": "system", "content": system_prompt("normal", None)}]
+    if history_kib:
+        messages.append({"role": "user", "content": "Read these seven sample modules."})
+        for index in range(7):
+            call_id = f"sample_{index}"
+            source = "".join(
+                f"def item_{index}_{line}(value):\n    return value + {line}\n"
+                for line in range(history_kib * 1024 // (7 * 45) + 1)
+            )[: history_kib * 1024 // 7]
+            messages.extend(
+                [
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "reasoning_content": "I will inspect the next synthetic module.",
+                        "tool_calls": [
+                            {
+                                "id": call_id,
+                                "type": "function",
+                                "function": {
+                                    "name": "read_file",
+                                    "arguments": json.dumps({"path": f"sample{index}.py"}),
+                                },
+                            }
+                        ],
+                    },
+                    {
+                        "role": "tool",
+                        "tool_call_id": call_id,
+                        "content": json.dumps({"path": f"sample{index}.py", "content": source}),
+                    },
+                ]
+            )
+        prompt = (
+            "In one short sentence, describe what these sample functions do. Do not call tools."
+        )
+    else:
+        prompt = PROMPT
+    return [*messages, {"role": "user", "content": prompt}]
+
+
+async def measure(case, root, pool, session_id, history_kib=0):
     """一次有界真实调用：沿用生产提示、工具定义和输出预算。
 
     Make one bounded real call with production prompt, tool definitions and output budget.
@@ -182,10 +228,7 @@ async def measure(case, root, pool, session_id):
             turn = await client.complete(
                 model_id=model,
                 session_id=session_id,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": PROMPT},
-                ],
+                messages=synthetic_messages(history_kib),
                 tools=definitions,
                 limits=limits,
                 on_text=text,
@@ -193,7 +236,7 @@ async def measure(case, root, pool, session_id):
             )
         result.update(status="completed", usage=turn.usage.model_dump(), tools=len(turn.tool_calls))
     except AgentError as exc:
-        result.update(status="failed", code=exc.code)
+        result.update(status="failed", code=exc.code, phase=exc.phase, details=exc.details)
     except Exception as exc:
         result.update(status="failed", code=type(exc).__name__)
     timing.first("finished")
@@ -212,7 +255,8 @@ async def measure_batch(args, root, report, report_path):
     Keep pooling in one event loop; fresh mode reproduces the old per-call client lifecycle.
     """
     shared = build_model_http()
-    session_id = str(uuid4())
+    session_id = args.session_id or str(uuid4())
+    control_session_id = str(uuid4())
     try:
         for index, case in enumerate(args.case):
             if report["attempts"] >= report["request_budget"]:
@@ -222,13 +266,24 @@ async def measure_batch(args, root, report, report_path):
             report["attempts"] += 1
             report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
             pool = shared if args.client_mode == "pooled" else build_model_http()
+            control = args.compare_session and index % 2 == 0
             try:
-                result = await measure(case, root, pool, session_id)
+                result = await measure(
+                    case,
+                    root,
+                    pool,
+                    control_session_id if control else session_id,
+                    args.history_kib,
+                )
             finally:
                 if args.client_mode == "fresh":
                     await pool.close()
             result.update(
-                client_mode=args.client_mode, batch_index=index, gap_seconds=args.gap_seconds
+                client_mode=args.client_mode,
+                batch_index=index,
+                gap_seconds=args.gap_seconds,
+                synthetic_history_kib=args.history_kib,
+                routing_case="control" if control else "specified" if args.session_id else "new",
             )
             report["results"].append(result)
             report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -245,9 +300,22 @@ def main():
     parser.add_argument("--client-mode", choices=["pooled", "fresh"], default="pooled")
     parser.add_argument("--gap-seconds", type=float, default=0)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--history-kib", type=int, default=0)
+    parser.add_argument(
+        "--session-id", help="Optional routing identity; never loads session history"
+    )
+    parser.add_argument(
+        "--compare-session",
+        action="store_true",
+        help="Alternate new control / specified session on the same client",
+    )
     args = parser.parse_args()
     if not 0 <= args.gap_seconds <= 60:
         parser.error("Diagnostic gap must be between zero and sixty seconds")
+    if args.history_kib < 0:
+        parser.error("Synthetic history size cannot be negative")
+    if args.compare_session and not args.session_id:
+        parser.error("--compare-session requires --session-id")
     root = (args.output or ROOT / ".artifacts/tests" / ("go-latency-" + uuid4().hex[:12])).resolve()
     if not root.is_relative_to((ROOT / ".artifacts/tests").resolve()):
         parser.error("Use an isolated child of .artifacts/tests")
@@ -260,13 +328,15 @@ def main():
             "request_budget": 8,
             "attempts": 0,
             "network_policy": "unchanged_httpx_environment",
-            "prompt": "fixed_short_identity_question_no_project_content",
+            "prompt": "synthetic_history_or_fixed_short_question_no_project_content",
             "output_tokens_limit": DEFAULTS["run"]["max_output_tokens"],
             "results": [],
         }
     )
     asyncio.run(measure_batch(args, root, report, report_path))
     print(str(report_path), flush=True)
+    if any(item["status"] != "completed" for item in report["results"]):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

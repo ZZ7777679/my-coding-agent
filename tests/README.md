@@ -1,5 +1,11 @@
 # 测试与回归
 
+2026-10-23 团队设计：`pytest tests/python/test_team_design.py tests/python/test_space_team.py -q` 验证专用会话、多轮改图、旧生成兼容、重启、人工并发编辑、组建失败接续及幂等。构建后 `npm.cmd --prefix apps/desktop run test:desktop -- team-design.spec.ts` 通过真实 Electron 检查切页返回、重启、图修改及确认启动，模型是隔离样本。显式联网验收 `.venv/Scripts/python.exe -u -X utf8 tests/models/team_design.py` 使用环境 Go 凭据与隔离空项目，GLM 设计、DeepSeek 改图、GLM 两成员完成极简写入与只读审查；每 Run 8 请求／35 工具／180 秒、整体 420 秒观察上限仅属验收，不修改产品默认或个人数据。全部产物归 `.artifacts/tests/team-design-*`，真实网络检查不进入普通 CI。
+
+2026-10-22 会话内开发：`pytest tests/python/test_run_supplements.py -q` 覆盖普通 Run 追加的模型／工具边界、顺序、幂等、失败后重启和明确接续；原 Goal 插话复用 `test_goal_controller.py::test_goal_continuation_question_boundary_and_idempotency`。构建后 `npm.cmd --prefix apps/desktop run test:desktop -- conversation-workbench.spec.ts` 验证真实 Electron 追加、快捷开启子 Agent、独立折叠卡片、Monaco 保存与草稿、文件运行请求，以及在文件目录实际执行 PowerShell／CMD。模型为离线替身，文件／终端／存储真实，产物归 `.artifacts/tests/conversation-workbench-*/`。不发送个人历史，不将准备运行请求称为真实模型已运行代码。
+
+调研核对：`pytest tests/python/test_usability_review.py -q` 覆盖具体 worker 配置反馈、开启后重启保持、搜索失败实际证据、旧模型能力记忆仅按需读取而不自动注入；复用 `test_capability_discovery.py::test_mixed_worker_intent_discovers_names_without_empty_catalog` 核对多词发现。全部隔离、无外网和真实模型；不加入日常必跑清单。协议版本选择由 `defaults.json` 驱动 schema、类型和校验入口生成，沿用生成漂移与双端契约检查。
+
 子任务失败回读：`pytest tests/python/test_delegation.py -q` 验证原安排失败停止、部分输出与错误分离、重启后四个旧结果读完及诊断关联；夹具明确加载完整工具目录以隔离调度语义，产品默认按需发现不变。`test_go.py -k 'http_rejection or auth_failure'` 检查 HTTP 400 原因、认证正文不回显及无重试；双端契约过滤 `worker-failure`。桌面构建后 `knowledge.spec.ts` 用隔离离线模型验证错误卡片与再次查询完成，截图归 `.artifacts/tests/desktop-knowledge-*/worker-failure.png`。不重发个人历史请求。
 
 旧会话读取／请求积压：`pytest tests/python/test_session_read_cache.py tests/python/test_goal_records.py -q` 检查解析复用、变更／损坏／删除失效、缓存淘汰不限制读取及 Goal 原持久规则；桌面构建后 `npm.cmd --prefix apps/desktop run test:desktop -- old-session.spec.ts` 使用 `tests/support/long_session.py` 的隔离 180 轮样本，观测慢读取下的请求合并、会话切换、忙碌提示恢复和历史不变。知识面板兼容用 `knowledge.spec.ts`。产物归 `.artifacts/tests/desktop-old-session-*/`，不调用模型、不写个人历史；只在涉及这条链路时运行。
@@ -159,6 +165,8 @@ npm.cmd --prefix apps/desktop run test:desktop -- workbench-runtime.spec.ts
 - `desktop/persona-long-tasks.spec.ts -g associates`：来源 Run 完成后显式交接，接收方已有不同答案时仍按新 Run / 结果序号关联；检查来源简报、角色 / 阶段、双方事实与请求在重启后不变、无活动运行。`desktop/chat.spec.ts` 保留独立 wait 标记的长等待 / 停止语义，两者使用真实 Electron / RPC 和模型替身，不联网。
 - `python/test_mcp_presets.py`：预设不自动连接、旧配置兼容、环境引用、Windows DPAPI 加密 / 重启 / 删除、实际本地 HTTP 401、重连与项目范围；默认无外网或真实模型。设置 `MY_AGENT_TEST_MCP_SERVICES=1` 后可单独运行 `::test_mcp_public_services_live`，使用隔离目录查询 Context7 的公开 React 文档，明确配置 `GITHUB_MCP_TOKEN` 时只读发现 GitHub 工具；摘要保存到该测试临时目录的 `report.json`，不写远端仓库。
 - `desktop/mcp-services.spec.ts`：真实 Electron + `support/mcp_http_fixture.py` 本地 MCP，检查预设取消、普通表单、合成令牌加密、401 修复、工具目录、配置重连、项目启停、重启与清除。先构建，再运行 `npm.cmd --prefix apps/desktop run test:desktop -- mcp-services.spec.ts`；不访问真实外部账户，不请求模型，截图归 `.artifacts/tests/desktop-mcp-services-*/`。
+- `desktop/mcp-import.spec.ts`：URL／`mcpServers`／`servers` 解析和真实 Electron 导入，覆盖三类传输、凭据分离／环境引用、不兼容项、部分保存后重试、同名独立身份、项目范围、本地 HTTP 认证与重启，以及本地 stdio 导入／变量编辑。构建后运行 `npm.cmd --prefix apps/desktop run test:desktop -- mcp-import.spec.ts`；使用隔离 HTTP 样本和 `support/mcp_import_fixture.py`，不访问用户 MCP／模型，产物归 `.artifacts/tests/desktop-mcp-import-*/`。
+- `python/test_mcp_import.py`：`pytest tests/python/test_mcp_import.py -q` 实际连接 stdio／Streamable HTTP／旧 SSE／仅资源服务，每种分别使用 SDK auto／legacy；验证工具、资源、多认证头、环境值、DPAPI、重启与删除。全部本机隔离服务，不安装另一版本 SDK；证明协议模式互通，不宣称全量平台／版本兼容。`mcp-import-*` 共享契约分别经 Pydantic 和 Ajv 验证。
 - `fixtures/contracts.json` 的 `mcp-preset-*` 四项验证新增只写凭据与旧目录兼容；Python / Ajv 共用。可分别运行 `pytest tests/python/test_diagnostics_contracts.py -k mcp-preset` 与 `node --test --test-isolation=none --test-name-pattern=mcp-preset tests/contracts/schema.test.mjs`，无需完整契约回归。
 
 - `python/test_trace.py`：事件配对、分页、迟到结果、参数 / 结果详情及原生状态排除。
@@ -197,6 +205,8 @@ npm.cmd --prefix apps/desktop run test:desktop -- workbench-runtime.spec.ts
 模型能力、首次回复延迟与网络诊断按需显式运行，不加入默认回归：
 
 - `python tests/models/go_latency.py --enable-real-models --case glm-default`：使用生产适配器，记录客户端、TCP / TLS、首事件和首个正文时间；也支持 `deepseek-default`。重复 `--case` 在同一事件循环中连续请求，默认 `--client-mode pooled` 共用生产连接池；`--client-mode fresh` 模拟逐请求新建连接，`--gap-seconds 6` 可验证跨短暂停顿的复用。`--output` 可复用同一个隔离报告目录，累计最多 8 次尝试，每次 60 秒，无重试；请求不含项目内容，报告不含回答 / 思考正文 / 凭据。客户端获取时间包含在诊断首字中，生产指标单独记录模型调用入口口径。
+  `--history-kib 120` 生成代码与配对工具历史，不读取个人会话；`--session-id` 仅指定服务路由标识，`--compare-session` 按同一客户端交替使用新控制标识／指定标识。报告区分两组但不保存指定 ID，失败返回非零退出码。实验的请求／时间预算不是产品限制。
+  `test_go.py -k 'waiting_headers or failure_cause_is_separate'` 用离线传输复现响应头等待、TLS／流失败、取消和显式后续请求，核对阶段、诊断及无隐式重试；`exception-evidence.spec.ts` 在隔离真实 Electron 中检查等待／时限显示、停止后发送及原有诊断调查入口。
 - `python tests/models/connection_checks.py --enable-real-models`：通过桌面同一 RPC 装配验证按模型测试，GLM / DeepSeek 各一次、每次 60 秒、不重试；使用真实模型额度但不发送项目或会话。报告与隔离数据根统一进入 `.artifacts/tests/model-connections-*/`，仅保存公开结果、时序和用量；任一模型失败时返回非零退出码。
 - `python tests/models/go_native_search.py --enable-real-models`：单次验证 Go `/messages` 上既定 DeepSeek 模型的 `web_search_20250305`；默认 90 秒、2048 输出 token、一次服务端搜索，无重试或重定向，不带项目内容。`--timeout-seconds` / `--max-tokens` 可调整本次诊断预算。仅结构化搜索来源确认成功；报告进入 `.artifacts/tests/go-native-search-*/`，不保存密钥、头或模型正文，不加入默认回归。
 - `python tests/models/tls_latency.py --enable-network`：8 次无凭据 TLS 对照，保持证书验证；不发 HTTP、不调用模型。使用系统解析的原始 socket，不采用显式 HTTP 代理；有显式代理的机器上须区分两种路径。
@@ -314,6 +324,11 @@ M8 的后续维护与新增入口见本文末尾，不将协议 v12 的历史说
 - `.venv/Scripts/python.exe tests/models/m7_evolution_live.py --enable-real-models`：明确启用网络后使用生产 OpenCode Go 客户端。GLM 和 DeepSeek 各生成规范／代码候选并接续一次，通常共 6 请求；隔离试验上限 8 请求／600 秒、单请求 90 秒，不写产品预算。真实代码检查及采用／恢复，报告 `.artifacts/tests/m7-live-*/report.json`。只发送隔离样本，不读取个人会话；不是每次开发必跑项。
 
 ## M8 稳定性与体验定向验证
+
+- 原生搜索别名变更复用 `pytest tests/python/test_web_tools.py -q`：核对 `deepseek-flash` 请求、辅助账本、主模型不变、取消与失败。真实单次探测用 `.venv/Scripts/python.exe -X utf8 tests/models/go_native_search.py --enable-real-models --production-client --timeout-seconds 60`，从集中 `WebSettings` 读取模型，仅发送公开 Python 文档查询，报告进入 `.artifacts/tests/go-native-search-*/`；不加入普通离线检查。
+
+- `pytest tests/python/test_exception_evidence.py -q`：具体异常链与脱敏、诊断保存降级、旧诊断清理失败仍保留新证据关联、真实 JSONL RPC、辅助搜索失败后的同会话／重启接续、真实 Windows 无效程序拒绝及后续清理失败不覆盖原因。另以隔离示例完成失败 Trace → 按需诊断 → 代码候选 → 实际 Python 前后比较 → 采用／接续 → 有来源记忆；模型离线，文件、进程、持久化为真实服务，不修改个人会话。
+- 构建后 `npm.cmd --prefix apps/desktop run test:desktop -- exception-evidence.spec.ts`：真实 Electron 中查看具体异常／代码位置、关闭阅读页、保留发送能力，以及将准确失败范围带入改进入口。产物 `.artifacts/tests/exception-desktop-*/`，无外网／真实模型请求。新增 `exception-*` 契约样本覆盖诊断读取、无效 ID、旧记录及逐层原因，沿原 Pydantic／Ajv 入口检查。
 
 - `pytest tests/python/test_m8_recovery.py tests/python/test_delegation.py tests/python/test_mcp_http.py -q`：离线故障模型、真实运行／文件／持久化及本地 MCP；四 worker 超过旧累计限额、父子账本、取消部分输出、默认不重试、已写文件后模型重试不重放工具、退避取消、有限预算与 MCP 只读重连。
 - `test_capability_discovery.py` 中 M8 组合查询用实际服务定义确认 worker 可发现；`test_go.py -k empty_completed` 核对空回答的 usage 与 phase 保留。回退继续复用 `test_checkpoints.py`。

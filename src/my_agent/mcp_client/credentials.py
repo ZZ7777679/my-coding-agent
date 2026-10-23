@@ -5,15 +5,18 @@ Resolve MCP credentials and persist Windows-encrypted tokens without exposing se
 
 import base64
 import ctypes
+import json
 import os
 import sys
 from ctypes import wintypes
 from pathlib import Path
+from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from my_agent.credentials import read_windows_user
 from my_agent.errors import AgentError
+from my_agent.mcp_client.types import McpConnectionValues, McpServer
 from my_agent.models.types import ModelData
 from my_agent.storage import read_document, write_document
 
@@ -151,3 +154,62 @@ class McpCredentials:
             self.path(server_id).unlink(missing_ok=True)
         except OSError as exc:
             raise AgentError("MCP_CREDENTIAL_UNAVAILABLE", "无法删除保存的凭据。") from exc
+
+
+class McpSavedValues:
+    """复用 DPAPI 保存导入的变量与多请求头，不回传其值。
+
+    Reuse DPAPI for imported environment and header values without reading them back to UI.
+    """
+
+    def __init__(self, root: Path) -> None:
+        """使用独立凭据文件，保持原令牌格式兼容。
+
+        Keep legacy tokens compatible in separate files."""
+        self.credentials = McpCredentials(root, directory_name="mcp-connection-values")
+
+    def read(self, server_id: str) -> McpConnectionValues:
+        """解密并验证自身数据；损坏不重置。 Decrypt owned data without resetting corrupt files."""
+        try:
+            return McpConnectionValues.model_validate_json(self.credentials.read(server_id))
+        except ValidationError as exc:
+            raise AgentError(
+                "MCP_CREDENTIAL_UNAVAILABLE", "保存的连接变量损坏，请重新填写。"
+            ) from exc
+
+    def save(self, server: McpServer, update: McpConnectionValues | None) -> None:
+        """合并显式更新，只保存仍被配置引用的名称。
+
+        Merge explicit updates and retain configured names only."""
+        if update is None:
+            return
+        if not server.stored_env and not server.stored_headers:
+            self.credentials.remove(server.server_id)
+            return
+        current = (
+            self.read(server.server_id)
+            if self.credentials.path(server.server_id).is_file()
+            else McpConnectionValues()
+        )
+        merged: dict[str, dict[str, str]] = {}
+        for name, wanted, old, new in (
+            ("env", server.stored_env, current.env, update.env),
+            ("headers", server.stored_headers, current.headers, update.headers),
+        ):
+            values = {**old, **new}
+            missing = [key for key in wanted if key not in values]
+            if missing:
+                raise AgentError("MCP_CREDENTIAL_MISSING", "请填写新增连接变量的值。")
+            merged[name] = {key: values[key].get_secret_value() for key in wanted}
+        self.credentials.save(server.server_id, SecretStr(json.dumps(merged, ensure_ascii=False)))
+
+    def values(self, server: McpServer, kind: Literal["env", "headers"]) -> dict[str, str]:
+        """只在连接装配时返回所需变量。 Resolve configured values only at connection assembly."""
+        names = server.stored_env if kind == "env" else server.stored_headers
+        if not names:
+            return {}
+        stored = self.read(server.server_id)
+        values = stored.env if kind == "env" else stored.headers
+        if any(name not in values for name in names):
+            raise AgentError("MCP_CREDENTIAL_MISSING", "已保存连接变量缺失，请编辑服务配置。")
+        return {name: values[name].get_secret_value() for name in names}

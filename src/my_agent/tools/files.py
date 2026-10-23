@@ -21,7 +21,7 @@ from my_agent.changes.store import ChangeStore
 from my_agent.changes.types import ChangeRecord, ChangeSummary
 from my_agent.errors import AgentError
 from my_agent.models.types import JsonObject, ToolCall, ToolResult
-from my_agent.runtime.tools import ToolContext
+from my_agent.runtime.tools import ToolContext, failed_tool_result
 from my_agent.storage import utc_now
 from my_agent.tools.arguments import argument_message
 from my_agent.tools.file_types import (
@@ -728,12 +728,14 @@ class FileTools:
             code, message = "FILE_ENCODING", "无法将内容可靠编码为 UTF-8。"
         except FileNotFoundError:
             code, message = "FILE_NOT_FOUND", "操作准备时目标已不存在，请调整路径。"
-        except OSError:
-            code, message = "FILE_UNAVAILABLE", "无法读取文件操作基线；项目操作未继续。"
+        except OSError as exc:
+            error = AgentError("FILE_UNAVAILABLE", "无法读取文件操作基线；项目操作未继续。")
+            error.__cause__ = exc
+            return failed_tool_result(call, error)
         except AgentError as exc:
             if exc.code == "CANCELLED":
                 raise
-            code, message = exc.code, exc.message
+            return failed_tool_result(call, exc)
         return ToolResult(
             tool_call_id=call.tool_call_id,
             is_error=True,

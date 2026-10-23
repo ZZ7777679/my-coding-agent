@@ -463,6 +463,7 @@ export function MemoryManager({
                     {entry.scope === 'user' ? '跨项目偏好' : '本项目'} · 修订 {entry.revision}
                     {entry.stale ? ' · 待更新' : ''}
                     {!entry.enabled ? ' · 停用' : ''}
+                    {draft.page?.recall_notes?.[entry.memory_id] ? ' · 仅供查找' : ''}
                   </small>
                 </button>
               ))}
@@ -476,6 +477,9 @@ export function MemoryManager({
                     entry.memory_id,
                     `${entry.title} · ${entry.scope === 'user' ? '跨项目偏好' : '本项目'}${entry.enabled ? '' : ' · 已停用'}${entry.stale ? ' · 来源待更新' : ''}`,
                     <>
+                      {draft.page?.recall_notes?.[entry.memory_id] && (
+                        <p className="muted">{draft.page.recall_notes[entry.memory_id]}</p>
+                      )}
                       <Markdown text={entry.content} />
                       <div className="knowledge-actions">
                         <button

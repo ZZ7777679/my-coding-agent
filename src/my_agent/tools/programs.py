@@ -15,7 +15,7 @@ from my_agent.execution.types import (
     StartServiceArgs,
 )
 from my_agent.models.types import JsonObject, ModelData, ToolCall, ToolResult
-from my_agent.runtime.tools import ToolContext, ToolExecutor
+from my_agent.runtime.tools import ToolContext, ToolExecutor, failed_tool_result
 from my_agent.tools.arguments import argument_message
 from my_agent.tools.policy import checkpoint
 from my_agent.tools.read_only import encode
@@ -252,9 +252,4 @@ class ProjectTools:
         except AgentError as exc:
             if exc.code == "CANCELLED":
                 raise
-            code, message = exc.code, exc.message
-        return ToolResult(
-            tool_call_id=call.tool_call_id,
-            content=encode({"code": code, "message": message}),
-            is_error=True,
-        )
+            return failed_tool_result(call, exc)

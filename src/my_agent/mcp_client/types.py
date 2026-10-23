@@ -45,15 +45,19 @@ class McpServer(ModelData):
     server_id: str = Field(pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$", max_length=64)
     name: str
     description: str = ""
-    transport: Literal["stdio", "http", "browser"] = "stdio"
+    transport: Literal["stdio", "http", "sse", "browser"] = "stdio"
+    protocol_mode: Literal["auto", "legacy"] = "auto"
     enabled: bool = True
     project_ids: list[str] = Field(default_factory=list)
     all_projects: bool = True
     command: str = ""
     arguments: list[str] = Field(default_factory=list)
+    cwd: str = ""
     url: str = ""
     env_refs: dict[str, str] = Field(default_factory=dict)
     header_refs: dict[str, str] = Field(default_factory=dict)
+    stored_env: list[str] = Field(default_factory=list)
+    stored_headers: list[str] = Field(default_factory=list)
     timeout_seconds: float = Field(default=120, gt=0)
     browser_executable: str = ""
     preset_id: str = ""
@@ -104,6 +108,20 @@ class McpParams(ModelData):
     session_id: SessionId | None = None
 
 
+class McpConnectionValues(ModelData):
+    """仅写入的连接变量，普通配置只存名称。
+
+    Write-only connection values; public configuration stores names only.
+    """
+
+    env: dict[str, Annotated[SecretStr, WithJsonSchema({"type": "string", "writeOnly": True})]] = (
+        Field(default_factory=dict)
+    )
+    headers: dict[
+        str, Annotated[SecretStr, WithJsonSchema({"type": "string", "writeOnly": True})]
+    ] = Field(default_factory=dict)
+
+
 class SaveMcpParams(McpParams):
     """显式新增或保存服务。
 
@@ -116,6 +134,7 @@ class SaveMcpParams(McpParams):
         Annotated[SecretStr, WithJsonSchema({"type": "string", "writeOnly": True})] | None
     ) = Field(default=None, repr=False)
     clear_credential: bool = False
+    connection_values: McpConnectionValues | None = Field(default=None, repr=False)
 
 
 class McpControlParams(McpParams):

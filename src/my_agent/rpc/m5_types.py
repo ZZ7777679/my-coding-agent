@@ -46,6 +46,13 @@ from my_agent.local_git.types import (
     GitSettings,
     GitStatus,
 )
+from my_agent.spaces.design_types import (
+    OpenTeamDesignParams,
+    SaveTeamDesignParams,
+    SendTeamDesignParams,
+    StartTeamDesignParams,
+    TeamDesignView,
+)
 from my_agent.spaces.team_types import (
     CopyTeamTemplateParams,
     GenerateTeamParams,
@@ -78,6 +85,11 @@ from my_agent.terminals.types import (
 )
 
 M5_TYPES = (
+    OpenTeamDesignParams,
+    SaveTeamDesignParams,
+    SendTeamDesignParams,
+    StartTeamDesignParams,
+    TeamDesignView,
     SpaceChatPageParams,
     SaveWorkGraphParams,
     StartWorkGraphParams,

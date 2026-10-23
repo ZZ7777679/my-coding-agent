@@ -272,14 +272,17 @@ async def experiment(
         job.status, job.message = "cancelled", "实验已停止，原项目未被采用。"
     except Exception as exc:
         job.status = "failed"
-        job.message = exc.message if isinstance(exc, AgentError) else "实验未完成，请查看诊断。"
-        await worker.call(
-            owner.diagnostics.record,
-            "EVOLUTION_EXPERIMENT_FAILED",
-            job.message,
-            component="evolution.experiment",
-            exception=exc,
+        error = await worker.call(
+            owner.diagnostics.capture,
+            exc,
+            code="EVOLUTION_EXPERIMENT_FAILED",
+            component="evolution",
             project_id=job.project_id,
+            operation="experiment",
+            request_id=job.job_id,
+            phase="maintenance",
         )
+        job.message = error.message
+        job.diagnostic_id, job.diagnostic_issue = error.diagnostic_id, error.diagnostic_issue
     finally:
         await owner.finish_job(job)

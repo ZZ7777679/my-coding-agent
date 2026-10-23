@@ -45,7 +45,7 @@ test('M5 native workbench controls real PowerShell and explicit local Git index'
     await page.getByLabel('阶段目标', { exact: true }).fill('通过实际工作台操作终端与索引')
     await page.getByRole('button', { name: '创建任务与首会话', exact: true }).click()
     await page.getByRole('button', { name: '打开 / 补齐首会话', exact: true }).click()
-    await page.getByRole('button', { name: '编码工作台', exact: true }).click()
+    await page.getByRole('button', { name: '项目文件', exact: true }).click()
     const nav = page.getByRole('navigation', { name: '编码工作台', exact: true })
     await nav.getByRole('button', { name: '交互终端', exact: true }).click()
     const terminal = page.locator('.terminal-panel')

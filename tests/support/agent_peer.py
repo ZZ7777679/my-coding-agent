@@ -40,6 +40,10 @@ class DesktopModel:
         Read fixtures, then stream or wait for cancel.
         """
         messages = kwargs["messages"]
+        if any(tool["function"]["name"] == "read_team_design" for tool in kwargs["tools"]):
+            from team_design_model import design_turn
+
+            return await design_turn(**kwargs)
         if messages[0]["content"].startswith("Investigate selected evidence"):
             return evolution_turn(messages)
         if messages[0]["content"].startswith("Write one concise continuation brief"):
@@ -64,6 +68,15 @@ class DesktopModel:
             or "ordinary question interrupting" in messages[0]["content"]
         ):
             return await goal_turn(messages)
+        if prompt == "supplement: wait":
+            await asyncio.sleep(3)
+            return response(text="Initial model boundary reached.")
+        if prompt == "network: wait headers":
+            timing = RequestTiming(kwargs.get("on_progress"))
+            await timing.trace("http11.send_request_body.complete", {})
+            await asyncio.Event().wait()
+        if prompt.startswith("supplement: appended"):
+            return response(text="Supplement delivered in the same run.")
         if prompt.startswith("m3:"):
             if prompt == "m3: m8 long reading":
                 return response(
@@ -75,7 +88,14 @@ class DesktopModel:
                 )
             if prompt == "m3: failing worker":
                 if messages[-1]["role"] != "tool":
-                    return response("spawn_worker", {"objective": "worker-http-fixture"})
+                    return response(
+                        "spawn_worker",
+                        {
+                            "objective": "worker-http-fixture",
+                            "name": "文档与进度审查",
+                            "scope": "docs/progress/\n只读已存在的阶段记录",
+                        },
+                    )
                 worker = json.loads(messages[-1]["content"])
                 return response("read_worker", {"worker_id": worker["worker_id"]})
             if prompt == "m3: inspect failed worker":
@@ -116,6 +136,17 @@ class DesktopModel:
             return await file_turn(prompt, **kwargs)
         if prompt.startswith("program:"):
             return program_turn(prompt, messages)
+        if prompt == "exception: inspect cause":
+            try:
+                raise ValueError("Fixture missing tool response; token=isolated-private-value")
+            except ValueError as cause:
+                raise AgentError(
+                    "HTTP_ERROR",
+                    "HTTP 400: tool response missing",
+                    cause_code="invalid_request_error",
+                    phase="response_headers",
+                    details={"http_status": 400, "parameter": "messages[2].tool_calls"},
+                ) from cause
         if "fail" in prompt:
             raise AgentError("MODEL_TIMEOUT", "模型请求超时，可调整等待时间后重试。")
         if messages[-1]["role"] != "tool":

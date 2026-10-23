@@ -137,7 +137,12 @@ function ResourceScope({
       {kind === 'skills' ? (
         <Skills key={sessionId} projectId={projectId} sessionId={sessionId} />
       ) : (
-        <Mcp key={sessionId} projectId={projectId} sessionId={sessionId} projects={projects} />
+        <Mcp
+          key={`${projectId}:${sessionId}`}
+          projectId={projectId}
+          sessionId={sessionId}
+          projects={projects}
+        />
       )}
     </>
   )

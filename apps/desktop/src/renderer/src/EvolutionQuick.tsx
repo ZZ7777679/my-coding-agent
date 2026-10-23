@@ -1,12 +1,13 @@
 /** 就地复盘与独立页共用后台作业。 Contextual reviews share jobs with the independent page. */
 import { useEffect, useRef, useState } from 'react'
-import type { EvolutionJob, EvolutionScope } from '../../generated/protocol'
+import type { EvolutionJob, EvolutionScope, EvolutionSource } from '../../generated/protocol'
 import './Evolution.css'
 
 export interface EvolutionEntry {
-  origin: EvolutionScope
+  origin: EvolutionScope | null
   instruction: string
   jobId?: string
+  sources?: EvolutionSource[]
 }
 
 const labels = { project: '项目', task: '任务', session: '会话' }

@@ -19,6 +19,7 @@ from my_agent.errors import AgentError
 from my_agent.models.types import JsonObject, ModelData, ToolCall, ToolResult
 from my_agent.processes import probe_environment
 from my_agent.runtime.settings import RunLimits
+from my_agent.runtime.tools import failed_tool_result
 from my_agent.tools.arguments import argument_message
 from my_agent.tools.policy import ReadPolicy, checkpoint
 
@@ -505,16 +506,7 @@ class ReadTools:
         except AgentError as exc:
             if exc.code == "CANCELLED":
                 raise
-            return ToolResult(
-                tool_call_id=call.tool_call_id,
-                content=encode(
-                    {
-                        "code": exc.code,
-                        "message": exc.message,
-                    }
-                ),
-                is_error=True,
-            )
+            return failed_tool_result(call, exc)
 
     async def execute(self, call: ToolCall) -> ToolResult:
         """文件操作离开事件循环，取消时等待清理。

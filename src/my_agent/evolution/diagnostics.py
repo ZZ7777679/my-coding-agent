@@ -1,6 +1,6 @@
-"""保留可关联诊断，不保存原始异常文本或局部变量。
+"""保留可关联的脱敏异常详情，不保存局部变量或整份请求。
 
-Correlated diagnostics without raw exceptions or locals.
+Correlated sanitized exception details without locals or complete requests.
 """
 
 import logging
@@ -9,10 +9,17 @@ import re
 import threading
 import traceback
 from pathlib import Path
+from typing import Literal
 from uuid import UUID, uuid4
 
-from my_agent.errors import AgentError
-from my_agent.evolution.types import DiagnosticEvent, DiagnosticFrame, EvolutionSource
+from my_agent.errors import AgentError, exception_message, redact_error_data, redact_error_text
+from my_agent.evolution.types import (
+    DiagnosticCause,
+    DiagnosticEvent,
+    DiagnosticFrame,
+    EvolutionSource,
+)
+from my_agent.models.types import JsonObject
 from my_agent.storage import Storage, read_document, utc_now, write_document
 
 
@@ -22,7 +29,9 @@ class DiagnosticStore:
     Instance diagnostics degrade without blocking business work.
     """
 
-    def __init__(self, storage: Storage, max_records: int | None = None) -> None:
+    def __init__(
+        self, storage: Storage, max_records: int | None = None, *, secrets: tuple[str, ...] = ()
+    ) -> None:
         """使用数据根与集中传入的保留量。
 
         Use the data root and a centrally supplied retention size.
@@ -38,6 +47,68 @@ class DiagnosticStore:
         self.lock = threading.RLock()
         self.issue: str | None = None
         self.written = 0
+        self.secrets = secrets
+
+    def read(self, diagnostic_id: str) -> DiagnosticEvent:
+        """读取一条原诊断，旧记录缺少原因层时仍可读。
+
+        Read the original diagnostic, retaining compatibility with old records.
+        """
+        identity = str(UUID(diagnostic_id))
+        return read_document(self.root / (identity + ".json"), DiagnosticEvent)
+
+    def capture(
+        self,
+        exception: Exception,
+        *,
+        code: str = "INTERNAL_ERROR",
+        component: str,
+        project_id: str | None = None,
+        source: EvolutionSource | None = None,
+        operation: str | None = None,
+        request_id: str | None = None,
+        tool_call_id: str | None = None,
+        phase: str | None = None,
+    ) -> AgentError:
+        """在异常负责边界生成可读错误并保存一次；诊断失败不替代业务错误。
+
+        Normalize once at the owning boundary; diagnostic failure never replaces the error.
+        """
+        error = (
+            exception
+            if isinstance(exception, AgentError)
+            else AgentError(
+                code,
+                f"{type(exception).__name__}: {exception_message(exception, self.secrets)}",
+                cause_code=type(exception).__name__,
+                phase=phase,
+            )
+        )
+        error.message = redact_error_text(error.message, self.secrets)
+        error.remediation = redact_error_text(error.remediation, self.secrets)
+        error.tool_call_id = error.tool_call_id or tool_call_id
+        error.phase = error.phase or phase
+        if (
+            not error.diagnostic_id
+            and not error.code.startswith("BUDGET_")
+            and error.code != "CANCELLED"
+        ):
+            error.diagnostic_id = self.record(
+                error.code,
+                error.message,
+                component=component,
+                exception=exception,
+                project_id=project_id,
+                source=source,
+                phase=error.phase,
+                operation=operation,
+                request_id=request_id,
+                tool_call_id=error.tool_call_id,
+            )
+            error.diagnostic_issue = self.issue
+            if not error.diagnostic_id:
+                error.diagnostic_issue = self.issue or "DIAGNOSTIC_UNAVAILABLE: 诊断未持久化"
+        return error
 
     def record(
         self,
@@ -50,46 +121,81 @@ class DiagnosticStore:
         source: EvolutionSource | None = None,
         phase: str | None = None,
         level: str = "error",
+        operation: str | None = None,
+        request_id: str | None = None,
+        tool_call_id: str | None = None,
     ) -> str | None:
-        """记录已公开说明与异常位置，不渲染异常输入。
+        """保存逐层脱敏原因和操作身份，不收集局部变量。
 
-        Record public text and locations, never exception inputs.
+        Save sanitized cause layers and operation identities, never locals.
         """
         if not self.storage.writing:
             return None
-        causes: list[str] = []
-        frames: list[DiagnosticFrame] = []
+        causes: list[DiagnosticCause] = []
         seen: set[int] = set()
-        current = exception
-        while current is not None and id(current) not in seen:
+        pending: list[
+            tuple[BaseException, int | None, Literal["error", "cause", "context", "group"]]
+        ] = [(exception, None, "error")] if exception is not None else []
+        while pending:
+            current, parent, relation = pending.pop()
+            if id(current) in seen:
+                continue
             seen.add(id(current))
-            causes.append(type(current).__name__)
-            frames.extend(
+            frames = [
                 DiagnosticFrame(file=item.filename, line=item.lineno or 0, function=item.name)
                 for item in traceback.extract_tb(current.__traceback__)
+            ]
+            position = len(causes)
+            cleaned = redact_error_data(
+                current.details if isinstance(current, AgentError) else {}, self.secrets
             )
-            current = current.__cause__ or (
+            details: JsonObject = cleaned if isinstance(cleaned, dict) else {}
+            causes.append(
+                DiagnosticCause(
+                    type=type(current).__name__,
+                    message=exception_message(current, self.secrets),
+                    relation=relation,
+                    parent=parent,
+                    frames=frames,
+                    details=details,
+                    code=current.code if isinstance(current, AgentError) else None,
+                )
+            )
+            linked = current.__cause__ or (
                 None if current.__suppress_context__ else current.__context__
             )
+            if linked is not None:
+                pending.append((linked, position, "cause" if current.__cause__ else "context"))
+            if isinstance(current, BaseExceptionGroup):
+                pending.extend((child, position, "group") for child in reversed(current.exceptions))
         identity = str(uuid4())
         event = DiagnosticEvent(
             diagnostic_id=identity,
             at=utc_now(),
             code=code,
-            message=message,
+            message=redact_error_text(message, self.secrets),
             component=component,
             level="warning" if level == "warning" else "error",
             cause_code=exception.cause_code if isinstance(exception, AgentError) else None,
             phase=phase or (exception.phase if isinstance(exception, AgentError) else None),
-            exception_types=causes,
-            frames=frames,
+            exception_types=[cause.type for cause in causes],
+            frames=[frame for cause in causes for frame in cause.frames],
+            causes=causes,
+            details=causes[0].details if causes else {},
+            operation=redact_error_text(operation, self.secrets) if operation else None,
+            request_id=redact_error_text(request_id, self.secrets) if request_id else None,
+            tool_call_id=tool_call_id
+            or (exception.tool_call_id if isinstance(exception, AgentError) else None),
+            effect_state=exception.effect_state if isinstance(exception, AgentError) else None,
             project_id=project_id,
             source=source or EvolutionSource(),
         )
+        saved = False
         try:
             with self.lock:
                 self.root.mkdir(parents=True, exist_ok=True)
                 write_document(self.root / (identity + ".json"), event)
+                saved = True
                 self.written += 1
                 # 批次清理减少每条日志的目录扫描；保留量不是任务执行预算。
                 # Batched pruning avoids scanning per event; retention is not an execution budget.
@@ -109,8 +215,13 @@ class DiagnosticStore:
                 self.issue = None
             return identity
         except (OSError, AgentError, ValueError) as exc:
-            self.issue = "DIAGNOSTIC_WRITE_FAILED: " + type(exc).__name__
-            return None
+            # 清理旧记录失败不撤销已保存的新证据，也不替换原业务错误。
+            # Retention failure neither revokes saved evidence nor replaces the business error.
+            issue_code = "DIAGNOSTIC_CLEANUP_FAILED" if saved else "DIAGNOSTIC_WRITE_FAILED"
+            self.issue = (
+                f"{issue_code}: {type(exc).__name__}: {exception_message(exc, self.secrets)}"
+            )
+            return identity if saved else None
 
     def page(
         self, project_id: str, limit: int = 30, before: str | None = None
@@ -140,9 +251,9 @@ class DiagnosticStore:
 
 
 class DiagnosticHandler(logging.Handler):
-    """接住项目警告的类别与位置；原始日志参数不出进程。
+    """记录项目告警的脱敏文字与异常，原始参数不保存。
 
-    Capture warning identity/location without raw log arguments.
+    Capture sanitized warning messages and exceptions without saving raw arguments.
     """
 
     def __init__(self, store: DiagnosticStore) -> None:
@@ -157,14 +268,14 @@ class DiagnosticHandler(logging.Handler):
         self.thread.start()
 
     def emit(self, record: logging.LogRecord) -> None:
-        """避免保存失败递归记录，不复制可能含秘密的日志参数。
+        """非阻塞投递，在消费线程格式化并脱敏后保存。
 
-        Avoid recursive logging and secret-bearing arguments.
+        Enqueue without blocking; format and sanitize on the consumer thread.
         """
         if not record.name.startswith("my_agent"):
             return
-        # 不格式化日志参数；磁盘慢时不让诊断队列堵住模型与取消。
-        # Never interpolate arguments or block model/cancellation work on disk.
+        # 磁盘慢时不让诊断队列堵住模型与取消。
+        # Never block model/cancellation work on slow diagnostic storage.
         try:
             self.records.put_nowait(record)
         except queue.Full:
@@ -181,7 +292,8 @@ class DiagnosticHandler(logging.Handler):
             code = match.group(1) if match else "PYTHON_" + record.levelname
             self.store.record(
                 code,
-                f"{record.name} · {Path(record.pathname).name}:{record.lineno}",
+                f"{record.name} · {Path(record.pathname).name}:{record.lineno} · "
+                + redact_error_text(record.getMessage(), self.store.secrets),
                 component=record.name,
                 level="error" if record.levelno >= logging.ERROR else "warning",
                 exception=record.exc_info[1] if record.exc_info else None,

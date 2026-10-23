@@ -5,11 +5,11 @@ Separate durable facts from public session views.
 
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import Field, PrivateAttr
 
 from my_agent.checkpoints.types import ConversationRestored
 from my_agent.delegation.types import DelegatedUsage
-from my_agent.errors import EffectState
+from my_agent.errors import AgentError, EffectState
 from my_agent.execution.types import ProgramView
 from my_agent.goals.types import (
     GoalControl,
@@ -21,6 +21,7 @@ from my_agent.goals.types import (
 )
 from my_agent.identifiers import EntityId
 from my_agent.models.types import (
+    AuxiliaryModelId,
     ModelData,
     ModelId,
     ModelProgress,
@@ -59,6 +60,7 @@ class SessionCreated(ModelData):
     initial_mode: RunMode = "plan"
     worker_owner_session_id: SessionId | None = None
     inherited_context: str = ""
+    purpose: Literal["conversation", "team_design"] = "conversation"
 
 
 class SessionAssigned(ModelData):
@@ -119,6 +121,31 @@ class RunAccepted(ModelData):
     collaboration_id: SessionId | None = None
 
 
+class RunInputQueued(ModelData):
+    """运行中保存的用户补充，尚未成为模型输入。
+
+    A durable user supplement awaiting the next complete model/tool boundary.
+    """
+
+    kind: Literal["run.input_queued"] = "run.input_queued"
+    operation_id: SessionId
+    prompt: str
+    attachment_ids: list[EntityId] = Field(default_factory=list)
+    mode: RunMode
+    plan_document: str | None = None
+    requested_limits: RunLimits | None = None
+
+
+class RunInputApplied(ModelData):
+    """在完整边界把已保存的补充纳入后续上下文。
+
+    Include a saved supplement in subsequent context at a complete boundary.
+    """
+
+    kind: Literal["run.input_applied"] = "run.input_applied"
+    input_seq: Annotated[int, Field(ge=1)]
+
+
 class RequestStarted(ModelData):
     """请求发出前计数并保存消息身份。
 
@@ -142,7 +169,7 @@ class AuxiliaryStarted(ModelData):
     kind: Literal["auxiliary.started"] = "auxiliary.started"
     request_id: SessionId
     tool_call_id: str
-    model_id: ModelId
+    model_id: AuxiliaryModelId
     purpose: Literal["web_search", "compaction"] = "web_search"
 
 
@@ -164,6 +191,9 @@ class RequestFailed(ModelData):
     partial_text: str = ""
     partial_reasoning: str = ""
     model_progress: ModelProgress | None = None
+    diagnostic_id: str | None = None
+    diagnostic_issue: str | None = None
+    _exception: AgentError | None = PrivateAttr(default=None)
 
 
 class AuxiliaryCompleted(ModelData):
@@ -244,6 +274,7 @@ class RunFinished(ModelData):
     cause_code: str | None = None
     failure_phase: str | None = None
     diagnostic_id: SessionId | None = None
+    diagnostic_issue: str | None = None
     remediation: str = ""
     tool_call_id: str | None = None
     effect_state: EffectState | None = None
@@ -284,6 +315,8 @@ FactData = Annotated[
     | SessionModelChanged
     | ConversationRestored
     | RunAccepted
+    | RunInputQueued
+    | RunInputApplied
     | RequestStarted
     | RequestFailed
     | AuxiliaryStarted
@@ -340,6 +373,7 @@ class RunView(ModelData):
     cause_code: str | None = None
     failure_phase: str | None = None
     diagnostic_id: SessionId | None = None
+    diagnostic_issue: str | None = None
     remediation: str = ""
     tool_call_id: str | None = None
     effect_state: EffectState | None = None
@@ -362,6 +396,7 @@ class SessionSummary(ModelData):
     """
 
     session_id: SessionId
+    purpose: Literal["conversation", "team_design"] = "conversation"
     project_id: str
     model_id: ModelId
     title: str
@@ -406,6 +441,7 @@ class ChatEntry(ModelData):
     web_result: WebSearchResult | WebPageResult | None = None
     program_result: ProgramView | None = None
     goal_result: GoalView | None = None
+    input_status: Literal["queued", "in_context"] | None = None
 
 
 class SessionView(ModelData):

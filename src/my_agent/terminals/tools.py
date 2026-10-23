@@ -5,7 +5,7 @@ from pydantic import ValidationError
 from my_agent.errors import AgentError
 from my_agent.execution.types import Command
 from my_agent.models.types import JsonObject, ModelData, ToolCall, ToolResult
-from my_agent.runtime.tools import ToolContext, ToolExecutor
+from my_agent.runtime.tools import ToolContext, ToolExecutor, failed_tool_result
 from my_agent.terminals.service import TerminalService
 from my_agent.terminals.types import (
     ListTerminalsParams,
@@ -205,11 +205,7 @@ class TerminalTools:
         except AgentError as exc:
             if exc.code == "CANCELLED":
                 raise
-            return ToolResult(
-                tool_call_id=call.tool_call_id,
-                is_error=True,
-                content=encode({"code": exc.code, "message": exc.message}),
-            )
+            return failed_tool_result(call, exc)
 
     def _bounded(self, result: TerminalView) -> TerminalView:
         """保留最早未读块，按 next_seq 续读。

@@ -7,9 +7,11 @@ import argparse
 import json
 from pathlib import Path
 
+from my_agent.config import DEFAULTS
 from my_agent.rpc.dto import PUBLIC_TYPES
 
 ROOT = Path(__file__).resolve().parents[1]
+VERSION = DEFAULTS["protocol_version"]
 
 
 def build_schema() -> str:
@@ -28,8 +30,8 @@ def build_schema() -> str:
         definitions[name] = schema
     document = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://my-coding-agent.local/protocol-v13.schema.json",
-        "title": "ProtocolV13",
+        "$id": f"https://my-coding-agent.local/protocol-v{VERSION}.schema.json",
+        "title": f"ProtocolV{VERSION}",
         "type": "object",
         "additionalProperties": False,
         "properties": {name: {"$ref": "#/$defs/" + name} for name in PUBLIC_TYPES},
@@ -48,7 +50,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    path = ROOT / "schemas/protocol-v13.schema.json"
+    path = ROOT / f"schemas/protocol-v{VERSION}.schema.json"
     content = build_schema()
     if args.check:
         if not path.exists() or path.read_text(encoding="utf-8") != content:

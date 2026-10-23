@@ -394,12 +394,14 @@ class DelegationService:
         """
         await self._load()
         settings = await self.prepare(owner.log.session_id)
-        if not settings.enabled or self.child_record(owner.log.session_id):
+        if self.child_record(owner.log.session_id):
             raise AgentError(
-                "INVALID_TOOL_ARGUMENTS", "子 agent 未开启，或此执行单元不支持继续拆分。"
+                "WORKER_CONTEXT_UNSUPPORTED", "内部子任务不能递归拆分，请由父会话安排并行工作。"
             )
+        if not settings.enabled:
+            raise AgentError("WORKERS_DISABLED", "此会话尚未开启子 Agent。")
         if owner.mode == "plan" and assignment.mode != "plan":
-            raise AgentError("INVALID_TOOL_ARGUMENTS", "Plan 模式的子任务同样只读。")
+            raise AgentError("TOOL_NOT_ALLOWED", "Plan 模式的子任务同样只读，请使用 plan 子任务。")
         if identity in self.records:
             return self.records[identity]
         parent = summarize(owner.log)
@@ -824,7 +826,7 @@ class DelegationService:
             await self.save(value)
             return value
         if not (await self.prepare(owner.log.session_id)).enabled:
-            raise AgentError("INVALID_TOOL_ARGUMENTS", "请先开启子 agent，才能接纳新的子任务工作。")
+            raise AgentError("WORKERS_DISABLED", "此会话尚未开启子 Agent，不能接纳新的子任务工作。")
         value.owner_run_id = owner.run_id
         value.goal_id = owner.goal.goal_id if owner.goal else None
         value.status, value.result, value.code = "queued", "", None

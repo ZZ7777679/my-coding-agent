@@ -191,7 +191,9 @@ test('M3 context, memory and worker controls persist across reload', async () =>
     await page.locator('.tree-project').click()
     await page.locator('.tree-task').click()
     await page.locator(`.tree-session[data-session-id="${sid}"]`).click()
-    await expect(page.getByTestId('workers').locator(':scope > button')).toContainText('已开启')
+    await expect(
+      page.getByTestId('workers').locator(':scope > button[aria-expanded]')
+    ).toContainText('已开启')
     await expect(page.getByTestId('open-context')).toContainText('已压缩')
     const state = await page.evaluate(
       (sessionId) => window.agent.listMemory({ session_id: sessionId }),

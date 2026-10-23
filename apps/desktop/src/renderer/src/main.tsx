@@ -84,16 +84,10 @@ function App() {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [view, setView] = useState<
-    | 'projects'
-    | 'settings'
-    | 'chat'
-    | 'task'
-    | 'skills'
-    | 'mcp'
-    | 'code'
-    | 'workflows'
-    | 'evolution'
+    'projects' | 'settings' | 'chat' | 'task' | 'skills' | 'mcp' | 'workflows' | 'evolution'
   >('projects')
+  const [workbenchOpen, setWorkbenchOpen] = useState(false)
+  const [workbenchVisited, setWorkbenchVisited] = useState(false)
   const [selection, setSelection] = useState<WorkspaceSelection | null>(null)
   const [treeRevision, setTreeRevision] = useState(0)
   const [renamedItem, setRenamedItem] = useState<NavigationItemName | null>(null)
@@ -357,12 +351,17 @@ function App() {
           <span className="nav-dot" />
         </button>
         <button
-          className={'nav-item ' + (view === 'code' ? 'nav-current' : '')}
+          className={'nav-item ' + (view === 'chat' && workbenchOpen ? 'nav-current' : '')}
           disabled={!project}
-          onClick={() => setView('code')}
+          aria-expanded={view === 'chat' && workbenchOpen}
+          onClick={() => {
+            setWorkbenchVisited(true)
+            setWorkbenchOpen(view !== 'chat' || !workbenchOpen)
+            setView('chat')
+          }}
         >
           <span aria-hidden="true">⌨</span>
-          <span>编码工作台</span>
+          <span>项目文件</span>
         </button>
         <button
           className={'nav-item ' + (view === 'settings' ? 'nav-current' : '')}
@@ -429,13 +428,7 @@ function App() {
       </aside>
       <SidebarResize />
 
-      <main
-        className={
-          'workspace' +
-          (view === 'chat' ? ' workspace-chat' : '') +
-          (view === 'code' ? ' workspace-code' : '')
-        }
-      >
+      <main className={'workspace' + (view === 'chat' ? ' workspace-chat' : '')}>
         {connectionError && (
           <FailureNotice error={connectionError}>
             <button
@@ -466,7 +459,7 @@ function App() {
             </button>
           </FailureNotice>
         )}
-        {view !== 'chat' && view !== 'code' && (
+        {view !== 'chat' && (
           <header className="toolbar">
             <div>
               <span className="breadcrumb">工作台</span>
@@ -678,45 +671,53 @@ function App() {
             </footer>
           </div>
         </div>
-        <div className="chat-page" hidden={view !== 'chat'}>
-          <Chat
-            review={
-              view === 'chat' &&
-              project &&
-              selection?.sessionId && (
-                <EvolutionQuick
-                  key={selection.sessionId}
-                  projectId={project.project_id}
-                  origin={{ kind: 'session', identity: selection.sessionId }}
-                  onOpen={openEvolution}
-                />
-              )
-            }
-            knowledgeCache={knowledgeCache.current}
-            materialCache={materialCache.current}
-            visible={view === 'chat'}
-            key={selection?.sessionId ?? 'empty'}
-            project={project ?? null}
-            selected={selection?.sessionId ?? null}
-            connected={connected}
-            active={activeRuns.find((item) => item.session_id === selection?.sessionId) ?? null}
-            onStop={(id) => void stopRun(id)}
-            onRunChange={() => {
-              void refreshRun()
-              refreshTree()
-            }}
-            onSelect={(next) => void navigate(next)}
-          />
-        </div>
-        <div className="workbench-page" hidden={view !== 'code'}>
-          {project && (
-            <CodeWorkbench
-              key={project.project_id + '/' + (selection?.sessionId ?? '')}
-              projectId={project.project_id}
-              sessionId={selection?.sessionId ?? null}
-              onChat={() => setView('chat')}
+        <div
+          className={'chat-page' + (workbenchOpen ? ' with-workbench' : '')}
+          hidden={view !== 'chat'}
+        >
+          <div className="conversation-pane">
+            <Chat
+              onSettings={() => setView('settings')}
+              onReview={openEvolution}
+              review={
+                view === 'chat' &&
+                project &&
+                selection?.sessionId && (
+                  <EvolutionQuick
+                    key={selection.sessionId}
+                    projectId={project.project_id}
+                    origin={{ kind: 'session', identity: selection.sessionId }}
+                    onOpen={openEvolution}
+                  />
+                )
+              }
+              knowledgeCache={knowledgeCache.current}
+              materialCache={materialCache.current}
+              visible={view === 'chat'}
+              key={selection?.sessionId ?? 'empty'}
+              project={project ?? null}
+              selected={selection?.sessionId ?? null}
+              connected={connected}
+              active={activeRuns.find((item) => item.session_id === selection?.sessionId) ?? null}
+              onStop={(id) => void stopRun(id)}
+              onRunChange={() => {
+                void refreshRun()
+                refreshTree()
+              }}
+              onSelect={(next) => void navigate(next)}
             />
-          )}
+          </div>
+          <div className="workbench-page" hidden={!workbenchOpen}>
+            {project && workbenchVisited && (
+              <CodeWorkbench
+                key={project.project_id + '/' + (selection?.sessionId ?? '')}
+                projectId={project.project_id}
+                sessionId={selection?.sessionId ?? null}
+                visible={view === 'chat' && workbenchOpen}
+                onChat={() => setWorkbenchOpen(false)}
+              />
+            )}
+          </div>
         </div>
         {view === 'task' && (
           <>
@@ -738,6 +739,7 @@ function App() {
               onChanged={refreshTree}
               renamedItem={renamedItem}
               editRequest={selection?.editTaskRequest}
+              designRequest={selection?.designRequest}
             />
           </>
         )}

@@ -281,12 +281,14 @@ export function TerminalPanel({
   projectId,
   sessionId = null,
   visible = true,
+  selectedTerminalId = null,
   onClose,
   members = []
 }: {
   projectId: string
   sessionId?: string | null
   visible?: boolean
+  selectedTerminalId?: string | null
   onClose?: () => void
   members?: MemberChoice[]
 }): React.JSX.Element {
@@ -317,6 +319,14 @@ export function TerminalPanel({
     setSessionCursor(null)
     setNextSessionCursor(null)
   }, [projectId])
+
+  useEffect(() => {
+    if (selectedTerminalId) {
+      setSelected(selectedTerminalId)
+      setOpen(true)
+      setRevision((value) => value + 1)
+    }
+  }, [selectedTerminalId])
 
   useEffect(() => {
     if (!visible || !open) return

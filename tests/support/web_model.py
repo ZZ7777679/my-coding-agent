@@ -15,7 +15,7 @@ def native_response():
     """
     return {
         "type": "message",
-        "model": "deepseek-v4.1-flash",
+        "model": "deepseek-flash",
         "stop_reason": "end_turn",
         "content": [
             {
@@ -76,7 +76,7 @@ class WebModel:
             return response("web_search", {"query": QUERY})
         if self.calls == 2:
             source = json.loads(kwargs["messages"][-1]["content"])
-            assert source["model_id"] == "deepseek-v4.1-flash"
+            assert source["model_id"] == "deepseek-flash"
             return response("web_fetch", {"url": source["sources"][0]["url"]})
         if "Goal mode:" not in kwargs["messages"][0]["content"]:
             return response(text="已搜索并读取 Python 官方资料：" + PAGE_URL)

@@ -6,9 +6,11 @@
 
 ### M8 增量
 
+2026-10-22 会话内工作台与独立子 Agent 卡片：`images/conversation-editor.png`、`images/worker-cards.png` 分别原样复制自 `.artifacts/tests/conversation-workbench-mN5pbm/conversation-editor-wide.png`、`worker-cards.png`。实际 Electron、Monaco 编辑／保存与 PowerShell／CMD 执行；模型为离线样本，截图中的 HTTP 400 为故意注入的子任务失败，不是当前线上服务测量。宽屏、窄屏与卡片均已目视检查，未后期拼接；窄屏图保留在同一产物目录。第 04／13 篇使用新图，M8 旧图仍作历史采集记录。
+
 2026-10-21，M8／协议 v13 实际 Electron 截图来自 `.artifacts/tests/m8-experience-b8a7L4/`。复制 `workers-graphite.png`、`trace-graphite.png`、`memory-graphite.png`、`chat-经典浅色.png` 和 `workers-125.png` 到本目录 `images/m8-*.png`。子任务错误与正文为离线模型样本；状态、记忆保存、主题设置和 RPC 均真实运行。125% 图使用 Electron 原生截图并核对视口几何，未做后期裁切或拼接。
 
-这些新图用于第 13 篇；其余 26 张仍是下面的 M7 历史采集。M8 真实 Go 验收报告单独留在 progress，不把截图中的错误示例当作线上实测。
+这些 2026-10-21 图片用于第 13 篇及历史布局参考；其余 26 张仍是下面的 M7 历史采集。M8 真实 Go 验收报告单独留在 progress，不把截图中的错误示例当作线上实测。
 
 ### M7 原有图片
 
@@ -34,6 +36,10 @@
 | editor.png、git.png、terminal.png | guide-workbench-V5SxWC | 隔离文件编辑器、本地 Git 状态、终端控制入口 |
 | team-graph.png、team-settings.png、work-graph.png | guide-team-tg3bdR | 两成员关系、可编辑配置、七阶段工作图骨架 |
 | review-quick.png、review-findings.png、review-evidence.png、review-budget.png | guide-learning-Jk3vaL | 快捷复盘、离线发现、实际材料范围、独立预算 |
+| exception-details.png | exception-desktop-d052JV | 2026-10-22 真实 Electron 诊断阅读页；离线注入 HTTP 拒绝与异常链，不是实际服务故障 |
+| team-design.png | team-design-desktop-plys5W/team-started.png | 2026-10-23 真实 Electron 专用团队设计、图、固定返回入口与确认启动后的状态；离线模型样本，原截图 |
+| team-graph-expanded.png | team-graph-desktop-Tw9xH1/graph.png | 2026-10-23 真实 Electron 四成员恢复样本、展开大图与方向连线；未调用模型，原截图 |
+| team-graph-editor.png | team-graph-desktop-Tw9xH1/inspector-1440.png | 同次隔离运行的成员编辑侧面板，顶部删除／关闭和关联关系，原截图 |
 
 图片中的随机 ID、路径、请求数和时间都是该次样例，不是要求用户输入的值。`files: create`／`files: edit` 是测试样本请求标题，不是应用命令。局部面板图片只展示该区域，不代表窗口全貌。
 

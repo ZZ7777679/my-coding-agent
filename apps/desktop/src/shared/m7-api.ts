@@ -1,8 +1,9 @@
 /** 自进化的有限桌面接口。 Restricted evolution desktop API. */
-import type { ProtocolV13 as P } from '../generated/protocol'
+import type { Protocol as P } from '../generated/schema'
 import type { Result } from './api'
 
 export interface M7DesktopAPI {
+  evolutionDiagnostic(params: P['DiagnosticQuery']): Promise<Result<P['DiagnosticEvent']>>
   evolutionList(params: P['EvolutionQuery']): Promise<Result<P['EvolutionPage']>>
   evolutionCatalog(params: P['EvolutionQuery']): Promise<Result<P['EvolutionCatalog']>>
   evolutionConfigure(params: P['EvolutionSettings']): Promise<Result<P['EvolutionSettings']>>

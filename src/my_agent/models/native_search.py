@@ -5,18 +5,18 @@ import json
 
 import httpx
 
-from my_agent.errors import AgentError
+from my_agent.errors import AgentError, redact_error_text
 from my_agent.models.failures import request_failure
 from my_agent.models.go import GoClient
 from my_agent.models.timing import RequestTiming
-from my_agent.models.types import JsonObject, ModelId, ProgressSink, TokenUsage
+from my_agent.models.types import AuxiliaryModelId, JsonObject, ProgressSink, TokenUsage
 from my_agent.runtime.settings import RunLimits
 from my_agent.storage import utc_now
 from my_agent.web.types import WebSearchResult, WebSource
 from my_agent.web.urls import public_url
 
 
-def search_result(payload: object, query: str, model_id: ModelId) -> WebSearchResult:
+def search_result(payload: object, query: str, model_id: AuxiliaryModelId) -> WebSearchResult:
     """要求真实原生结果块，空结果正常，普通回答不能冒充搜索成功。
 
     Require native result blocks; empty results are valid, plain prose is not search evidence.
@@ -45,7 +45,19 @@ def search_result(payload: object, query: str, model_id: ModelId) -> WebSearchRe
         elif item.get("type") == "web_search_tool_result":
             content = item.get("content")
             if isinstance(content, dict):
-                raise AgentError("WEB_SEARCH_FAILED", "原生搜索工具返回失败，未自动重试。")
+                reason = content.get("error_code") or content.get("type")
+                reason = redact_error_text(reason) if isinstance(reason, str) else None
+                raise AgentError(
+                    "WEB_SEARCH_FAILED",
+                    "原生搜索工具返回失败" + (f"（{reason}）" if reason else "") + "，未自动重试。",
+                    cause_code=reason,
+                    phase="response_body",
+                    details={
+                        "model_id": model_id,
+                        "search_uses": search_uses,
+                        "provider_error_code": reason,
+                    },
+                )
             if not isinstance(content, list):
                 raise AgentError("WEB_SEARCH_PROTOCOL", "搜索结果块不是支持的列表。")
             blocks += 1
@@ -68,7 +80,22 @@ def search_result(payload: object, query: str, model_id: ModelId) -> WebSearchRe
                     page_age=age if isinstance(age, str) else None,
                 )
     if not blocks:
-        raise AgentError("WEB_SEARCH_UNAVAILABLE", "服务没有返回原生搜索结果，不能确认已联网检索。")
+        raise AgentError(
+            "WEB_SEARCH_UNAVAILABLE",
+            "服务没有返回原生搜索结果，不能确认已联网检索。",
+            phase="response_body",
+            details={
+                "model_id": model_id,
+                "search_uses": search_uses,
+                "stop_reason": redact_error_text(str(payload.get("stop_reason", "unknown"))),
+                "block_types": [
+                    redact_error_text(str(item.get("type", "unknown")))
+                    for item in payload["content"]
+                    if isinstance(item, dict)
+                ],
+                "provider_message_id": redact_error_text(str(payload.get("id", "unknown"))),
+            },
+        )
     for citation in citations:
         citation_url, excerpt = citation.get("url"), citation.get("cited_text")
         if isinstance(citation_url, str) and citation_url in sources and isinstance(excerpt, str):
@@ -102,7 +129,7 @@ class NativeSearchClient:
     Borrow Go credentials and pooling for one actual request per call, without implicit retries.
     """
 
-    def __init__(self, go: GoClient, model_id: ModelId) -> None:
+    def __init__(self, go: GoClient, model_id: AuxiliaryModelId) -> None:
         """装配已选搜索模型，不读取主会话模型。 Inject the selected search model independently."""
         self.go, self.model_id = go, model_id
 

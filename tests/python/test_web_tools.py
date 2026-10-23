@@ -85,7 +85,7 @@ def test_search_in_real_run_and_goal(tmp_path, monkeypatch, case):
             assert request.headers["authorization"] == "Bearer " + secret
             assert request.headers["x-opencode-session"] == session_id
             body = json.loads(request.content)
-            assert body["model"] == "deepseek-v4.1-flash"
+            assert body["model"] == "deepseek-flash"
             assert body["stream"] is False
             assert "PRIVATE_TASK_CONTEXT" not in request.content.decode()
             assert QUERY in request.content.decode()

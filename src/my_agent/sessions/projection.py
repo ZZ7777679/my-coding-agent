@@ -25,6 +25,8 @@ from my_agent.sessions.types import (
     RequestStarted,
     RunAccepted,
     RunFinished,
+    RunInputApplied,
+    RunInputQueued,
     RunView,
     RunWaitChanged,
     SessionAssigned,
@@ -146,6 +148,7 @@ def summarize(log: SessionLog, *, active: bool = False, stopping: bool = False) 
             cause_code=finished.cause_code if finished else None,
             failure_phase=finished.failure_phase if finished else None,
             diagnostic_id=finished.diagnostic_id if finished else None,
+            diagnostic_issue=finished.diagnostic_issue if finished else None,
             remediation=(
                 finished.remediation or recovery_hint(finished.code or "", finished.cause_code)
             )
@@ -183,6 +186,7 @@ def summarize(log: SessionLog, *, active: bool = False, stopping: bool = False) 
     )
     return SessionSummary(
         session_id=log.session_id,
+        purpose=header.purpose,
         project_id=header.project_id,
         model_id=selected_model(log),
         title=renamed.title if renamed else first_prompt.replace("\n", " ")[:80],
@@ -275,6 +279,20 @@ def entries(log: SessionLog, before_seq: int | None) -> tuple[list[ChatEntry], i
         elif isinstance(data, GoalCreated):
             entry = ChatEntry.model_validate(
                 {**common, "kind": "user", "text": "Goal：" + data.objective}
+            )
+        elif isinstance(data, RunInputQueued):
+            entry = ChatEntry.model_validate(
+                {
+                    **common,
+                    "kind": "user",
+                    "text": data.prompt,
+                    "input_status": "in_context"
+                    if any(
+                        isinstance(item.data, RunInputApplied) and item.data.input_seq == fact.seq
+                        for item in log.facts
+                    )
+                    else "queued",
+                }
             )
         elif isinstance(data, GoalInputQueued):
             entry = ChatEntry.model_validate({**common, "kind": "user", "text": data.prompt})

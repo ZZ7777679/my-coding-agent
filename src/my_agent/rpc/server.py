@@ -37,6 +37,7 @@ def failure(request_id: str | None, error: AgentError, rpc_code: int = -32000) -
                 cause_code=error.cause_code,
                 phase=error.phase,
                 diagnostic_id=error.diagnostic_id,
+                diagnostic_issue=error.diagnostic_issue,
                 tool_call_id=error.tool_call_id,
                 effect_state=error.effect_state,
             ),

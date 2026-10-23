@@ -1,5 +1,5 @@
 /** M5 有限 preload 转发。 Restricted M5 preload forwarding. */
-import type { ProtocolV13 as P } from '../generated/protocol'
+import type { Protocol as P } from '../generated/schema'
 import type { M5DesktopAPI } from '../shared/m5-api'
 import type { Result } from '../shared/api'
 
@@ -32,6 +32,11 @@ export function m5Api(invoke: Invoke): M5DesktopAPI {
     saveWorkGraph: (params) => invoke('agent:m5-saveWorkGraph', 'WorkGraphView', [params]),
     startWorkGraph: (params) => invoke('agent:m5-startWorkGraph', 'SpaceChatView', [params]),
     generateTeam: (params) => invoke('agent:m5-generateTeam', 'TeamGeneration', [params]),
+    openTeamDesign: (params) => invoke('agent:m5-openTeamDesign', 'TeamDesignView', [params]),
+    getTeamDesign: (params) => invoke('agent:m5-getTeamDesign', 'TeamDesignView', [params]),
+    saveTeamDesign: (params) => invoke('agent:m5-saveTeamDesign', 'TeamDesignView', [params]),
+    sendTeamDesign: (params) => invoke('agent:m5-sendTeamDesign', 'TeamDesignView', [params]),
+    startTeamDesign: (params) => invoke('agent:m5-startTeamDesign', 'TeamDesignView', [params]),
     getSpaceChat: (params) => invoke('agent:m5-getSpaceChat', 'SpaceChatView', [params]),
     sendSpaceChat: (params) => invoke('agent:m5-sendSpaceChat', 'SpaceChatView', [params]),
     startSpaceRound: (params) => invoke('agent:m5-startSpaceRound', 'SpaceChatView', [params]),

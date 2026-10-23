@@ -17,6 +17,7 @@ from my_agent.evolution.investigation_evidence import InvestigationEvidence
 from my_agent.evolution.scopes import scope_sources
 from my_agent.evolution.types import (
     DiagnosticEvent,
+    DiagnosticQuery,
     EvolutionCandidate,
     EvolutionControl,
     EvolutionCoverage,
@@ -247,6 +248,21 @@ async def prepare_investigation(
     evidence = await InvestigationEvidence.build(
         service.sessions, sources, accepted_at=accepted_at, stop=stop
     )
+    related = evidence.diagnostic_ids()
+    if related:
+        index = json.dumps(
+            {
+                "diagnostic_ids": related,
+                "note": "所选 Trace 的关联异常。用 read_review_diagnostic 按需读取具体原因；"
+                "编号不代表已读。",
+            },
+            ensure_ascii=False,
+        )
+        materials.append(
+            EvolutionMaterial(
+                kind="index", title="关联异常索引", content=index, total_chars=len(index)
+            )
+        )
     await evidence.screen(params.instruction)
     initial = await evidence.index()
     index_text = json.dumps(initial, ensure_ascii=False)
@@ -388,6 +404,14 @@ class InvestigationTools:
                 "Read selected Trace by session_id/seq; follow next_offset for longer output.",
             ),
             (
+                "read_review_diagnostic",
+                DiagnosticQuery,
+                "Read exact sanitized exception causes and call provenance for a diagnostic_id "
+                "referenced by the selected Trace or explicit diagnostic materials. "
+                "Use this before inferring a root cause from a generic failure code. "
+                "A failure is evidence, not automatic authority to modify Harness code.",
+            ),
+            (
                 "list_review_resources",
                 IndexArgs,
                 "Search/page target rules, memory, skills, tool guidance and workstyles. "
@@ -504,6 +528,34 @@ class InvestigationTools:
 
         Dispatch reads without commands or resource writes.
         """
+        if call.name == "read_review_diagnostic":
+            query = DiagnosticQuery.model_validate(call.arguments)
+            selected = set(self.evidence.diagnostic_ids()) | {
+                material.source.diagnostic_id
+                for material in self.base_materials
+                if material.source and material.source.diagnostic_id
+            }
+            if query.diagnostic_id not in selected:
+                raise AgentError(
+                    "DIAGNOSTIC_NOT_SELECTED",
+                    "此诊断未被本次材料引用，请使用所选 Trace 提供的编号。",
+                )
+            event = await self.service.sessions.worker.call(
+                self.service.diagnostics.read, query.diagnostic_id
+            )
+            text = event.model_dump_json(indent=2)
+            source = event.source.model_copy(update={"diagnostic_id": event.diagnostic_id})
+            if not any(m.source.diagnostic_id == event.diagnostic_id for m in self.materials):
+                self.materials.append(
+                    EvolutionMaterial(
+                        kind="diagnostic",
+                        title=f"{event.component} · {event.code}",
+                        source=source,
+                        content=text,
+                        total_chars=len(text),
+                    )
+                )
+            return event.model_dump(mode="json")
         if call.name == "submit_review":
             self.result = await self.accept_result(
                 InvestigationResult.model_validate(call.arguments)
@@ -949,24 +1001,32 @@ async def investigate(
             # 失败请求已计数；未知响应量不冒充零。
             # Failed requests are counted; absent response usage never means zero.
             job.usage.input_tokens = job.usage.output_tokens = None
-        await worker.call(
-            service.diagnostics.record,
-            exc.code if isinstance(exc, AgentError) else "EVOLUTION_FAILED",
-            job.message,
+        error = await worker.call(
+            service.diagnostics.capture,
+            exc,
+            code="EVOLUTION_FAILED",
             component="evolution",
             project_id=job.project_id,
-            exception=exc,
+            operation="investigate",
+            request_id=job.job_id,
+            phase="maintenance",
         )
+        job.message = error.message
+        job.diagnostic_id, job.diagnostic_issue = error.diagnostic_id, error.diagnostic_issue
     except Exception as exc:
-        job.status, job.message = "failed", "调查内部错误；原任务和已保存候选保留。"
-        await worker.call(
-            service.diagnostics.record,
-            "EVOLUTION_INTERNAL_ERROR",
-            job.message,
+        job.status = "failed"
+        error = await worker.call(
+            service.diagnostics.capture,
+            exc,
+            code="EVOLUTION_INTERNAL_ERROR",
             component="evolution",
             project_id=job.project_id,
-            exception=exc,
+            operation="investigate",
+            request_id=job.job_id,
+            phase="maintenance",
         )
+        job.message = error.message
+        job.diagnostic_id, job.diagnostic_issue = error.diagnostic_id, error.diagnostic_issue
     finally:
         stop.set()
         await service.finish_job(job)

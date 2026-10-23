@@ -2,16 +2,17 @@
 
 import asyncio
 import json
-import logging
 import threading
 from concurrent.futures import TimeoutError as FutureTimeout
 from typing import BinaryIO
+from uuid import UUID
 
 from pydantic import BaseModel, ValidationError
 
 from my_agent.config import MAX_FRAME_BYTES, DataLocation
 from my_agent.credentials import ResolvedCredential
-from my_agent.errors import AgentError
+from my_agent.errors import AgentError, exception_message
+from my_agent.evolution.types import EvolutionSource
 from my_agent.rpc.application import RpcApplication
 from my_agent.rpc.dto import RpcNotification, RpcRequest, RpcSuccess, SessionEventNotification
 from my_agent.rpc.server import failure
@@ -132,9 +133,9 @@ async def run_transport(
             stop_transport.set()
 
     async def handle(request: RpcRequest | RpcNotification) -> None:
-        """统一参数和业务错误；不把原始异常送到前端。
+        """统一参数和业务错误，返回可关联的具体脱敏原因。
 
-        Handle errors without exposing raw exceptions.
+        Return concrete sanitized causes with a readable diagnostic reference.
         """
         request_id = request.id if isinstance(request, RpcRequest) else None
         try:
@@ -147,32 +148,70 @@ async def run_transport(
                         result=result.model_dump(mode="json") if result is not None else None,
                     )
                 )
-        except ValidationError:
+        except ValidationError as exc:
             if request_id is not None:
                 await send(
                     failure(
-                        request_id, AgentError("INVALID_PARAMS", "请求参数不符合接口要求。"), -32602
+                        request_id,
+                        AgentError("INVALID_PARAMS", "请求参数需修正：" + exception_message(exc)),
+                        -32602,
                     )
                 )
         except AgentError as exc:
+            exc = await capture(request, exc)
             if request_id is not None:
                 await send(
                     failure(request_id, exc, -32601 if exc.code == "METHOD_NOT_FOUND" else -32000)
                 )
         except Exception as exc:
-            # 保留异常类别；请求 ID 也来自输入，不写入通用日志。
-            # Retain the exception class; input-derived request IDs stay out of generic logs.
-            logging.getLogger(__name__).error("RPC_INTERNAL_ERROR type=%s", type(exc).__name__)
+            error = await capture(request, exc)
             if request_id is not None:
                 await send(
                     failure(
                         request_id,
-                        AgentError("INTERNAL_ERROR", "后端操作失败，请检查状态。"),
+                        error,
                         -32603,
                     )
                 )
         if application.stopping:
             stop_transport.set()
+
+    async def capture(request: RpcRequest | RpcNotification, exception: Exception) -> AgentError:
+        """沿已有诊断服务关联 RPC，不保存请求参数或重复日志。
+
+        Correlate RPC errors through the existing store without parameters or duplicate logs.
+        """
+        identities: dict[str, str] = {}
+        for key in ("project_id", "session_id", "run_id"):
+            value = request.params.get(key)
+            try:
+                if isinstance(value, str):
+                    identities[key] = str(UUID(value))
+            except ValueError:
+                continue  # 非身份输入不作为关联信息。 Non-identities are not provenance.
+        store = application.sessions.diagnostics
+        if store is None:
+            return (
+                exception
+                if isinstance(exception, AgentError)
+                else AgentError(
+                    "INTERNAL_ERROR",
+                    f"{type(exception).__name__}: {exception_message(exception)}",
+                    diagnostic_issue="DIAGNOSTIC_UNAVAILABLE: 诊断服务未初始化",
+                )
+            )
+        return await application.worker.call(
+            store.capture,
+            exception,
+            component="rpc",
+            operation=request.method,
+            phase="rpc",
+            project_id=identities.get("project_id"),
+            source=EvolutionSource(
+                session_id=identities.get("session_id"), run_id=identities.get("run_id")
+            ),
+            request_id=request.id if isinstance(request, RpcRequest) else None,
+        )
 
     async def control_loop() -> None:
         """普通控制保持输入顺序，模型运行由服务独立管理。

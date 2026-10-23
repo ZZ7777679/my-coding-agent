@@ -114,7 +114,13 @@ def test_unlimited_model_budget_omits_output_cap_and_preserves_cancel(cancel):
             "https://opencode.ai/inference/go/openai/v1",
             pool,
         )
-        budget = EvolutionBudget.model_validate({key: None for key in EvolutionBudget.model_fields})
+        budget = EvolutionBudget.model_validate(
+            {
+                key: None
+                for key in EvolutionBudget.model_fields
+                if not key.startswith("model_retry_")
+            }
+        )
         try:
             task = asyncio.create_task(
                 client.complete(
@@ -591,7 +597,9 @@ def test_auth_failure_no_retry_or_raw_body(expired):
             """统计模拟请求。 Count simulated requests."""
             nonlocal calls
             calls += 1
-            message = ("This API key has expired. " if expired else "") + "private-body-sentinel"
+            message = ("This API key has expired. " if expired else "Invalid credentials. ") + (
+                "token=private-body-sentinel"
+            )
             return httpx.Response(401, json={"error": {"message": message}})
 
         client = GoClient(
@@ -623,6 +631,8 @@ def test_auth_failure_no_retry_or_raw_body(expired):
             )
         assert error.value.code == "AUTHENTICATION_FAILED" and calls == 1
         assert "private-body-sentinel" not in str(error.value)
+        if not expired:
+            assert "Invalid credentials" in str(error.value)
         assert ("已过期" in str(error.value)) is expired
         if expired:
             assert "OpenCode Console" in error.value.remediation
@@ -820,7 +830,7 @@ def test_failure_cause_is_separate_from_last_reasoning_phase(failure, expected):
                 == {
                     "connect": "connecting",
                     "read": "response_stream",
-                    "deadline": "request_deadline",
+                    "deadline": "response_stream",
                     "disconnected": "response_stream",
                 }[failure]
             )
@@ -835,6 +845,99 @@ def test_failure_cause_is_separate_from_last_reasoning_phase(failure, expected):
                 if failure == "deadline":
                     assert final.elapsed_ms - final.last_data_ms >= 800
             assert pool.last_request.code == expected
+        finally:
+            await pool.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("fault", ["deadline", "cancel", "tls", "headers_disconnected"])
+def test_waiting_headers_keeps_evidence_and_allows_next_request(fault):
+    """重现首响应前等待／TLS 失败，保留阶段并验证后续请求可用。
+
+    Reproduce pre-response stalls/TLS failure, retain evidence and allow a subsequent request.
+    """
+
+    async def scenario():
+        """模拟传输事件，不依赖外网或个人历史。 Simulate transport events without personal data."""
+        calls, progress = 0, []
+        waiting = asyncio.Event()
+
+        async def handler(request):
+            """首请求发生指定故障，第二次显式调用成功。 Fail once, then accept explicit reuse."""
+            nonlocal calls
+            calls += 1
+            if calls > 1:
+                return httpx.Response(
+                    200, stream=ChunkStream(sse({"content": "ok"}, "stop") + b"data: [DONE]\n\n")
+                )
+            trace = request.extensions["trace"]
+            if fault == "tls":
+                await trace("connection.start_tls.started", {})
+                raise httpx.ConnectError("private-sentinel")
+            await trace("http11.send_request_body.complete", {})
+            waiting.set()
+            if fault == "headers_disconnected":
+                raise httpx.RemoteProtocolError("private-sentinel")
+            await asyncio.Event().wait()
+
+        async def observe(value):
+            """收集公开时序。 Collect public timings."""
+            progress.append(value)
+
+        async def discard(delta):
+            """不收集正文。 Discard response text."""
+
+        pool = ModelHttpPool(
+            reuse_enabled=True,
+            keepalive_expiry=None,
+            drain_timeout_seconds=0.1,
+            transport=httpx.MockTransport(handler),
+        )
+        client = GoClient(
+            ResolvedCredential(
+                SecretStr("sentinel"),
+                CredentialInfo(env_var="OPENCODE_API_KEY", source="process", present=True),
+            ),
+            "https://opencode.ai/inference/go/openai/v1",
+            pool,
+        )
+        args = dict(
+            model_id="deepseek-v4.1-flash",
+            session_id="stable-conversation",
+            messages=[],
+            tools=[],
+            on_text=discard,
+            on_progress=observe,
+            limits=RunLimits.model_validate({**DEFAULTS["run"], "request_timeout_seconds": 1}),
+        )
+        try:
+            task = asyncio.create_task(client.complete(**args))
+            if fault == "cancel":
+                await asyncio.wait_for(waiting.wait(), 2)
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+            else:
+                with pytest.raises(ModelResponseError) as failure:
+                    await task
+                error = failure.value
+                assert error.phase == ("tls" if fault == "tls" else "response_headers")
+                assert error.details["last_observed_phase"] == (
+                    "tls" if fault == "tls" else "waiting"
+                )
+                assert error.details["timeout_seconds"] == 1
+                assert error.details["response_headers_ms"] is None
+                assert error.details["received_bytes"] == 0
+                assert "sentinel" not in str(error)
+                if fault == "deadline":
+                    assert error.code == "MODEL_REQUEST_TIMEOUT"
+                    assert "HTTP" in error.message and "显式重试" in error.remediation
+            assert calls == 1  # 无隐式重试／No implicit retry.
+            assert pool.status().active_requests == 0
+            assert progress[-1].first_event_ms is None
+            assert (await client.complete(**args)).text == "ok"
+            assert calls == 2
         finally:
             await pool.close()
 

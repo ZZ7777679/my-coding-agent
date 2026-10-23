@@ -386,13 +386,15 @@ class WindowsProcess:
 
     @staticmethod
     def _require(success: bool, operation: str) -> None:
-        """只返回固定操作名与系统码，不回传命令或环境。
+        """保留系统操作、错误码与系统解释，不回传命令或环境。
 
-        Report an operation and code, never raw env."""
+        Preserve the operation, OS code and explanation, never commands or environment."""
         if not success:
+            code = ctypes.get_last_error()
             raise AgentError(
                 "PROCESS_API_FAILED",
-                f"Windows 进程管理失败：{operation} / {ctypes.get_last_error()}。",
+                f"Windows 进程管理失败：{operation} / {code}：{ctypes.FormatError(code).strip()}",
+                details={"operation": operation, "winerror": code},
             )
 
     def _consume(self, fd: int, channel: str) -> None:

@@ -116,7 +116,8 @@ function Observation({ title, value }: { title: string; value: ConnectionObserva
       {value ? (
         <>
           <p>
-            {value.model_id && `${modelNames[value.model_id]} · `}
+            {value.model_id &&
+              `${value.model_id === 'deepseek-flash' ? 'DeepSeek Flash · 辅助搜索' : modelNames[value.model_id]} · `}
             {value.code === 'OK' ? '成功' : `未通过（${value.code}）`} ·{' '}
             {new Date(value.finished_at).toLocaleString('zh-CN')}
             {value.http_status !== null && ` · HTTP ${value.http_status}`}

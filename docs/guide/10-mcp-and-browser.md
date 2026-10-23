@@ -12,9 +12,9 @@ MCP 连接外部可调用能力；一个服务器通常提供多个工具。列�
 
 截图中的两工具服务是本地演示 MCP，实际完成了 stdio 连接；不是已登录 GitHub，也不是浏览器真实联网证明。
 
-1. 用「配置 Context7 文档」「配置 GitHub」预填常用参数，或点「新增服务」。
-2. 选择本地 **stdio** 或远程 **Streamable HTTP**。前者填程序与参数，后者填服务 URL。
-3. 需要凭据时设置明确的环境变量引用或 OAuth 配置，不把真实 token 写成普通命令参数。
+1. 已有 URL／JSON 时点「从 URL / JSON 导入」（见下文）；也可用「配置 Context7 文档」「配置 GitHub」预填常用参数，或点「新增服务」。
+2. 选择本地 **stdio** 或远程 **Streamable HTTP／旧 SSE**。前者填程序与参数，后者填服务 URL。
+3. 需要凭据时填写「服务令牌」以本机加密保存，或设置明确的环境变量引用／OAuth 配置，不把真实 token 写成普通命令参数。
 4. 保存，确认在当前项目启用。
 5. 展开服务，点「连接 / 重连」。成功后「刷新工具」，按名称／用途搜索目录，展开查看参数。
 6. 回到会话提出实际任务；在 Trace 验证模型最终发现、加载并调用了哪个工具。
@@ -22,6 +22,61 @@ MCP 连接外部可调用能力；一个服务器通常提供多个工具。列�
 目录默认展示功能说明；原始 JSON 在「高级 · 原始工具定义」中，普通使用不需要编辑 schema。项目启用只表示可供模型发现，连接成功只表示服务可用，都不保证某次工具调用已经成功。
 
 停用范围和断开连接也不同：前者影响该项目后续发现，后者关闭当前持有的连接。可选服务缺失不阻断普通聊天；真实调用失败保留具体原因，不自动重放有副作用的请求。
+
+## 直接粘贴 URL 或 JSON
+
+在左侧「MCP 管理」顶部点 **「从 URL / JSON 导入」**。可直接粘贴完整服务 URL，也可以原样粘贴服务商给的这种配置：
+
+```json
+{
+  "mcpServers": {
+    "my-service": {
+      "url": "https://example.com/mcp",
+      "type": "streamableHttp",
+      "headers": {
+        "Authorization": "Bearer xxx"
+      }
+    }
+  }
+}
+```
+
+1. 点「识别并预览」，检查服务名称、地址和认证。`xxx` 是占位符，换成该 MCP 服务商提供的令牌；不是应用的 OpenCode Go 密钥。只粘贴 URL 时可在预览中补填 Bearer 令牌，无需认证则留空。
+2. 「启用范围」默认选择当前项目，也可选其他项目、所有项目或「仅加入资源库」。多项配置可分别勾选。
+3. 点「导入所选…项」。`Authorization: Bearer …` 自动拆成认证方式和只写令牌，由已有 Windows 加密设施保存到应用数据根，不写入普通 `mcp.json` 或项目。相同名称也会建立独立身份，不覆盖之前的服务。
+4. 关闭导入，展开下方服务卡片，点「连接 / 重连」，查看真实连接状态和工具目录。仅导入不会自动访问服务；在项目启用后，Agent 可沿现有发现流程使用。
+
+同样支持单个 `{ "url": "…", "headers": { … } }` 对象，以及 `servers` 容器。HTTP 类型可写 `http`、`streamableHttp`、`streamable-http` 或 `streamable_http`，省略时按 URL 识别；旧 SSE 使用 `"type": "sse"`。只有 URL 时可在预览中选择连接方式，不按域名或 `/sse` 后缀猜测。不修改服务商给出的 http／https 地址、路径或查询参数。
+
+本地服务可粘贴 `mcpServers`／`servers` 下的 `command`、`args`、`env`、可选 `cwd`，省略类型时按 command 识别 stdio。例如：
+
+```json
+{
+  "mcpServers": {
+    "local-tools": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["E:/tools/my_mcp_server.py"],
+      "cwd": "${workspaceFolder}",
+      "env": { "SERVICE_TOKEN": "xxx" }
+    }
+  }
+}
+```
+
+示例路径和令牌需要换成自己的；程序按本机实际 PATH／路径定位，应用不自动安装任意服务包。`args` 保持逐项参数，不拼成 shell 字符串。cwd 留空跟随项目，无项目时使用应用数据根；相对 cwd 基于该目录，`${workspaceFolder}` 在 cwd 中指向该目录。所有导入的 env 字面值和附加 headers 通过现有 DPAPI 加密，普通配置只保留名称；「编辑 / 启停 → 高级连接选项」可以替换或移除已保存变量，密码框留空保留原值。
+
+导入兼容 `disabled` 布尔值与 `timeout` 毫秒值，预览显示启停和换算后的超时；未支持字段明确显示，不静默丢弃。不兼容的一项不妨碍导入其他可用项；部分成功后再次导入只处理未保存的所选项。
+
+环境引用支持 env／完整请求头值 `${NAME}`／`${env:NAME}`，以及 `Authorization` 的 `Bearer ${NAME}`；连接时才读取环境。多个独立认证头可同时导入。服务要求 OAuth 时，导入 URL 后在「编辑 / 启停」中选择 OAuth，再按下节登录。关闭导入会丢弃未保存草稿。
+
+## SDK 1.x／2.x 与协议兼容
+
+SDK 包的版本不是 MCP 协议版本。当前锁定的官方 Python SDK 2.x 使用 `Client(mode="auto")`：现代服务使用新协议，旧服务回落至 initialize 握手；现有 stdio／HTTP 链路复用该逻辑，新增 SSE 也交给 SDK。遇到不接受探测的旧服务，可在「高级连接选项 → 协议兼容方式」显式选择旧版握手。依据：[官方 SDK 更新说明](https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/whats-new.md)、[迁移说明](https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/migration.md)。
+
+标准工具发现／调用、资源列表／模板／读取沿现有能力接入，与 SDK 语言或平台名称无关。兼容不等于测试过所有平台、SDK 补丁或私有扩展；自定义 WebSocket、其他客户端的 inputs／内联脚本、MCP prompts／sampling／elicitation 等未接入能力不会被伪装成完整支持。项目沙箱尚未支持的普通本地 stdio 仍按原规则显示兼容性，不自动改成无隔离执行。
+
+只提供资源的服务也能连接，工具目录为空不等于连接失败。可在项目会话中让 Agent「列出该 MCP 服务的资源，再读取指定资源」；资源读取沿现有 `mcp_resources` 能力执行。桌面当前以连接状态和工具目录为主，没有另做资源文件管理器。
 
 ## OAuth 怎么操作
 

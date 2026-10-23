@@ -12,7 +12,7 @@ from my_agent.context.service import ContextService
 from my_agent.context.types import HistoryParams, HistoryQuery
 from my_agent.errors import AgentError
 from my_agent.models.types import JsonObject, ModelData, ToolCall, ToolResult
-from my_agent.runtime.tools import ToolContext, ToolExecutor
+from my_agent.runtime.tools import ToolContext, ToolExecutor, failed_tool_result
 
 
 class StatusQuery(ModelData):
@@ -206,7 +206,7 @@ class ContextTools:
         except ValidationError:
             error = {"code": "INVALID_TOOL_ARGUMENTS", "message": "参数不符合上下文工具定义。"}
         except AgentError as exc:
-            error = {"code": exc.code, "message": exc.message}
+            return failed_tool_result(call, exc)
         return ToolResult(
             tool_call_id=call.tool_call_id,
             content=json.dumps(error, ensure_ascii=False),

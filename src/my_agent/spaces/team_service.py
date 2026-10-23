@@ -15,6 +15,7 @@ from my_agent.errors import AgentError
 from my_agent.goals.types import GoalControl, GoalCreated, GoalCriterion
 from my_agent.runtime.modes import RunMode
 from my_agent.sessions.types import AssistantCommitted, Fact, RunAccepted, RunFinished, SessionView
+from my_agent.spaces.design import TeamDesignService
 from my_agent.spaces.service import SpaceService
 from my_agent.spaces.team_store import SpaceTeamStore
 from my_agent.spaces.team_types import (
@@ -64,6 +65,7 @@ class SpaceTeamService:
         self.lock = asyncio.Lock()
         self.generating: dict[str, str] = {}
         self.work_graph = SpaceWorkGraph(self)
+        self.design = TeamDesignService(self)
 
     async def _space(self, task_id: str) -> SpaceView:
         """读取真实已保存团队。 Read the actual saved team."""
@@ -103,6 +105,7 @@ class SpaceTeamService:
                 or session.summary.project_id != task.project_id
             ):
                 raise AgentError("SPACE_SESSION_MISMATCH", "请选择这个任务下的现有规划会话。")
+            await self.worker.call(self._activate_design_tools, params.session_id)
             record = await self.worker.call(self.store.chat, params.task_id)
             prior = next(
                 (
@@ -141,10 +144,21 @@ class SpaceTeamService:
                 "to work IDs that may be revisited. Member edges differ from work dependencies. "
                 "Relations may include feedback cycles.\nGoal:\n" + params.objective
             )
+            if params.discussion:
+                # 专用会话保留用户原话；方法在初始上下文和工具说明中，当前图按需读取。
+                # Keep user words; initial context/tools describe the on-demand graph workflow.
+                prompt = params.objective
             try:
                 summary = await self.sessions.start(
                     params.session_id, params.operation_id, prompt, None, "plan"
                 )
+                if params.discussion and summary.run:
+                    await self.worker.call(
+                        self.design.read_for_model,
+                        params.task_id,
+                        params.session_id,
+                        summary.run.run_id,
+                    )
                 generation = generation.model_copy(
                     update={"run_id": summary.run.run_id if summary.run else None}
                 )
@@ -154,6 +168,19 @@ class SpaceTeamService:
             record.view.generations[-1] = generation
             await self.worker.call(self.store.save_chat, record)
             return generation
+
+    def _activate_design_tools(self, session_id: str) -> None:
+        """为明确请求的设计工作加载两个定义，其他工具继续按需发现。
+
+        Load the two requested design schemas; other tools remain discoverable on demand.
+        """
+        if self.sessions.contexts is not None:
+            store = self.sessions.contexts.store
+            state = store.read(session_id)
+            state.settings.active_tools = list(
+                dict.fromkeys(state.settings.active_tools + ["read_team_design", "save_team_draft"])
+            )
+            store.save(session_id, state)
 
     async def save_generated(
         self, session_id: str, run_id: str, draft: SaveTeamDraftArgs
@@ -202,6 +229,14 @@ class SpaceTeamService:
                 raise AgentError("SPACE_DRAFT_NOT_REQUESTED", "草稿请求来源不一致。")
             generation = record.view.generations[index].model_copy(
                 update={"run_id": run_id, "draft": draft, "error": None}
+            )
+            await self.worker.call(
+                self.design.save_generated,
+                task_id,
+                session_id,
+                run_id,
+                draft.config,
+                draft.objective,
             )
             record.view.generations[index] = generation
             await self.worker.call(self.store.save_chat, record)
@@ -497,7 +532,7 @@ class SpaceTeamService:
                             ),
                             None,
                         )
-                    if ended:
+                    if ended and (ended.status != "completed" or not generation.params.discussion):
                         generation = generation.model_copy(
                             update={
                                 "error": ended.message

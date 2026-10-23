@@ -24,7 +24,7 @@ from my_agent.attachments.types import (
 from my_agent.errors import AgentError
 from my_agent.models.types import JsonObject
 from my_agent.runtime.context import ContextMaterial, PreparedWindow, describe_material
-from my_agent.sessions.types import RunAccepted
+from my_agent.sessions.types import RunAccepted, RunInputApplied, RunInputQueued
 from my_agent.storage import read_document, utc_now, write_document
 
 if TYPE_CHECKING:
@@ -296,6 +296,11 @@ class AttachmentService:
             None,
         )
         ids = list(accepted.attachment_ids if accepted else [])
+        for fact in active.log.facts:
+            if fact.run_id == active.run_id and isinstance(fact.data, RunInputApplied):
+                queued = active.log.facts[fact.data.input_seq - 1].data
+                if isinstance(queued, RunInputQueued):
+                    ids.extend(i for i in queued.attachment_ids if i not in ids)
         ids.extend(i for i in self.pending.get(active.run_id, []) if i not in ids)
         if not ids:
             return prepared

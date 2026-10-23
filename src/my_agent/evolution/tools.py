@@ -13,6 +13,7 @@ from my_agent.errors import AgentError
 from my_agent.evolution.service import EvolutionService
 from my_agent.evolution.types import (
     CreateEvolutionCandidate,
+    DiagnosticQuery,
     EvolutionControl,
     EvolutionJobControl,
     EvolutionScope,
@@ -80,7 +81,12 @@ class EvolutionTools:
 
         A proposal may follow saved adoption settings; Plan only creates drafts.
         """
-        if name in {"record_feedback", "propose_improvement", "review_experience"}:
+        if name in {
+            "record_feedback",
+            "propose_improvement",
+            "review_experience",
+            "read_diagnostic",
+        }:
             return False
         return self.delegate.is_mutating(name)
 
@@ -91,6 +97,13 @@ class EvolutionTools:
         """
         result = self.delegate.definitions()
         for name, model, description in (
+            (
+                "read_diagnostic",
+                DiagnosticQuery,
+                "Read a recorded diagnostic_id from a failure or Trace. Returns sanitized exact "
+                "causes, stack locations, HTTP/program details and source IDs. Reading a previous "
+                "failure is a successful query, not a retry. Missing old evidence is reported.",
+            ),
             (
                 "review_experience",
                 ReviewArgs,
@@ -130,10 +143,82 @@ class EvolutionTools:
         return result
 
     async def execute(self, call: ToolCall) -> ToolResult:
+        """在工具边界归一化真实失败，保留可修正反馈及取消原语义。
+
+        Normalize actual tool failures while preserving correctable feedback and cancellation.
+        """
+        from my_agent.runtime.loop import recoverable_tool_error
+
+        unexpected: Exception | None = None
+        try:
+            result = await self._execute(call)
+        except ValidationError as exc:
+            from my_agent.errors import exception_message
+
+            return ToolResult(
+                tool_call_id=call.tool_call_id,
+                is_error=True,
+                content=json.dumps(
+                    {"code": "INVALID_TOOL_ARGUMENTS", "message": exception_message(exc)}
+                ),
+            )
+        except Exception as exc:
+            if isinstance(exc, AgentError) and exc.code == "CANCELLED":
+                raise
+            unexpected = exc
+            result = ToolResult(tool_call_id=call.tool_call_id, content="{}", is_error=True)
+        if not result.is_error or (unexpected is None and recoverable_tool_error(call, result)):
+            return result
+        try:
+            data = json.loads(result.content)
+        except ValueError:
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        exception = (
+            unexpected
+            or result._exception
+            or AgentError(
+                str(data.get("code", "TOOL_FAILED")), str(data.get("message", result.content))
+            )
+        )
+        error = await self.service.sessions.worker.call(
+            self.service.diagnostics.capture,
+            exception,
+            code="TOOL_INTERNAL_ERROR",
+            component="tool",
+            project_id=self.context.project_id,
+            source=EvolutionSource(session_id=self.context.session_id, run_id=self.context.run_id),
+            operation=call.name,
+            tool_call_id=call.tool_call_id,
+            phase="tool",
+        )
+        data.update(
+            code=error.code,
+            message=error.message,
+            remediation=error.remediation,
+            cause_code=error.cause_code,
+            phase=error.phase,
+            diagnostic_id=error.diagnostic_id,
+            diagnostic_issue=error.diagnostic_issue,
+            effect_state=error.effect_state,
+        )
+        result.content = json.dumps(data, ensure_ascii=False)
+        return result
+
+    async def _execute(self, call: ToolCall) -> ToolResult:
         """记录来源，不接受模型伪造成功或修改原 Goal 状态。
 
         Capture provenance without accepting fabricated success or changing the source Goal.
         """
+        if call.name == "read_diagnostic":
+            query = DiagnosticQuery.model_validate(call.arguments)
+            event = await self.service.sessions.worker.call(
+                self.service.diagnostics.read, query.diagnostic_id
+            )
+            return ToolResult(
+                tool_call_id=call.tool_call_id, content=event.model_dump_json(), is_error=False
+            )
         if call.name not in {"record_feedback", "propose_improvement", "review_experience"}:
             return await self.delegate.execute(call)
         try:

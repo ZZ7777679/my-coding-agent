@@ -328,14 +328,19 @@ class EvolutionService:
         except (AgentError, OSError) as exc:
             job.message += " · 终态未能保存，当前仅在内存中可见。"
             self.unsaved_jobs[job.job_id] = job
-            await self.sessions.worker.call(
-                self.diagnostics.record,
-                "EVOLUTION_SAVE_FAILED",
-                "维护终态未能保存。",
+            error = await self.sessions.worker.call(
+                self.diagnostics.capture,
+                exc,
+                code="EVOLUTION_SAVE_FAILED",
                 component="evolution",
-                exception=exc,
                 project_id=job.project_id,
+                operation="save_job_outcome",
+                request_id=job.job_id,
+                phase="persistence",
             )
+            job.message += " " + error.message
+            job.diagnostic_id = job.diagnostic_id or error.diagnostic_id
+            job.diagnostic_issue = error.diagnostic_issue or job.diagnostic_issue
         finally:
             self.jobs.pop(job.job_id, None)
             self.active_inputs = {

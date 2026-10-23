@@ -17,13 +17,14 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 import httpx2
 from mcp import Client
+from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters
 from mcp.client.streamable_http import streamable_http_client
 
 from my_agent.errors import AgentError
 from my_agent.execution.environments import inherited_environment
 from my_agent.execution.windows import WindowsProcess
-from my_agent.mcp_client.credentials import McpCredentials, environment_value
+from my_agent.mcp_client.credentials import McpCredentials, McpSavedValues, environment_value
 from my_agent.mcp_client.errors import public_error
 from my_agent.mcp_client.oauth import McpOAuth, OAuthBearerAuth
 from my_agent.mcp_client.presets import service_presets
@@ -93,6 +94,11 @@ class Connection:
         Convert public SDK results to tool data."""
         args = request.arguments
         if request.method == "tools/list":
+            # 资源服务可以完全不提供工具，不把正常能力缺省当成连接失败。
+            # Resource-only servers need no tools; absent capability is not a failed connection.
+            if client.server_capabilities.tools is None:
+                self.tools = []
+                return {"tools": []}
             all_tools: list[JsonObject] = []
             cursor = None
             while True:
@@ -131,33 +137,46 @@ class Connection:
         Serialize calls without replay after cancellation."""
         try:
             async with AsyncExitStack() as stack:
-                if self.server.transport == "http":
+                if self.server.transport in {"http", "sse"}:
                     headers = await self.owner.sessions.worker.call(
                         self.owner.http_headers, self.server
                     )
                     if self.server.auth.source == "oauth":
                         self.oauth_auth = OAuthBearerAuth(self.owner.oauth, self.server)
-                    http = await stack.enter_async_context(
-                        httpx2.AsyncClient(
+                    if self.server.transport == "http":
+                        http = await stack.enter_async_context(
+                            httpx2.AsyncClient(
+                                headers=headers,
+                                auth=self.oauth_auth,
+                                timeout=self.server.timeout_seconds,
+                                event_hooks={"response": [self._observe_response]},
+                            )
+                        )
+                        transport = streamable_http_client(self.server.url, http_client=http)
+                    else:
+                        transport = sse_client(
+                            self.server.url,
                             headers=headers,
                             auth=self.oauth_auth,
                             timeout=self.server.timeout_seconds,
-                            event_hooks={"response": [self._observe_response]},
+                            sse_read_timeout=self.server.timeout_seconds,
                         )
-                    )
-                    transport = streamable_http_client(self.server.url, http_client=http)
                     client = Client(
                         transport,
+                        mode=self.server.protocol_mode,
                         read_timeout_seconds=self.server.timeout_seconds,
                         input_required_max_rounds=0,
                         cache=None,
                     )
                 else:
-                    launch = self.owner.launch(self.server, self.params)
+                    launch = await self.owner.sessions.worker.call(
+                        self.owner.launch, self.server, self.params
+                    )
                     # stderr 不混入 JSONL，也不回显到模型。
                     # Keep server stderr out of JSONL and model responses.
                     client = Client(
                         launch,
+                        mode=self.server.protocol_mode,
                         read_timeout_seconds=self.server.timeout_seconds,
                         input_required_max_rounds=0,
                         cache=None,
@@ -270,6 +289,7 @@ class McpService:
         self.root = sessions.store.storage.root
         self.path = self.root / "mcp.json"
         self.credentials = McpCredentials(self.root)
+        self.saved_values = McpSavedValues(self.root)
         self.oauth = McpOAuth(
             McpCredentials(self.root, directory_name="mcp-oauth"), sessions.worker
         )
@@ -317,6 +337,7 @@ class McpService:
         Assemble auth headers while preserving legacy reference values verbatim.
         """
         headers = httpx2.Headers(server.headers)
+        headers.update(self.saved_values.values(server, "headers"))
         auth = server.auth
         refs = {
             name: value
@@ -345,19 +366,25 @@ class McpService:
         Report credential presence; only a real connection can validate authentication.
         """
         try:
-            if server.transport == "http" and server.auth.source == "oauth":
+            self.saved_values.values(server, "env")
+            self.saved_values.values(server, "headers")
+            if server.transport in {"http", "sse"} and server.auth.source == "oauth":
                 if self.oauth.credentials.path(server.server_id).is_file():
                     return "configured", "已保存 OAuth 登录；连接时检查到期并按需刷新。"
                 return "missing", "尚未登录，请点击“登录授权”。"
-            references = server.header_refs if server.transport == "http" else server.env_refs
+            references = (
+                server.header_refs if server.transport in {"http", "sse"} else server.env_refs
+            )
             self.references(references)
-            if server.transport == "http" and server.auth.source == "environment":
+            if server.transport in {"http", "sse"} and server.auth.source == "environment":
                 environment_value(server.auth.env_var)
                 return "configured", f"已找到环境变量 {server.auth.env_var}；认证待连接确认。"
-            if server.transport == "http" and server.auth.source == "saved":
+            if server.transport in {"http", "sse"} and server.auth.source == "saved":
                 if self.credentials.path(server.server_id).is_file():
                     return "configured", "已加密保存令牌；认证待连接确认。"
                 return "missing", "尚未保存令牌，可编辑连接配置。"
+            if server.stored_env or server.stored_headers:
+                return "configured", "已加密保存连接变量；实际可用性待连接确认。"
             if references:
                 return "configured", "已找到所引用的环境变量；认证待连接确认。"
             return "not_required", "未配置认证；是否允许匿名访问以服务响应为准。"
@@ -446,7 +473,7 @@ class McpService:
                     credential_message=credential_message,
                     needs_reconnect=changed,
                     oauth=self.oauth.view(server)
-                    if server.transport == "http" and server.auth.source == "oauth"
+                    if server.transport in {"http", "sse"} and server.auth.source == "oauth"
                     else None,
                 )
             )
@@ -475,6 +502,7 @@ class McpService:
             self.credentials.save(params.server.server_id, params.credential_value)
         elif params.clear_credential:
             self.credentials.remove(params.server.server_id)
+        self.saved_values.save(params.server, params.connection_values)
         config.servers = [s for s in config.servers if s.server_id != params.server.server_id]
         config.servers.append(params.server)
         write_document(self.path, config)
@@ -494,7 +522,11 @@ class McpService:
             self.oauth.logins.pop(params.server.server_id, None)
         await self.sessions.worker.call(self._save_config, params)
         server = params.server
-        if params.credential_value is not None or params.clear_credential:
+        if (
+            params.credential_value is not None
+            or params.clear_credential
+            or params.connection_values is not None
+        ):
             for key, connection in self.connections.items():
                 if key[2] == server.server_id:
                     connection.credential_changed = True
@@ -552,6 +584,7 @@ class McpService:
 
         Inherit tool environment plus explicit references."""
         env = inherited_environment()
+        env.update(self.saved_values.values(server, "env"))
         env.update(self.references(server.env_refs))
         command, arguments = server.command, list(server.arguments)
         if self.sessions.skills is None:
@@ -559,6 +592,9 @@ class McpService:
         cwd = (
             self.sessions.skills.project_root(params.project_id) if params.project_id else self.root
         )
+        if server.cwd:
+            configured_cwd = Path(server.cwd.replace("${workspaceFolder}", str(cwd)))
+            cwd = configured_cwd if configured_cwd.is_absolute() else cwd / configured_cwd
         if server.transport == "browser":
             package = (
                 Path(__file__).resolve().parents[3]
@@ -647,6 +683,9 @@ class McpService:
                 await self._close_server_connections(existing.server_id)
                 await self.oauth.logout(existing.server_id)
                 await self.sessions.worker.call(self.credentials.remove, existing.server_id)
+                await self.sessions.worker.call(
+                    self.saved_values.credentials.remove, existing.server_id
+                )
             config.servers = [s for s in config.servers if s.server_id != params.server_id]
             await self.sessions.worker.call(write_document, self.path, config)
             self._forget_tools(params.server_id)
@@ -745,7 +784,10 @@ class McpService:
                     await self.oauth.logout(auth_server.server_id)
                     self._forget_tools(auth_server.server_id)
                     return
-                if auth_server.transport != "http" or auth_server.auth.source != "oauth":
+                if (
+                    auth_server.transport not in {"http", "sse"}
+                    or auth_server.auth.source != "oauth"
+                ):
                     raise AgentError(
                         "MCP_OAUTH_UNAVAILABLE", "请先把远程服务的认证方式设为 OAuth。"
                     )

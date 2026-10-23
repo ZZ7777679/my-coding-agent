@@ -1,0 +1,143 @@
+.workspace:has(.space-panel.is-designing) {
+  position: relative;
+  overflow: hidden;
+}
+.space-panel.is-designing {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 18px;
+}
+.team-design-workspace {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(290px, 0.85fr) minmax(360px, 1.15fr);
+  gap: 16px;
+}
+.team-design-workspace > .space-team-editor {
+  min-width: 0;
+  overflow: auto;
+  padding: 0 8px 16px 0;
+}
+.space-panel.is-designing .space-toolbar[hidden] {
+  display: none;
+}
+.team-design-chat {
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 16px;
+  border-right: 1px solid var(--border);
+}
+.team-design-chat > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.team-design-chat h3,
+.team-design-chat p {
+  margin: 0;
+}
+.team-design-chat header span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.team-design-history {
+  flex: 1;
+  min-height: 100px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.design-message {
+  margin: 0 0 18px;
+  line-height: 1.65;
+}
+.design-message.user {
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--surface);
+}
+.design-message details {
+  margin: 8px 0;
+}
+.design-message pre {
+  white-space: pre-wrap;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+.design-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 8px 0;
+}
+.team-design-chat textarea {
+  width: 100%;
+  min-height: 92px;
+  max-height: 160px;
+  resize: vertical;
+}
+.team-design-actions,
+.team-design-launch {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.space-panel .team-design-actions select {
+  width: auto;
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.task-navigation .tree-team-design {
+  display: block;
+  margin-block: 4px;
+}
+.design-objective {
+  flex-basis: 100%;
+  font-size: 13px;
+  max-height: 160px;
+  overflow: auto;
+}
+.team-design-launch {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.team-design-launch button.primary {
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+.team-design-workspace .space-graph {
+  min-height: 420px;
+  height: 58vh;
+}
+@media (max-width: 1000px) {
+  .team-design-workspace {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+  .team-design-chat {
+    min-height: 520px;
+    border-right: 0;
+    padding-right: 0;
+  }
+  .team-design-workspace > .space-team-editor {
+    overflow: visible;
+  }
+}

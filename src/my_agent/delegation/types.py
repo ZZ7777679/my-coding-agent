@@ -47,6 +47,7 @@ class SpawnWorkerArgs(ModelData):
     """
 
     objective: Annotated[str, Field(min_length=1, max_length=16000)]
+    name: str = Field(default="", description="Short work/role name for the worker card.")
     scope: str = ""
     role: Literal["implement", "research"] = "research"
     context_mode: Literal["isolated", "inherit"] = "isolated"

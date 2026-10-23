@@ -1,5 +1,5 @@
 /** 自进化的具名转发。 Named evolution forwarding. */
-import type { ProtocolV13 as P } from '../generated/protocol'
+import type { Protocol as P } from '../generated/schema'
 import type { M7DesktopAPI } from '../shared/m7-api'
 import type { Result } from '../shared/api'
 
@@ -12,6 +12,7 @@ type Invoke = <K extends keyof P>(
 /** 不暴露通用 RPC 或文件访问。 Expose neither generic RPC nor filesystem access. */
 export function m7Api(invoke: Invoke): M7DesktopAPI {
   return {
+    evolutionDiagnostic: (p) => invoke('agent:m7-diagnostic', 'DiagnosticEvent', [p]),
     evolutionList: (p) => invoke('agent:m7-list', 'EvolutionPage', [p]),
     evolutionCatalog: (p) => invoke('agent:m7-catalog', 'EvolutionCatalog', [p]),
     evolutionConfigure: (p) => invoke('agent:m7-configure', 'EvolutionSettings', [p]),

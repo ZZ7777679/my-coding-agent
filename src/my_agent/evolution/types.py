@@ -3,6 +3,8 @@
 Public evolution data without services or credentials.
 """
 
+from __future__ import annotations
+
 import json
 from importlib.resources import files
 from typing import Annotated, Literal
@@ -11,7 +13,7 @@ from pydantic import Field
 
 from my_agent.execution.types import ProgramView, RunCommandArgs
 from my_agent.identifiers import EntityId
-from my_agent.models.types import ModelData, ModelId, TokenUsage
+from my_agent.models.types import JsonObject, ModelData, ModelId, TokenUsage
 from my_agent.runtime.settings import ModelLimits
 
 _DEFAULTS = json.loads(files("my_agent").joinpath("defaults.json").read_text(encoding="utf-8"))[
@@ -138,6 +140,36 @@ class DiagnosticEvent(ModelData):
     frames: list[DiagnosticFrame] = Field(default_factory=list)
     project_id: EntityId | None = None
     source: EvolutionSource = Field(default_factory=EvolutionSource)
+    causes: list[DiagnosticCause] = Field(default_factory=list)
+    operation: str | None = None
+    request_id: str | None = None
+    tool_call_id: str | None = None
+    effect_state: Literal["not_executed", "saved", "partial", "unknown"] | None = None
+    details: JsonObject = Field(default_factory=dict)
+
+
+class DiagnosticCause(ModelData):
+    """每层异常的具体消息、位置与父原因关系。
+
+    Concrete message, locations and parent relationship for each exception layer.
+    """
+
+    type: str
+    message: str
+    relation: Literal["error", "cause", "context", "group"] = "error"
+    parent: int | None = None
+    code: str | None = None
+    frames: list[DiagnosticFrame] = Field(default_factory=list)
+    details: JsonObject = Field(default_factory=dict)
+
+
+class DiagnosticQuery(ModelData):
+    """按真实诊断身份读取，不扫描其他记录。
+
+    Read an actual diagnostic identity without scanning unrelated records.
+    """
+
+    diagnostic_id: EntityId
 
 
 class EvolutionScope(ModelData):
@@ -210,7 +242,7 @@ class SaveEvolutionFeedback(ModelData):
     kind: Literal["problem", "success", "instruction"] = "problem"
     source: EvolutionSource = Field(default_factory=EvolutionSource)
     sources: list[EvolutionSource] = Field(default_factory=list)
-    target: "EvolutionTarget | None" = None
+    target: EvolutionTarget | None = None
     origin: EvolutionScope | None = None
 
 
@@ -341,18 +373,20 @@ class EvolutionJob(ModelData):
     summary: str = ""
     response_text: str = ""
     message: str = ""
+    diagnostic_id: EntityId | None = None
+    diagnostic_issue: str | None = None
     requests: int = 0
     # 旧作业未记录预算，保留未知；新作业在接纳时冻结，不随设置变动。
     # Legacy budgets remain unknown; new jobs freeze them at acceptance.
     budget: EvolutionBudget | None = None
     updated_at: str = ""
     accepted_at: str = ""
-    request: "GenerateEvolutionCandidate | None" = None
+    request: GenerateEvolutionCandidate | None = None
     experiment_directory: str | None = None
     programs: list[ProgramView] = Field(default_factory=list)
     omitted_paths: list[str] = Field(default_factory=list)
     details_available: bool = False
-    review_input: "EvolutionInput | None" = None
+    review_input: EvolutionInput | None = None
     usage: TokenUsage = Field(
         default_factory=lambda: TokenUsage(input_tokens=None, output_tokens=None)
     )
@@ -463,7 +497,7 @@ class EvolutionInput(ModelData):
     selections: list[EvolutionSelection] = Field(default_factory=list)
     trace_count: int = 0
     coverage: EvolutionCoverage = Field(default_factory=EvolutionCoverage)
-    screening: list["EvolutionEpisode"] = Field(default_factory=list)
+    screening: list[EvolutionEpisode] = Field(default_factory=list)
     episode_count: int = 0
 
 
@@ -592,6 +626,8 @@ class EvolutionJobControl(ModelData):
 
 
 EVOLUTION_TYPES = (
+    DiagnosticQuery,
+    DiagnosticEvent,
     EvolutionQuery,
     EvolutionSettings,
     SaveEvolutionFeedback,

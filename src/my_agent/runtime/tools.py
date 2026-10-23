@@ -5,18 +5,35 @@ Runtime tool composition contracts.
 
 from __future__ import annotations
 
+import json
 import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+from my_agent.errors import AgentError
 from my_agent.models.types import JsonObject, ToolCall, ToolResult
 from my_agent.runtime.modes import RunMode
 from my_agent.runtime.settings import RunLimits
 
 if TYPE_CHECKING:
     from my_agent.runtime.events import RunSink
+
+
+def failed_tool_result(
+    call: ToolCall, error: AgentError, fields: JsonObject | None = None
+) -> ToolResult:
+    """保留工具公开字段与内存中的原异常，交给外层统一记录一次。
+
+    Retain public tool fields and the in-memory exception for one outer diagnostic capture.
+    """
+    data: JsonObject = {"code": error.code, "message": error.message, **(fields or {})}
+    result = ToolResult(
+        tool_call_id=call.tool_call_id, content=json.dumps(data, ensure_ascii=False), is_error=True
+    )
+    result._exception = error
+    return result
 
 
 @dataclass(frozen=True)

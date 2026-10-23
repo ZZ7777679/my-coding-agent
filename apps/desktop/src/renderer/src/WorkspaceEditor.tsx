@@ -68,7 +68,13 @@ export type DocumentReference = {
   end_line: number
   draft: boolean
 }
-type Props = { sessionId: string | null; onReference?: (reference: DocumentReference) => void }
+type Props = {
+  sessionId: string | null
+  onReference?: (reference: DocumentReference) => void
+  onRunFile?: (path: string) => void
+  onTerminal?: (cwd: string, shell: 'powershell' | 'cmd') => void
+  terminalBusy?: boolean
+}
 type Buffer = DocumentView & { base: string; disk?: string; missing?: boolean }
 type WorkbenchState = { buffers: Buffer[]; active: string; directory: string }
 const cached = new Map<string, WorkbenchState>()
@@ -104,7 +110,7 @@ function language(path: string): string {
 }
 
 /** 隔离会话视图，切换后旧响应不改写新会话。 Isolate session views against late responses after navigation. */
-export function WorkspaceEditor({ sessionId, onReference }: Props) {
+export function WorkspaceEditor({ sessionId, ...actions }: Props) {
   const { value: appearance } = useAppearance()
   useEffect(() => {
     const palette = palettes[appearance.preset]
@@ -127,17 +133,17 @@ export function WorkspaceEditor({ sessionId, onReference }: Props) {
         <p>选择会话后浏览和编辑项目文件。</p>
       </section>
     )
-  return <FileWorkbench key={sessionId} sessionId={sessionId} onReference={onReference} />
+  return <FileWorkbench key={sessionId} sessionId={sessionId} {...actions} />
 }
 
 /** 多标签编辑保存、草稿、冲突和文件操作。 Handle tabs, saves, drafts, conflicts and file operations. */
 function FileWorkbench({
   sessionId,
-  onReference
-}: {
-  sessionId: string
-  onReference?: Props['onReference']
-}) {
+  onReference,
+  onRunFile,
+  onTerminal,
+  terminalBusy
+}: Props & { sessionId: string }) {
   const [state, setState] = useState<WorkbenchState>(
     () =>
       cached.get(sessionId) ?? {
@@ -935,6 +941,19 @@ function FileWorkbench({
           项目根
         </button>
         <small>{state.directory}</small>
+        {onTerminal && (
+          <div className="file-terminal-actions">
+            <button
+              disabled={terminalBusy}
+              onClick={() => onTerminal(state.directory, 'powershell')}
+            >
+              此处 PowerShell
+            </button>
+            <button disabled={terminalBusy} onClick={() => onTerminal(state.directory, 'cmd')}>
+              此处 CMD
+            </button>
+          </div>
+        )}
         <nav aria-label="项目文件树">
           {state.directory !== '.' && (
             <button
@@ -1141,6 +1160,45 @@ function FileWorkbench({
               <button disabled={!onReference} onClick={reference}>
                 引用选区 / 文件
               </button>
+              {onRunFile && (
+                <button
+                  onClick={() => onRunFile(active.path)}
+                  title="将文件路径填入对话，发送后由 Agent 使用项目环境运行磁盘版本；未保存草稿不会自动写入。"
+                >
+                  让 Agent 运行
+                </button>
+              )}
+              {onTerminal && (
+                <details className="file-execution-menu">
+                  <summary>文件目录终端</summary>
+                  <button
+                    disabled={terminalBusy}
+                    onClick={() =>
+                      onTerminal(
+                        active.path.includes('/')
+                          ? active.path.slice(0, active.path.lastIndexOf('/'))
+                          : '.',
+                        'powershell'
+                      )
+                    }
+                  >
+                    PowerShell
+                  </button>
+                  <button
+                    disabled={terminalBusy}
+                    onClick={() =>
+                      onTerminal(
+                        active.path.includes('/')
+                          ? active.path.slice(0, active.path.lastIndexOf('/'))
+                          : '.',
+                        'cmd'
+                      )
+                    }
+                  >
+                    CMD
+                  </button>
+                </details>
+              )}
               <button
                 onClick={() =>
                   void window.agent

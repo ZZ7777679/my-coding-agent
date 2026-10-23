@@ -11,6 +11,7 @@ from my_agent.errors import AgentError
 from my_agent.evolution.types import (
     CompareEvolutionCandidate,
     CreateEvolutionCandidate,
+    DiagnosticQuery,
     EvolutionCandidateParams,
     EvolutionControl,
     EvolutionExperimentParams,
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
     from my_agent.rpc.application import RpcApplication
 
 M7_METHODS = (
+    "evolution.diagnostic",
     "evolution.list",
     "evolution.catalog",
     "evolution.configure",
@@ -55,6 +57,9 @@ async def dispatch_m7(app: "RpcApplication", method: str, params: dict[str, obje
     service = app.sessions.evolution
     if service is None:
         raise AgentError("EVOLUTION_UNAVAILABLE", "自进化服务未装配。")
+    if method == "evolution.diagnostic":
+        query = DiagnosticQuery.model_validate(params)
+        return await app.worker.call(service.diagnostics.read, query.diagnostic_id)
     if method in {"evolution.list", "evolution.catalog"}:
         query = EvolutionQuery.model_validate(params)
         return (

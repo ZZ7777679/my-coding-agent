@@ -7,7 +7,7 @@ import httpx
 
 from my_agent.errors import AgentError
 from my_agent.models.timing import RequestTiming
-from my_agent.models.types import TokenUsage
+from my_agent.models.types import JsonObject, TokenUsage
 
 
 class ModelResponseError(AgentError):
@@ -24,9 +24,11 @@ class ModelResponseError(AgentError):
         finish_reason: str | None,
         *,
         phase: str | None = None,
+        remediation: str = "",
+        details: JsonObject | None = None,
     ) -> None:
         """向调用方交付已观察到的统计。 Pass observed statistics to the caller."""
-        super().__init__(code, message, phase=phase)
+        super().__init__(code, message, remediation, phase=phase, details=details)
         self.usage = usage
         self.finish_reason = finish_reason
 
@@ -58,6 +60,8 @@ def request_failure(
             if timeout is not None
             else "模型连接或传输发生超时，当前未设宿主请求总时限。"
         )
+        if timing.progress.phase == "waiting" and timing.progress.response_headers_ms is None:
+            message += "请求已发出，但服务尚未返回 HTTP 响应头；尚未进入模型内容流。"
     elif isinstance(error, httpx.ProxyError):
         code, message = "MODEL_PROXY_ERROR", "模型请求的代理连接失败。"
     elif isinstance(error, httpx.ConnectError):
@@ -82,8 +86,8 @@ def request_failure(
     else:
         message += "尚未收到响应正文数据。"
     failure_phase = {
-        "MODEL_CONNECT_TIMEOUT": "connecting",
-        "MODEL_CONNECT_ERROR": "connecting",
+        "MODEL_CONNECT_TIMEOUT": "tls" if timing.progress.phase == "tls" else "connecting",
+        "MODEL_CONNECT_ERROR": "tls" if timing.progress.phase == "tls" else "connecting",
         "MODEL_PROXY_ERROR": "proxy",
         "MODEL_POOL_TIMEOUT": "pool",
         "MODEL_WRITE_TIMEOUT": "sending",
@@ -91,7 +95,36 @@ def request_failure(
         "MODEL_READ_TIMEOUT": "response_headers"
         if timing.progress.response_headers_ms is None
         else "response_stream",
-        "MODEL_STREAM_ERROR": "response_stream",
-        "MODEL_REQUEST_TIMEOUT": "request_deadline",
+        "MODEL_STREAM_ERROR": "response_headers"
+        if timing.progress.response_headers_ms is None
+        else "response_stream",
+        # 总时限是失败类型，等待响应头／流才是失败位置，不能用一个 deadline 覆盖。
+        # The deadline is the cause category; preserve where the request was actually waiting.
+        "MODEL_REQUEST_TIMEOUT": "response_stream"
+        if timing.progress.response_headers_ms is not None
+        else "response_headers"
+        if timing.progress.phase == "waiting"
+        else timing.progress.phase,
     }.get(code, "transport")
-    return AgentError(code, message, phase=failure_phase)
+    remediation = (
+        "可在连接诊断中测试所选模型后显式重试；仅凭未收到响应头，不能确定是网络、网关还是上游处理。"
+        "增大超时只会延长等待，不保证恢复；本次没有自动重放工具。"
+        if failure_phase == "response_headers"
+        else ""
+    )
+    return AgentError(
+        code,
+        message,
+        remediation,
+        phase=failure_phase,
+        details={
+            "timeout_seconds": timeout,
+            "elapsed_ms": timing.milliseconds(),
+            "last_observed_phase": timing.progress.phase,
+            "response_headers_ms": timing.progress.response_headers_ms,
+            "first_event_ms": timing.progress.first_event_ms,
+            "received_bytes": timing.progress.received_bytes,
+            "connect_ms": timing.progress.connect_ms,
+            "tls_ms": timing.progress.tls_ms,
+        },
+    )

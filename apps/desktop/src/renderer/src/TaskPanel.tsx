@@ -22,6 +22,7 @@ type Props = {
   onChanged: () => void
   renamedItem?: NavigationItemName | null
   editRequest?: string
+  designRequest?: string
 }
 
 /** 按后端字段编辑共享记录；保存采用版本检查，错误保留草稿。 Edit shared facts with revision checks and preserved drafts. */
@@ -33,7 +34,8 @@ export function TaskPanel({
   onSelect,
   onChanged,
   renamedItem,
-  editRequest
+  editRequest,
+  designRequest
 }: Props) {
   const [task, setTask] = useState<TaskView | null>(null)
   const editor = useRef<HTMLDetailsElement>(null)
@@ -305,6 +307,8 @@ export function TaskPanel({
           {task && (
             <SpacePanel
               task={task}
+              defaultModel={defaultModel}
+              designRequest={designRequest}
               connected={connected}
               onSelect={onSelect}
               onChanged={onChanged}

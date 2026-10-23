@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import type { OperationError } from '../../generated/protocol'
+import { DiagnosticDetails } from './DiagnosticDetails'
 
 const effectLabels = {
   not_executed: '本次运行没有已派发的工具操作',
@@ -41,6 +42,12 @@ export function FailureNotice({
       <strong>{error.message}</strong>
       {error.effect_state && <p>{effectLabels[error.effect_state]}</p>}
       {error.remediation && <p>{error.remediation}</p>}
+      {error.diagnostic_issue && (
+        <p>诊断保存降级：{error.diagnostic_issue}；以上业务错误仍有效。</p>
+      )}
+      {error.diagnostic_id && (
+        <DiagnosticDetails key={error.diagnostic_id} id={error.diagnostic_id} />
+      )}
       <div className="failure-actions">
         {children}
         <button type="button" onClick={() => void copy()}>
@@ -48,7 +55,7 @@ export function FailureNotice({
         </button>
       </div>
       <details>
-        <summary>错误详情 · {error.code}</summary>
+        <summary>错误详情</summary>
         <dl className="failure-fields">
           {Object.entries({
             错误码: error.code,

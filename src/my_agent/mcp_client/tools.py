@@ -17,7 +17,7 @@ from my_agent.errors import AgentError
 from my_agent.mcp_client.service import McpService
 from my_agent.mcp_client.types import McpParams
 from my_agent.models.types import JsonObject, ModelData, ToolCall, ToolResult
-from my_agent.runtime.tools import ToolContext, ToolExecutor
+from my_agent.runtime.tools import ToolContext, ToolExecutor, failed_tool_result
 
 
 def validate_arguments(schema: JsonObject, arguments: JsonObject) -> None:
@@ -235,7 +235,7 @@ class McpTools:
         except ValidationError:
             error = {"code": "INVALID_TOOL_ARGUMENTS", "message": "请按 MCP 工具定义提供参数。"}
         except AgentError as exc:
-            error = {"code": exc.code, "message": exc.message}
+            return failed_tool_result(call, exc)
         return ToolResult(
             tool_call_id=call.tool_call_id,
             content=json.dumps(error, ensure_ascii=False),

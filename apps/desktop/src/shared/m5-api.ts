@@ -1,5 +1,5 @@
 /** M5 明确能力接口，数据类型仅来自生成协议。 Explicit M5 capabilities using generated contracts only. */
-import type { ProtocolV13 as P } from '../generated/protocol'
+import type { Protocol as P } from '../generated/schema'
 import type { Result } from './api'
 
 export interface M5DesktopAPI {
@@ -41,6 +41,16 @@ export interface M5DesktopAPI {
   updateSpaceWork(params: P['UpdateSpaceWorkParams']): Promise<Result<P['TaskView']>>
   /** spaces.generate 的受信入口。 Trusted spaces.generate entry. */
   generateTeam(params: P['GenerateTeamParams']): Promise<Result<P['TeamGeneration']>>
+  /** 打开或恢复任务专用设计。 Open or resume task-scoped team design. */
+  openTeamDesign(params: P['OpenTeamDesignParams']): Promise<Result<P['TeamDesignView']>>
+  /** 读取设计状态。 Read saved design state. */
+  getTeamDesign(params: P['SpaceParams']): Promise<Result<P['TeamDesignView']>>
+  /** 保存输入或图。 Save input or graph edits. */
+  saveTeamDesign(params: P['SaveTeamDesignParams']): Promise<Result<P['TeamDesignView']>>
+  /** 讨论或追加。 Discuss or steer the design. */
+  sendTeamDesign(params: P['SendTeamDesignParams']): Promise<Result<P['TeamDesignView']>>
+  /** 确认后组建并启动。 Confirm, assemble and start. */
+  startTeamDesign(params: P['StartTeamDesignParams']): Promise<Result<P['TeamDesignView']>>
   /** spaces.chat_view 的受信入口。 Trusted spaces.chat_view entry. */
   getSpaceChat(params: P['SpaceChatPageParams']): Promise<Result<P['SpaceChatView']>>
   /** spaces.chat 的受信入口。 Trusted spaces.chat entry. */

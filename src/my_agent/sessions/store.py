@@ -25,7 +25,7 @@ from my_agent.goals.state import (
 )
 from my_agent.goals.types import GoalControl, GoalCreated
 from my_agent.models.types import JsonObject, ModelId
-from my_agent.runtime.messages import tool_result_message
+from my_agent.runtime.messages import input_message, tool_result_message
 from my_agent.sessions.pairing import pending_tools
 from my_agent.sessions.recovery_types import SessionRecovered
 from my_agent.sessions.types import (
@@ -39,6 +39,8 @@ from my_agent.sessions.types import (
     RequestStarted,
     RunAccepted,
     RunFinished,
+    RunInputApplied,
+    RunInputQueued,
     RunWaitChanged,
     SessionAssigned,
     SessionCreated,
@@ -113,9 +115,13 @@ class SessionLog:
                 messages.append(
                     {
                         "role": "user",
-                        "content": "Inherited source material only. "
-                        "Do not continue the source's goal or replay its tools; the new assignment "
-                        "below is your current objective.\n" + data.inherited_context,
+                        "content": (
+                            "Team-design role and operating method:\n"
+                            if data.purpose == "team_design"
+                            else "Inherited source material only. Do not continue the source's "
+                            "goal or replay its tools; the new assignment below is your current "
+                            "objective.\n"
+                        ) + data.inherited_context,
                     }
                 )
             if isinstance(data, ConversationRestored):
@@ -158,6 +164,12 @@ class SessionLog:
                         ),
                     }
                 )
+            elif isinstance(data, RunInputApplied):
+                if pending:
+                    return messages, False
+                queued = self.facts[data.input_seq - 1].data
+                if isinstance(queued, RunInputQueued):
+                    messages.append(input_message(queued))
             elif isinstance(data, RunAccepted):
                 if pending:
                     return messages, False
@@ -221,6 +233,15 @@ class SessionLog:
             if positions is not None:
                 positions.extend([fact.seq] * (len(messages) - before_count))
         return messages, not pending and self.issue is None
+
+    def pending_inputs(self) -> list[Fact]:
+        """返回尚未纳入上下文的补充；回退排除的消息不恢复。
+
+        Return unconsumed supplements without resurrecting rewound messages.
+        """
+        facts = self.effective_facts()
+        applied = {f.data.input_seq for f in facts if isinstance(f.data, RunInputApplied)}
+        return [f for f in facts if isinstance(f.data, RunInputQueued) and f.seq not in applied]
 
 
 class SessionStore:
@@ -349,6 +370,12 @@ class SessionStore:
         if isinstance(fact.data, GOAL_FACTS):
             validate_goal_fact(log.facts, fact)
             return
+        if isinstance(fact.data, RunInputApplied):
+            if not any(item.seq == fact.data.input_seq for item in log.pending_inputs()):
+                raise invalid
+            if not log.context()[1]:
+                raise invalid
+            return
         if isinstance(fact.data, SessionRecovered):
             recovered = fact.data
             pending = pending_tools(log.facts)
@@ -438,11 +465,23 @@ class SessionStore:
         tail = [item for item in log.facts[accepted.seq :] if item.run_id == fact.run_id]
         if any(isinstance(f.data, RunFinished) for f in tail):
             raise invalid
+        if isinstance(fact.data, RunInputQueued):
+            if any(
+                isinstance(item.data, (RunAccepted, RunInputQueued))
+                and item.data.operation_id == fact.data.operation_id
+                for item in log.facts
+            ):
+                raise invalid
+            return
         if isinstance(fact.data, RunWaitChanged):
             return
         delegated = [item.data for item in tail if isinstance(item.data, DelegatedUsage)]
         tail = [
-            item for item in tail if not isinstance(item.data, (RunWaitChanged, DelegatedUsage))
+            item
+            for item in tail
+            if not isinstance(
+                item.data, (RunWaitChanged, DelegatedUsage, RunInputQueued, RunInputApplied)
+            )
         ]
         # 辅助请求入同一账本，但不打断主模型调用与工具结果的配对顺序。
         # Auxiliary calls share the ledger without disrupting main/tool execution pairing.

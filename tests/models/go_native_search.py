@@ -24,9 +24,10 @@ from my_agent.models.http import public_request_headers
 from my_agent.models.native_search import NativeSearchClient
 from my_agent.models.types import ModelProgress
 from my_agent.runtime.settings import RunLimits
+from my_agent.web.types import WebSettings
 
 ROOT = Path(__file__).resolve().parents[2]
-MODEL_ID = "deepseek-v4.1-flash"
+MODEL_ID = WebSettings.model_validate(DEFAULTS["web"]).search_model_id
 QUERY = "Python 3.13 release notes site:python.org"
 
 

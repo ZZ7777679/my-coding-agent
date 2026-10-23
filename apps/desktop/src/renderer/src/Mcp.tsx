@@ -9,6 +9,7 @@ import type {
   ProjectSummary
 } from '../../generated/protocol'
 import { McpSetup } from './McpSetup'
+import { McpImport } from './McpImport'
 import { McpOAuthStatus } from './McpOAuth'
 
 type McpTool = NonNullable<McpCatalog['servers'][number]['tools']>[number]
@@ -27,6 +28,7 @@ const connectionLabels: Record<string, string> = {
 const transportLabels: Record<NonNullable<McpServer['transport']>, string> = {
   stdio: '本地服务',
   http: '远程 HTTP',
+  sse: '远程 SSE',
   browser: '临时浏览器'
 }
 
@@ -158,7 +160,7 @@ function McpToolCatalog({ tools, connected }: { tools: McpTool[]; connected: boo
       {!tools.length ? (
         <p className="muted">
           {connected
-            ? '此服务当前没有提供工具。'
+            ? '此服务当前没有提供工具；仍可能提供资源，可让 Agent 列出该服务的资源。'
             : '连接服务后可查看它提供的工具；已有连接可点击“刷新工具”。'}
         </p>
       ) : (
@@ -198,6 +200,7 @@ export function Mcp({
 }) {
   const [catalog, setCatalog] = useState<McpCatalog | null>(null)
   const [draft, setDraft] = useState<McpServer | null>(null)
+  const [importing, setImporting] = useState(false)
   const [image, setImage] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -264,6 +267,7 @@ export function Mcp({
   }, [projectId, sessionId, pending])
   /** 编辑已有身份，项目范围保持原义。 Edit an existing identity with its original project scope. */
   function edit(server: McpServer) {
+    setImporting(false)
     setDraft(server)
     setError('')
     setNotice('')
@@ -280,7 +284,10 @@ export function Mcp({
   }
   /** 写入凭据只发送一次；保存成功后可显式连接。 Send write-only credentials once, then optionally connect. */
   async function saveDraft(
-    value: Pick<SaveMcpParams, 'server' | 'credential_value' | 'clear_credential'>,
+    value: Pick<
+      SaveMcpParams,
+      'server' | 'credential_value' | 'clear_credential' | 'connection_values'
+    >,
     connect: boolean
   ) {
     if (busy) return
@@ -300,7 +307,9 @@ export function Mcp({
         `已保存 ${value.server.name}${connect ? '，后续结果见下方服务状态。' : '。可展开服务查看配置和连接状态。'}`
       )
       if (connect) {
-        const oauth = value.server.transport === 'http' && value.server.auth?.source === 'oauth'
+        const oauth =
+          (value.server.transport === 'http' || value.server.transport === 'sse') &&
+          value.server.auth?.source === 'oauth'
         if (oauth) loginToOpen.current = value.server.server_id
         const result = await window.agent.controlMcp({
           ...params,
@@ -406,6 +415,31 @@ export function Mcp({
         临时浏览器不保存登录状态，退出应用时关闭。 项目启用表示可供 Agent
         发现；连接成功表示服务可用，实际调用见会话 Trace。
       </p>
+      <div className="mcp-actions">
+        <button
+          disabled={busy || !catalog}
+          onClick={() => {
+            setDraft(null)
+            setImporting(true)
+            setNotice('')
+            setError('')
+          }}
+        >
+          从 URL / JSON 导入
+        </button>
+        <span className="settings-hint">已有服务地址或 mcpServers 配置？直接粘贴即可。</span>
+      </div>
+      {importing && catalog && (
+        <McpImport
+          projectId={projectId}
+          sessionId={sessionId}
+          projects={projects}
+          catalog={catalog}
+          onSaved={setCatalog}
+          onBusy={setBusy}
+          onClose={() => setImporting(false)}
+        />
+      )}
       {!!catalog?.presets?.length && (
         <section aria-label="常用 MCP 服务">
           <h3>添加常用服务</h3>
@@ -519,8 +553,12 @@ export function Mcp({
               )}
               {issue && <p className="error">{issue}</p>}
               {server.description && <p className="muted">{server.description}</p>}
-              {server.transport === 'http' && <p className="settings-hint">{server.url}</p>}
-              {(server.transport === 'http' || credential_status !== 'not_required') && (
+              {(server.transport === 'http' || server.transport === 'sse') && (
+                <p className="settings-hint">{server.url}</p>
+              )}
+              {(server.transport === 'http' ||
+                server.transport === 'sse' ||
+                credential_status !== 'not_required') && (
                 <p
                   className={
                     credential_status === 'missing' || credential_status === 'unavailable'

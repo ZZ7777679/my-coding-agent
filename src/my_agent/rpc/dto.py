@@ -312,7 +312,7 @@ class AppInfo(DTO):
 
     name: Text
     app_version: Text
-    protocol_version: Literal[13]
+    protocol_version: Literal[15]
     stage: Literal["M8"]
 
 
@@ -393,7 +393,7 @@ class InitializeParams(DTO):
     """
 
     app_version: Text
-    protocol_version: Literal[13]
+    protocol_version: Literal[15]
     data_schema_version: Literal[1]
 
 
@@ -611,6 +611,7 @@ class ErrorData(DTO):
     cause_code: str | None = None
     phase: str | None = None
     diagnostic_id: str | None = None
+    diagnostic_issue: str | None = None
     tool_call_id: str | None = None
     effect_state: Literal["not_executed", "saved", "partial", "unknown"] | None = None
 

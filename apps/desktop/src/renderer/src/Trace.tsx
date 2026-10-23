@@ -1,6 +1,8 @@
 /** 执行事实的按需视图，不参与运行控制。 On-demand facts, independent of execution control. */
 import { useEffect, useRef, useState } from 'react'
 import { EvolutionFeedbackButton } from './EvolutionFeedback'
+import { DiagnosticDetails } from './DiagnosticDetails'
+import type { EvolutionEntry } from './EvolutionQuick'
 import type {
   ChatEntry,
   TraceItem,
@@ -150,12 +152,14 @@ export function toolCaption(entry: ChatEntry, result?: ChatEntry): string {
 
 /** 保留展开状态并按需读取详情片段。 Preserve expansion and fetch detail chunks on demand. */
 function TraceRow({
+  onReview,
   item,
   sessionId,
   projectId,
   focus,
   visible = true
 }: {
+  onReview?: (entry: EvolutionEntry) => void
   item: TraceItem
   sessionId: string
   projectId: string
@@ -234,6 +238,24 @@ function TraceRow({
             projectId={projectId}
             source={{ session_id: sessionId, run_id: item.run_id, seq: item.seq }}
           />
+          {item.diagnostic_ids?.map((id) => (
+            <DiagnosticDetails key={id} id={id} />
+          ))}
+          {item.is_error && onReview && (
+            <button
+              onClick={() =>
+                onReview({
+                  origin: null,
+                  instruction: '分析这条失败记录与关联诊断，查证具体原因后提出修复方案。',
+                  sources: [
+                    { session_id: sessionId, run_id: item.run_id, seq: item.seq, scope: 'event' }
+                  ]
+                })
+              }
+            >
+              调查此故障
+            </button>
+          )}
           {item.kind === 'request.started' && (
             <p className="muted">
               Token 输入 {item.usage?.input_tokens ?? '未知'} / 输出{' '}
@@ -309,6 +331,7 @@ function TraceRow({
  * Page and filter Trace; an embedding evidence panel can supply its own header and close action.
  */
 export function Trace({
+  onReview,
   sessionId,
   projectId,
   revision,
@@ -319,6 +342,7 @@ export function Trace({
   initialExpanded = false,
   onClose
 }: {
+  onReview?: (entry: EvolutionEntry) => void
   sessionId: string
   projectId: string
   revision: number
@@ -620,6 +644,7 @@ export function Trace({
               {(index === 0 || items[index - 1].request_id !== item.request_id) &&
                 item.request_id && <small>请求 {item.request_id}</small>}
               <TraceRow
+                onReview={onReview}
                 item={item}
                 sessionId={sessionId}
                 projectId={projectId}

@@ -202,7 +202,7 @@ async def check_diagnostics_do_not_persist_exception_secrets(tmp_path):
         created = await create_session(app, tmp_path / "project")
         try:
             try:
-                raise ValueError("private-value-never-log-this")
+                raise ValueError("Gateway refused credentials: token=private-value-never-log-this")
             except ValueError as exc:
                 raise AgentError(
                     "MODEL_FAILED", "连接失败。", cause_code="CONNECT", phase="connect"
@@ -220,6 +220,7 @@ async def check_diagnostics_do_not_persist_exception_secrets(tmp_path):
             encoding="utf-8"
         )
         assert "private-value-never-log-this" not in content
+        assert "Gateway refused credentials" in content
         assert "ValueError" in content and '"phase": "connect"' in content
         feedback = await app.dispatch(
             "evolution.feedback",

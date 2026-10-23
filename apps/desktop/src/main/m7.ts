@@ -1,9 +1,10 @@
 /** 自进化 IPC 复用来源校验。 Evolution IPC reuses sender validation. */
-import type { ProtocolV13 as P } from '../generated/protocol'
+import type { Protocol as P } from '../generated/schema'
 import type { Backend } from './backend'
 import { validate } from '../shared/validation'
 
 const routes: ReadonlyArray<readonly [string, keyof P, keyof P]> = [
+  ['diagnostic', 'DiagnosticQuery', 'DiagnosticEvent'],
   ['list', 'EvolutionQuery', 'EvolutionPage'],
   ['catalog', 'EvolutionQuery', 'EvolutionCatalog'],
   ['configure', 'EvolutionSettings', 'EvolutionSettings'],

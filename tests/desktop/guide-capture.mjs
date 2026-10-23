@@ -199,7 +199,7 @@ try {
     await shot('diagnostics', page.locator('.diagnostics-card').first())
   } else if (part === 'workbench') {
     await nav('打开 / 补齐首会话')
-    await nav('编码工作台')
+    await nav('项目文件')
     await page.getByRole('button', { name: 'index.html', exact: true }).click()
     await expect(page.locator('.monaco-editor').first()).toBeVisible()
     await shot('editor')

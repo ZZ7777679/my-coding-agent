@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
-from my_agent.models.types import ModelData, ModelId, TokenUsage
+from my_agent.models.types import AuxiliaryModelId, ModelData, TokenUsage
 
 
 class WebSettings(ModelData):
@@ -16,7 +16,7 @@ class WebSettings(ModelData):
     Central defaults; tool arguments may override native search uses and redirect count.
     """
 
-    search_model_id: ModelId
+    search_model_id: AuxiliaryModelId
     search_max_uses: Annotated[int, Field(ge=1)]
     max_redirects: Annotated[int, Field(ge=0)]
 
@@ -64,7 +64,7 @@ class WebSearchResult(ModelData):
     kind: Literal["web.search"]
     query: str
     actual_queries: list[str]
-    model_id: ModelId
+    model_id: AuxiliaryModelId
     sources: list[WebSource]
     summary: str
     usage: TokenUsage

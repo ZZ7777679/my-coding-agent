@@ -1,7 +1,7 @@
 {
   "app_name": "My Coding Agent",
   "stage": "M8",
-  "protocol_version": 13,
+  "protocol_version": 15,
   "data_schema_version": 1,
   "data_dir": "E:\\MyCodingAgentData",
   "data_dir_env": "MY_AGENT_DATA_DIR",
@@ -60,7 +60,7 @@
     "response_drain_timeout_seconds": 1.0
   },
   "web": {
-    "search_model_id": "deepseek-v4.1-flash",
+    "search_model_id": "deepseek-flash",
     "search_max_uses": 1,
     "max_redirects": 5
   },

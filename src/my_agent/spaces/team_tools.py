@@ -81,6 +81,25 @@ class SpaceTeamTools:
                 {
                     "type": "function",
                     "function": {
+                        "name": "read_team_design",
+                        "description": (
+                            "Read the current graph including manual edits. Preserve member/edge "
+                            "IDs and positions unless changes are requested. Save revisions with "
+                            "save_team_draft; ordinary discussion needs no save. User confirmation "
+                            "creates member sessions and starts work."
+                        ),
+                        "parameters": {
+                            "type": "object",
+                            "properties": {},
+                            "additionalProperties": False,
+                        },
+                    },
+                }
+            )
+            result.append(
+                {
+                    "type": "function",
+                    "function": {
                         "name": "save_team_draft",
                         "description": (
                             "Save a complete editable team draft for the requested goal. "
@@ -89,7 +108,8 @@ class SpaceTeamTools:
                             "IDs and only the two supported models. Skills are optional existing "
                             "skill IDs. Include roles/scopes and a receiver appropriate to "
                             "central/hierarchical/peer organisation. Initial work items are "
-                            "optional; do not invent machine commands or paths."
+                            "optional; do not invent machine commands or paths. Include objective "
+                            "as a concise statement of the agreed team execution goal."
                         ),
                         "parameters": SaveTeamDraftArgs.model_json_schema(),
                     },
@@ -104,7 +124,7 @@ class SpaceTeamTools:
         """
         return (
             False
-            if name in {"save_team_draft", "manage_space_work"}
+            if name in {"save_team_draft", "read_team_design", "manage_space_work"}
             else self.delegate.is_mutating(name)
         )
 
@@ -167,7 +187,7 @@ class SpaceTeamTools:
 
         Strictly validate complete arguments before saving without echoing failures.
         """
-        if call.name not in {"save_team_draft", "manage_space_work"}:
+        if call.name not in {"save_team_draft", "read_team_design", "manage_space_work"}:
             return await self.delegate.execute(call)
         try:
             if self.context.stop.is_set():
@@ -176,6 +196,26 @@ class SpaceTeamTools:
                 return await self._manage_work(call)
             if self.context.mode != "plan":
                 raise AgentError("SPACE_DRAFT_NOT_REQUESTED", "仅团队生成 Plan 可保存此草稿。")
+            if call.name == "read_team_design":
+                task_id = self.service.generation_for(self.context.session_id, self.context.run_id)
+                if task_id is None or call.arguments:
+                    raise AgentError("INVALID_TOOL_ARGUMENTS", "在团队设计运行中无参数读取当前图。")
+                view = await self.service.worker.call(
+                    self.service.design.read_for_model,
+                    task_id,
+                    self.context.session_id,
+                    self.context.run_id,
+                )
+                return ToolResult(
+                    tool_call_id=call.tool_call_id,
+                    content=encode(
+                        {
+                            "task_id": task_id,
+                            "config": view.config.model_dump(mode="json") if view.config else None,
+                        }
+                    ),
+                    is_error=False,
+                )
             args = SaveTeamDraftArgs.model_validate(call.arguments)
             generation = await self.service.save_generated(
                 self.context.session_id, self.context.run_id, args
@@ -203,6 +243,12 @@ class SpaceTeamTools:
                 is_error=True,
             )
         except AgentError as exc:
+            if exc.code in {"INVALID_TOOL_ARGUMENTS", "SPACE_DESIGN_NOT_FOUND"}:
+                return ToolResult(
+                    tool_call_id=call.tool_call_id,
+                    content=encode({"code": "INVALID_TOOL_ARGUMENTS", "message": exc.message}),
+                    is_error=True,
+                )
             if call.name == "manage_space_work":
                 if exc.code not in {
                     "INVALID_TOOL_ARGUMENTS",

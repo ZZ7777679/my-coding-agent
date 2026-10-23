@@ -19,6 +19,7 @@ import { EvolutionEvidencePanel, type EvolutionEvidenceView } from './EvolutionE
 import { EvolutionBudgetSettings, formatEvolutionBudget } from './EvolutionBudgetSettings'
 import './Evolution.css'
 import type { EvolutionEntry } from './EvolutionQuick'
+import { DiagnosticDetails } from './DiagnosticDetails'
 
 const kinds: Array<[EvolutionTarget['kind'], string]> = [
   ['project_rule', '项目规范'],
@@ -83,7 +84,14 @@ export function Evolution({
   const [selected, setSelected] = useState<string[]>(customize ? [] : (saved?.selected ?? []))
   const [instruction, setInstruction] = useState(customize ? '' : (saved?.instruction ?? ''))
   const [references, setReferences] = useState<SelectedEvidence[]>(
-    customize ? [] : (saved?.references ?? [])
+    customize
+      ? (entry.sources ?? []).map((source) => ({
+          source,
+          label: source.diagnostic_id
+            ? `异常 ${source.diagnostic_id}`
+            : `失败运行 ${source.run_id ?? source.seq}`
+        }))
+      : (saved?.references ?? [])
   )
   const [evidence, setEvidence] = useState<EvolutionEvidenceView | null>(null)
   const [resourceFilter, setResourceFilter] = useState('')
@@ -873,6 +881,8 @@ export function Evolution({
             · {job.message}
           </summary>
           {job.summary && <p>{job.summary}</p>}
+          {job.diagnostic_id && <DiagnosticDetails id={job.diagnostic_id} />}
+          {job.diagnostic_issue && <p>诊断保存降级：{job.diagnostic_issue}</p>}
           {!job.experiment_directory && (
             <p className="muted">
               {job.budget

@@ -24,6 +24,7 @@ class SaveTeamDraftArgs(ModelData):
 
     config: SpaceConfig
     initial_work_items: list[WorkItem] = Field(default_factory=list)
+    objective: str | None = None
 
 
 class UpdateSpaceWorkParams(SpaceParams):
@@ -51,6 +52,7 @@ class GenerateTeamParams(SpaceParams):
     operation_id: EntityId
     objective: Description
     organisation: Literal["central", "hierarchical", "peer"] = "central"
+    discussion: bool = False
 
 
 class TeamGeneration(ModelData):

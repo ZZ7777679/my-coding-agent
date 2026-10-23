@@ -203,6 +203,7 @@ class MemoryPage(ModelData):
     entries: list[MemoryEntry]
     next_cursor: EntityId | None
     unavailable_count: int = 0
+    recall_notes: dict[str, str] = Field(default_factory=dict)
     state: MemoryState
     totals: UsageSummary = Field(default_factory=UsageSummary)
 

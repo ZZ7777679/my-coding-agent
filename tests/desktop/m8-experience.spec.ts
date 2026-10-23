@@ -81,9 +81,9 @@ test('M8 themes, reading workspaces, partial worker result and idle reads', asyn
     await expect(page.getByTestId('run-status')).toContainText('运行失败')
     await page.getByLabel('输入问题').fill('Worker 返回后继续编辑的草稿')
     const readingStarted = Date.now()
-    await page.getByTestId('workers').locator(':scope > button').click()
+    await page.getByTestId('workers').locator(':scope > button[aria-expanded]').click()
     await expect(page.getByRole('dialog', { name: '子 Agent 工作空间' })).toBeVisible()
-    await expect(page.locator('.reading-detail')).toContainText(
+    await expect(page.locator('.worker-card-body')).toContainText(
       'I will inspect the progress directory'
     )
     metrics.worker_open_ms = Date.now() - readingStarted
@@ -167,7 +167,7 @@ test('M8 themes, reading workspaces, partial worker result and idle reads', asyn
       BrowserWindow.getAllWindows()[0].setSize(1000, 740)
       BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(1.25)
     })
-    await page.getByTestId('workers').locator(':scope > button').click()
+    await page.getByTestId('workers').locator(':scope > button[aria-expanded]').click()
     await expect
       .poll(async () =>
         page.getByRole('dialog').evaluate((node) => {

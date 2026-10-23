@@ -1,18 +1,10 @@
 /** 任务级合作空间配置与显式会话组建。 Task-level space configuration and explicit session assembly. */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Background, Controls, Handle, MarkerType, Position, ReactFlow } from '@xyflow/react'
-import type {
-  Connection,
-  Edge,
-  Node,
-  NodeProps,
-  NodeChange,
-  EdgeChange,
-  Viewport,
-  ReactFlowInstance
-} from '@xyflow/react'
+import type { Connection, Node, NodeProps, NodeChange, EdgeChange, Viewport } from '@xyflow/react'
 import type {
   SessionSummary,
+  ModelId,
   SkillCatalog,
   SpaceConfig,
   SpaceEdge,
@@ -28,11 +20,20 @@ import '@xyflow/react/dist/style.css'
 import './SpacePanel.css'
 import { SpaceChat } from './SpaceChat'
 import { SpaceTemplates } from './SpaceTemplates'
+import { TeamDesigner } from './TeamDesigner'
 import { WorkGraphPanel } from './WorkGraphPanel'
-import { arrangeMembers } from './space-layout'
+import { arrangeMembers, prepareMemberLayout, MEMBER_WIDTH, MEMBER_HEIGHT } from './space-layout'
+import {
+  FitTeamGraph,
+  SpaceInspector,
+  TeamRelationEdge,
+  type TeamGraphEdge
+} from './SpaceGraphDetails'
 
 type Props = {
   task: TaskView
+  defaultModel: ModelId
+  designRequest?: string
   connected: boolean
   onSelect: (selection: WorkspaceSelection) => void
   onChanged: () => void
@@ -88,6 +89,7 @@ function MemberNodeView({ data }: NodeProps<MemberNode>): React.JSX.Element {
 }
 
 const nodeTypes = { member: MemberNodeView }
+const edgeTypes = { team: TeamRelationEdge }
 
 /** 补齐生成 DTO 的可选默认字段，方便比较实际编辑内容。 Normalize optional DTO defaults for draft comparison. */
 function normalize(config: SpaceConfig): SpaceConfig {
@@ -130,7 +132,7 @@ export function SpacePanel(props: Props) {
 }
 
 /** 编辑图和成员，保存配置与组建会话分别执行。 Edit graph and members with separate config and assembly actions. */
-function SpaceEditor({ task, connected, onSelect, onChanged }: Props) {
+function SpaceEditor({ task, defaultModel, designRequest, connected, onSelect, onChanged }: Props) {
   const identity = `${task.project_id}/${task.task_id}`
   const [state, setState] = useState<DraftState>(
     () =>
@@ -148,6 +150,16 @@ function SpaceEditor({ task, connected, onSelect, onChanged }: Props) {
   const stateRef = useRef(state)
   const mounted = useRef(true)
   const [loading, setLoading] = useState(true)
+  const [designOpen, setDesignOpen] = useState(!!designRequest)
+  useEffect(() => {
+    if (designRequest) {
+      setDesignOpen(true)
+      setPerspective('team')
+    }
+  }, [designRequest])
+  useEffect(() => {
+    if (designOpen) document.querySelector('.workspace')?.scrollTo({ top: 0 })
+  }, [designOpen])
   const [perspective, setPerspective] = useState<'team' | 'work'>('team')
   const [spaceKnown, setSpaceKnown] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -158,12 +170,19 @@ function SpaceEditor({ task, connected, onSelect, onChanged }: Props) {
   const [sessionError, setSessionError] = useState('')
   const [sessionBusy, setSessionBusy] = useState(false)
   const [bindingTarget, setBindingTarget] = useState('')
+  const [newRelation, setNewRelation] = useState<{
+    source: string
+    target: string
+    kind: SpaceEdge['kind']
+    label: string
+  } | null>(null)
+  const [fitRequest, setFitRequest] = useState(0)
+  const [graphExpanded, setGraphExpanded] = useState(false)
   const sessionGeneration = useRef(0)
   const spaceGeneration = useRef(0)
   const actionBusy = useRef(false)
   const layoutPending = useRef<SpaceLayout | null>(null)
   const layoutPromise = useRef<Promise<void> | null>(null)
-  const graph = useRef<ReactFlowInstance<MemberNode> | null>(null)
   const members = state.draft?.members ?? []
   const relations = state.draft?.edges ?? []
   const member = members.find((item) => item.member_id === state.selectedMember)
@@ -206,15 +225,19 @@ function SpaceEditor({ task, connected, onSelect, onChanged }: Props) {
               (!old.space ||
                 JSON.stringify(normalize(old.draft)) !==
                   JSON.stringify(normalize(old.space.config)))
+            const config = space ? normalize(space.config) : null
+            const prepared = config ? prepareMemberLayout(config) : null
+            const repaired = JSON.stringify(config) !== JSON.stringify(prepared)
+            if (!keep && repaired) setFitRequest((value) => value + 1)
             return {
               ...old,
               space,
-              draft: keep ? old.draft : space ? normalize(space.config) : null,
+              draft: keep ? old.draft : prepared,
               baseRevision: keep ? old.baseRevision : (space?.revision ?? null),
               graphOpen: keep ? old.graphOpen : (space?.layout?.graph_open ?? true),
               viewport: keep
                 ? old.viewport
-                : space?.layout?.viewport
+                : !repaired && space?.layout?.viewport
                   ? {
                       x: space.layout.viewport.x ?? 0,
                       y: space.layout.viewport.y ?? 0,
@@ -427,25 +450,37 @@ function SpaceEditor({ task, connected, onSelect, onChanged }: Props) {
   /** 新成员采用任务已确定模型和独立身份，不自动扩编会话。 New draft members use the task model and do not create sessions. */
   const addMember = () => {
     const id = crypto.randomUUID()
-    editConfig((config) => ({
-      ...config,
-      members: [
-        ...(config.members ?? []),
+    editConfig((config) =>
+      prepareMemberLayout(
         {
-          member_id: id,
-          name: `成员 ${members.length + 1}`,
-          role: '',
-          scope: '',
-          model_id: task.initial_model_id,
-          skill_ids: [],
-          position: { x: (members.length % 3) * 330, y: Math.floor(members.length / 3) * 194 }
-        }
-      ]
-    }))
+          ...config,
+          members: [
+            ...(config.members ?? []),
+            {
+              member_id: id,
+              name: `成员 ${members.length + 1}`,
+              role: '',
+              scope: '',
+              model_id: task.initial_model_id,
+              skill_ids: [],
+              position: { x: 0, y: 0 }
+            }
+          ]
+        },
+        config
+      )
+    )
+    setFitRequest((value) => value + 1)
+    setNewRelation(null)
     update((old) => ({ ...old, selectedMember: id, selectedEdge: null }))
   }
   /** 创建有向关系；反馈环和同成员关系交由协议既有规则处理。 Add directed relations under the existing protocol rules, including feedback cycles. */
-  const addRelation = (source: string, target: string) => {
+  const addRelation = (
+    source: string,
+    target: string,
+    kind: SpaceEdge['kind'] = 'delegate',
+    label = ''
+  ) => {
     const id = crypto.randomUUID()
     editConfig((config) => ({
       ...config,
@@ -455,12 +490,31 @@ function SpaceEditor({ task, connected, onSelect, onChanged }: Props) {
           edge_id: id,
           source_member_id: source,
           target_member_id: target,
-          kind: 'delegate',
-          label: ''
+          kind,
+          label
         }
       ]
     }))
     update((old) => ({ ...old, selectedEdge: id, selectedMember: null }))
+    setNewRelation(null)
+  }
+  /** 新关系先选择两端，不在单成员草稿中意外创建自环。 Choose endpoints before adding a relation, avoiding accidental self-loops. */
+  const beginRelation = () => {
+    setNewRelation({
+      source: member?.member_id ?? members[0]?.member_id ?? '',
+      target: '',
+      kind: 'delegate',
+      label: ''
+    })
+    update((old) => ({ ...old, selectedMember: null, selectedEdge: null }))
+  }
+  /** 删除关系只修改配置，不删除成员或历史会话。 Remove only the selected relationship, retaining members and sessions. */
+  const removeRelation = (id: string) => {
+    editConfig((config) => ({
+      ...config,
+      edges: (config.edges ?? []).filter((item) => item.edge_id !== id)
+    }))
+    update((old) => ({ ...old, selectedEdge: null }))
   }
   /** 接收保存事实，失败保留输入；成员局部错误独立展示。 Accept durable facts and retain inputs on failures, exposing member errors separately. */
   const accept = (result: Result<SpaceResult>, notice: string, submitted: SpaceConfig | null) => {
@@ -573,6 +627,11 @@ function SpaceEditor({ task, connected, onSelect, onChanged }: Props) {
           type: 'member',
           className: `space-member-node ${tone}`,
           position: { x: item.position?.x ?? 0, y: item.position?.y ?? 0 },
+          // 固定卡片边界供画布适配使用，不把图测量写入业务配置。
+          // Fixed card bounds support viewport fitting without persisting graph measurements.
+          width: MEMBER_WIDTH,
+          height: MEMBER_HEIGHT,
+          style: { width: MEMBER_WIDTH, height: MEMBER_HEIGHT },
           selected: state.selectedMember === item.member_id,
           data: {
             label: (
@@ -601,7 +660,7 @@ function SpaceEditor({ task, connected, onSelect, onChanged }: Props) {
       }),
     [members, state.space, state.selectedMember, state.draft?.receiver_member_id, sessions]
   )
-  const edges = useMemo<Edge[]>(
+  const edges = useMemo<TeamGraphEdge[]>(
     () =>
       relations.map((item) => {
         const source = members.find(
@@ -615,38 +674,58 @@ function SpaceEditor({ task, connected, onSelect, onChanged }: Props) {
         const vertical = Math.abs(dy) > Math.abs(dx)
         const from = vertical ? (dy >= 0 ? 'bottom' : 'top') : dx >= 0 ? 'right' : 'left'
         const to = vertical ? (dy >= 0 ? 'top' : 'bottom') : dx >= 0 ? 'left' : 'right'
-        const reciprocal = relations.some(
+        const siblings = relations.filter(
           (other) =>
-            other.edge_id !== item.edge_id &&
-            other.source_member_id === item.target_member_id &&
-            other.target_member_id === item.source_member_id
+            (other.source_member_id === item.source_member_id &&
+              other.target_member_id === item.target_member_id) ||
+            (other.source_member_id === item.target_member_id &&
+              other.target_member_id === item.source_member_id)
         )
+        const loop = item.source_member_id === item.target_member_id
+        const related =
+          !state.selectedMember ||
+          item.source_member_id === state.selectedMember ||
+          item.target_member_id === state.selectedMember
+        const color =
+          item.kind === 'feedback'
+            ? 'var(--warning)'
+            : item.kind === 'result'
+              ? 'var(--accent)'
+              : 'var(--muted)'
         return {
           id: item.edge_id,
           source: item.source_member_id,
           target: item.target_member_id,
-          sourceHandle: `source-${from}`,
-          targetHandle: `target-${item.source_member_id === item.target_member_id ? 'bottom' : to}`,
-          type: 'smoothstep',
-          pathOptions: { borderRadius: 12, stepPosition: reciprocal ? 0.3 : 0.5 },
+          sourceHandle: `source-${loop ? 'top' : from}`,
+          targetHandle: `target-${loop ? 'right' : to}`,
+          type: 'team',
+          data: {
+            lane:
+              (siblings.findIndex((edge) => edge.edge_id === item.edge_id) -
+                (siblings.length - 1) / 2) *
+              96,
+            multiple: siblings.length > 1,
+            loopRadius: 110 + siblings.findIndex((edge) => edge.edge_id === item.edge_id) * 40
+          },
           label: edgeLabels[item.kind],
+          ariaLabel: `${members.find((m) => m.member_id === item.source_member_id)?.name} → ${members.find((m) => m.member_id === item.target_member_id)?.name} · ${edgeLabels[item.kind]}`,
           markerEnd: {
             type: MarkerType.ArrowClosed,
             width: 18,
             height: 18,
-            color:
-              item.kind === 'feedback' ? '#d6ad83' : item.kind === 'result' ? '#a7d8bc' : '#869ebb'
+            color
           },
           selected: state.selectedEdge === item.edge_id,
           style: {
-            stroke:
-              item.kind === 'feedback' ? '#d6ad83' : item.kind === 'result' ? '#a7d8bc' : '#869ebb',
-            strokeWidth: state.selectedEdge === item.edge_id ? 2.5 : 1.6,
+            stroke: color,
+            opacity: related ? 1 : 0.2,
+            strokeWidth:
+              state.selectedEdge === item.edge_id || (state.selectedMember && related) ? 2.5 : 1.6,
             strokeDasharray: item.kind === 'feedback' || item.kind === 'discuss' ? '5 4' : undefined
           }
         }
       }),
-    [relations, members, state.selectedEdge]
+    [relations, members, state.selectedEdge, state.selectedMember]
   )
 
   /** 只保存拖动位置及显式删除，不把测量数据写入业务配置。 Store only positions and explicit deletions, excluding graph measurements. */
@@ -747,15 +826,25 @@ function SpaceEditor({ task, connected, onSelect, onChanged }: Props) {
   )
 
   return (
-    <section className="space-panel" aria-label="合作空间">
+    <section className={'space-panel' + (designOpen ? ' is-designing' : '')} aria-label="合作空间">
       <header className="space-heading">
         <div>
           <h2>合作空间</h2>
-          <p className="muted">生成或编辑团队草稿，组建后通过群聊与合作目标推进。</p>
+          <p className="muted">
+            所属任务：{task.fields.title} · 每个任务一个团队与设计会话，项目下可建立多个任务。
+          </p>
         </div>
         <span className="space-version">
           {state.space ? `版本 ${state.space.revision}` : '尚未创建'}
         </span>
+        <button
+          onClick={() => {
+            setDesignOpen(!designOpen)
+            setPerspective('team')
+          }}
+        >
+          {designOpen ? '返回任务（保留讨论）' : '打开团队设计'}
+        </button>
       </header>
       {!connected && (
         <p role="status" className="muted">
@@ -769,7 +858,7 @@ function SpaceEditor({ task, connected, onSelect, onChanged }: Props) {
       )}
       {state.notice && <p role="status">{state.notice}</p>}
       {loading && <p role="status">正在读取合作空间…</p>}
-      <div className="space-toolbar" aria-label="合作空间视角">
+      <div className="space-toolbar" aria-label="合作空间视角" hidden={designOpen}>
         <button aria-pressed={perspective === 'team'} onClick={() => setPerspective('team')}>
           团队视角
         </button>
@@ -795,471 +884,650 @@ function SpaceEditor({ task, connected, onSelect, onChanged }: Props) {
           />
         </div>
       )}
-      <div hidden={perspective !== 'team'}>
-        <SpaceTemplates
-          taskId={task.task_id}
-          config={state.draft ?? normalize({})}
-          connected={connected}
-          sessionId={task.initial_session_id}
-          onDraft={(draft) =>
-            update((old) => ({
-              ...old,
-              draft: normalize({
-                ...draft.config,
-                initial_work_items:
-                  draft.initial_work_items ?? draft.config.initial_work_items ?? []
-              }),
-              selectedMember: draft.config.members?.[0]?.member_id ?? null,
-              selectedEdge: null,
-              graphOpen: true,
-              error: '',
-              notice:
-                '已进入团队编辑：可拖动节点、连接端口，点击成员或关系修改属性；保存后新增成员才需要组建。'
-            }))
-          }
-          onChanged={onChanged}
-        />
-        {state.space && (
-          <SpaceChat
-            space={state.space}
+      <div
+        hidden={perspective !== 'team'}
+        className={designOpen ? 'team-design-workspace' : undefined}
+      >
+        {designOpen && (
+          <TeamDesigner
+            taskId={task.task_id}
+            modelId={defaultModel}
             connected={connected}
-            onSelectSession={(id) =>
-              onSelect({ projectId: task.project_id, taskId: task.task_id, sessionId: id })
-            }
-            onChanged={onChanged}
+            config={state.draft}
+            onDraft={(config, source) => {
+              const previous = stateRef.current.draft
+              const fresh = source === 'model' && !previous?.members?.length
+              const next = fresh
+                ? { ...normalize(config), members: arrangeMembers(config) }
+                : prepareMemberLayout(normalize(config), source === 'model' ? previous : null)
+              const positions = (value: SpaceConfig | null) =>
+                JSON.stringify(value?.members?.map((item) => [item.member_id, item.position]))
+              if (fresh || positions(next) !== positions(previous))
+                setFitRequest((value) => value + 1)
+              update((old) => ({
+                ...old,
+                draft: next,
+                graphOpen: true,
+                selectedMember: next.members?.some((item) => item.member_id === old.selectedMember)
+                  ? old.selectedMember
+                  : null,
+                selectedEdge: next.edges?.some((item) => item.edge_id === old.selectedEdge)
+                  ? old.selectedEdge
+                  : null
+              }))
+            }}
+            onStarted={() => {
+              void loadSpace(true)
+              onChanged()
+            }}
           />
         )}
-        {!state.draft && !loading && spaceKnown && (
-          <div className="space-empty">
-            <p>此任务仍使用已有会话。创建合作空间后可手动配置稳定成员。</p>
-            <button
-              disabled={disabled}
-              onClick={() =>
-                update((old) => ({
-                  ...old,
-                  draft: normalize({}),
-                  baseRevision: null,
-                  error: '',
-                  notice: ''
-                }))
-              }
-            >
-              创建合作空间草稿
-            </button>
-            <button disabled={disabled} onClick={() => void useInitialSession()}>
-              用首会话建立工作空间
-            </button>
-          </div>
-        )}
-        {state.draft && (
-          <>
-            <div className="space-toolbar">
-              <button className="primary" disabled={disabled} onClick={() => void act('save')}>
-                {busy ? '正在处理…' : '保存空间配置'}
-              </button>
-              <button
-                disabled={disabled || !state.space || dirty || members.length === 0}
-                onClick={() => void act('start')}
-              >
-                组建团队会话
-              </button>
-              <button disabled={disabled} onClick={addMember}>
-                添加成员
-              </button>
-              <button
-                disabled={disabled || members.length === 0}
-                onClick={() => {
-                  if (members[0])
-                    addRelation(members[0].member_id, members[1]?.member_id ?? members[0].member_id)
-                }}
-              >
-                添加关系
-              </button>
-              <button
-                aria-expanded={state.graphOpen}
-                disabled={busy || loading}
-                onClick={() => changeLayout({ graphOpen: !state.graphOpen })}
-              >
-                {state.graphOpen ? '收起关系图' : '展开关系图'}
-              </button>
-              <button
-                disabled={disabled || !members.length}
-                onClick={() => {
-                  editConfig((config) => ({ ...config, members: arrangeMembers(config) }))
-                  changeLayout({ graphOpen: true, viewport: undefined })
-                  window.requestAnimationFrame(() => {
-                    void graph.current?.fitView({ padding: 0.22, maxZoom: 1 })
+        <div className="space-team-editor">
+          <SpaceTemplates
+            taskId={task.task_id}
+            config={state.draft ?? normalize({})}
+            connected={connected}
+            onDraft={(draft) => {
+              setFitRequest((value) => value + 1)
+              update((old) => ({
+                ...old,
+                draft: prepareMemberLayout(
+                  normalize({
+                    ...draft.config,
+                    initial_work_items:
+                      draft.initial_work_items ?? draft.config.initial_work_items ?? []
                   })
-                }}
+                ),
+                selectedMember: null,
+                selectedEdge: null,
+                graphOpen: true,
+                error: '',
+                notice:
+                  '已进入团队编辑：可拖动节点、连接端口，点击成员或关系修改属性；保存后新增成员才需要组建。'
+              }))
+            }}
+            onChanged={onChanged}
+          />
+          {state.space && !designOpen && (
+            <SpaceChat
+              space={state.space}
+              connected={connected}
+              onSelectSession={(id) =>
+                onSelect({ projectId: task.project_id, taskId: task.task_id, sessionId: id })
+              }
+              onChanged={onChanged}
+            />
+          )}
+          {!state.draft && !loading && spaceKnown && (
+            <div className="space-empty">
+              <p>此任务仍使用已有会话。创建合作空间后可手动配置稳定成员。</p>
+              <button
+                disabled={disabled}
+                onClick={() =>
+                  update((old) => ({
+                    ...old,
+                    draft: normalize({}),
+                    baseRevision: null,
+                    error: '',
+                    notice: ''
+                  }))
+                }
               >
-                自动排布
+                创建合作空间草稿
+              </button>
+              <button disabled={disabled} onClick={() => void useInitialSession()}>
+                用首会话建立工作空间
               </button>
             </div>
-            <p className="space-save-state muted">
-              {dirty
-                ? '有未保存编辑；保存后可组建或绑定成员会话。'
-                : '配置已保存；组建只创建或绑定成员会话，不调用模型。'}
-            </p>
-            <details className="space-organisation">
-              <summary>组织方式与输入接收成员</summary>
-              <div className="space-fields">
-                <label>
-                  组织方式
-                  <select
-                    aria-label="组织方式"
-                    value={state.draft.organisation ?? 'central'}
-                    disabled={disabled}
-                    onChange={(event) =>
-                      editConfig((config) => ({
-                        ...config,
-                        organisation:
-                          event.target.value === 'peer'
-                            ? 'peer'
-                            : event.target.value === 'hierarchical'
-                              ? 'hierarchical'
-                              : 'central'
-                      }))
-                    }
+          )}
+          {state.draft && (
+            <>
+              <div className="space-toolbar">
+                {!designOpen && (
+                  <button className="primary" disabled={disabled} onClick={() => void act('save')}>
+                    {busy ? '正在处理…' : '保存空间配置'}
+                  </button>
+                )}
+                {!designOpen && (
+                  <button
+                    disabled={disabled || !state.space || dirty || members.length === 0}
+                    onClick={() => void act('start')}
                   >
-                    <option value="central">中心协调</option>
-                    <option value="hierarchical">分层协作</option>
-                    <option value="peer">对等协作</option>
-                  </select>
-                </label>
-                <label>
-                  输入接收成员
-                  <select
-                    aria-label="输入接收成员"
-                    value={state.draft.receiver_member_id ?? ''}
-                    disabled={disabled}
-                    onChange={(event) =>
-                      editConfig((config) => ({
-                        ...config,
-                        receiver_member_id: event.target.value || null
-                      }))
-                    }
-                  >
-                    <option value="">暂未指定</option>
-                    {members.map((item) => (
-                      <option key={item.member_id} value={item.member_id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                    组建团队会话
+                  </button>
+                )}
+                <button disabled={disabled} onClick={addMember}>
+                  添加成员
+                </button>
+                <button disabled={disabled || members.length === 0} onClick={beginRelation}>
+                  添加关系
+                </button>
+                <button
+                  aria-expanded={state.graphOpen}
+                  disabled={busy || loading}
+                  onClick={() => changeLayout({ graphOpen: !state.graphOpen })}
+                >
+                  {state.graphOpen ? '收起关系图' : '展开关系图'}
+                </button>
+                <button
+                  disabled={disabled || !members.length}
+                  onClick={() => {
+                    editConfig((config) => ({ ...config, members: arrangeMembers(config) }))
+                    changeLayout({ graphOpen: true, viewport: undefined })
+                    setFitRequest((value) => value + 1)
+                  }}
+                >
+                  自动排布
+                </button>
               </div>
-              <p className="muted">组织方式保存为可编辑预设；关系描述协作方式，允许反馈环。</p>
-            </details>
-            <div className="space-graph-layout">
-              <div>
-                {state.graphOpen && (
-                  <div className="space-graph" aria-label="成员关系图">
-                    <ReactFlow
-                      onInit={(instance) => {
-                        graph.current = instance
-                      }}
-                      nodes={nodes}
-                      nodeTypes={nodeTypes}
-                      edges={edges}
-                      onNodesChange={changeNodes}
-                      onEdgesChange={changeEdges}
-                      onConnect={connect}
-                      nodesDraggable={!disabled}
-                      nodesConnectable={!disabled}
-                      deleteKeyCode={disabled ? null : 'Delete'}
-                      colorMode="dark"
-                      fitView={!state.viewport}
-                      fitViewOptions={{ padding: 0.22, maxZoom: 1 }}
-                      minZoom={0.15}
-                      maxZoom={1.8}
-                      defaultViewport={state.viewport}
-                      onMoveEnd={(_event, viewport) => changeLayout({ viewport })}
-                      onNodeClick={(_event, node) =>
-                        update((old) => ({ ...old, selectedMember: node.id, selectedEdge: null }))
-                      }
-                      onNodeDoubleClick={(_event, node) => {
-                        const sessionId = state.space?.bindings?.find(
-                          (item) => item.member_id === node.id
-                        )?.session_id
-                        if (sessionId) openSession(sessionId)
-                      }}
-                      onEdgeClick={(_event, edge) =>
-                        update((old) => ({ ...old, selectedEdge: edge.id, selectedMember: null }))
-                      }
-                    >
-                      <Background gap={24} size={1} color="#34463e" />
-                      <Controls
-                        showInteractive={false}
-                        position="bottom-right"
-                        fitViewOptions={{ padding: 0.22, maxZoom: 1 }}
-                      />
-                    </ReactFlow>
-                  </div>
-                )}
-                {state.graphOpen && (
-                  <p className="space-graph-legend muted">
-                    <span>实线：委派 / 结果</span>
-                    <span>虚线：讨论 / 反馈</span>
-                    <span>点击关系查看说明 · 双击成员打开会话 · 排布修改需保存</span>
-                  </p>
-                )}
-                <div className="space-member-list" aria-label="空间成员">
-                  {members.map((item) => {
-                    const current = state.space?.bindings?.find(
-                      (value) => value.member_id === item.member_id
-                    )
-                    return (
-                      <button
-                        key={item.member_id}
-                        className={state.selectedMember === item.member_id ? 'selected' : ''}
-                        onClick={() =>
-                          update((old) => ({
-                            ...old,
-                            selectedMember: item.member_id,
-                            selectedEdge: null
-                          }))
-                        }
-                      >
-                        <strong>{item.name}</strong>
-                        <span>
-                          {current?.error ||
-                            (current?.session_id
-                              ? sessionStatus(
-                                  sessions.find((value) => value.session_id === current.session_id)
-                                )
-                              : '待组建')}
-                        </span>
-                      </button>
-                    )
-                  })}
-                  {members.length === 0 && <p className="muted">添加成员开始配置团队。</p>}
-                </div>
-                <details className="space-relation-list">
-                  <summary>全部关系（{relations.length}）</summary>
-                  {relations.map((item) => (
-                    <button
-                      key={item.edge_id}
-                      onClick={() =>
-                        update((old) => ({
-                          ...old,
-                          selectedEdge: item.edge_id,
-                          selectedMember: null
+              <p className="space-save-state muted">
+                {designOpen
+                  ? '讨论和图自动保存；可拖动节点、点击成员或连线继续编辑。'
+                  : dirty
+                    ? '有未保存编辑；保存后可组建或绑定成员会话。'
+                    : '配置已保存；组建只创建或绑定成员会话，不调用模型。'}
+              </p>
+              <details className="space-organisation">
+                <summary>组织方式与输入接收成员</summary>
+                <div className="space-fields">
+                  <label>
+                    组织方式
+                    <select
+                      aria-label="组织方式"
+                      value={state.draft.organisation ?? 'central'}
+                      disabled={disabled}
+                      onChange={(event) =>
+                        editConfig((config) => ({
+                          ...config,
+                          organisation:
+                            event.target.value === 'peer'
+                              ? 'peer'
+                              : event.target.value === 'hierarchical'
+                                ? 'hierarchical'
+                                : 'central'
                         }))
                       }
                     >
-                      {members.find((value) => value.member_id === item.source_member_id)?.name} →{' '}
-                      {members.find((value) => value.member_id === item.target_member_id)?.name} ·{' '}
-                      {edgeLabels[item.kind]}
-                      {item.label ? ` · ${item.label}` : ''}
-                    </button>
-                  ))}
-                </details>
-              </div>
-              {member && (
-                <details className="space-editor" open key={member.member_id}>
-                  <summary>成员配置 · {member.name}</summary>
-                  <button onClick={() => update((old) => ({ ...old, selectedMember: null }))}>
-                    关闭成员编辑
-                  </button>
-                  <fieldset disabled={disabled}>
-                    <div className="space-fields">
+                      <option value="central">中心协调</option>
+                      <option value="hierarchical">分层协作</option>
+                      <option value="peer">对等协作</option>
+                    </select>
+                  </label>
+                  <label>
+                    输入接收成员
+                    <select
+                      aria-label="输入接收成员"
+                      value={state.draft.receiver_member_id ?? ''}
+                      disabled={disabled}
+                      onChange={(event) =>
+                        editConfig((config) => ({
+                          ...config,
+                          receiver_member_id: event.target.value || null
+                        }))
+                      }
+                    >
+                      <option value="">暂未指定</option>
+                      {members.map((item) => (
+                        <option key={item.member_id} value={item.member_id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <p className="muted">组织方式保存为可编辑预设；关系描述协作方式，允许反馈环。</p>
+              </details>
+              <div className="space-graph-layout">
+                <div>
+                  {state.graphOpen && (
+                    <div
+                      className={'space-graph' + (graphExpanded ? ' is-expanded' : '')}
+                      aria-label="成员关系图"
+                    >
+                      <button
+                        className="space-graph-size"
+                        aria-expanded={graphExpanded}
+                        onClick={() => {
+                          setGraphExpanded(!graphExpanded)
+                          setFitRequest((value) => value + 1)
+                        }}
+                      >
+                        {graphExpanded ? '收起大图' : '展开大图'}
+                      </button>
+                      <ReactFlow
+                        nodes={nodes}
+                        nodeTypes={nodeTypes}
+                        edgeTypes={edgeTypes}
+                        edges={edges}
+                        onNodesChange={changeNodes}
+                        onEdgesChange={changeEdges}
+                        onConnect={connect}
+                        nodesDraggable={!disabled}
+                        nodesConnectable={!disabled}
+                        deleteKeyCode={disabled ? null : 'Delete'}
+                        colorMode="dark"
+                        fitView={!state.viewport}
+                        fitViewOptions={{ padding: 0.22, maxZoom: 1 }}
+                        minZoom={0.15}
+                        maxZoom={1.8}
+                        defaultViewport={state.viewport}
+                        onMoveEnd={(_event, viewport) => changeLayout({ viewport })}
+                        onNodeClick={(_event, node) => {
+                          setNewRelation(null)
+                          update((old) => ({ ...old, selectedMember: node.id, selectedEdge: null }))
+                        }}
+                        onNodeDoubleClick={(_event, node) => {
+                          const sessionId = state.space?.bindings?.find(
+                            (item) => item.member_id === node.id
+                          )?.session_id
+                          if (sessionId) openSession(sessionId)
+                        }}
+                        onEdgeClick={(_event, edge) => {
+                          setNewRelation(null)
+                          update((old) => ({ ...old, selectedEdge: edge.id, selectedMember: null }))
+                        }}
+                      >
+                        <FitTeamGraph request={fitRequest} nodes={nodes} />
+                        <Background gap={24} size={1} color="#34463e" />
+                        <Controls
+                          showInteractive={false}
+                          position="bottom-right"
+                          fitViewOptions={{ padding: 0.22, maxZoom: 1 }}
+                        />
+                      </ReactFlow>
+                    </div>
+                  )}
+                  {state.graphOpen && (
+                    <p className="space-graph-legend muted">
+                      <span>实线：委派 / 结果</span>
+                      <span>虚线：讨论 / 反馈</span>
+                      <span>点击成员或连线编辑 / 删除 · 箭头指向接收方 · 拖动调整位置</span>
+                    </p>
+                  )}
+                  <div className="space-member-list" aria-label="空间成员">
+                    {members.map((item) => {
+                      const current = state.space?.bindings?.find(
+                        (value) => value.member_id === item.member_id
+                      )
+                      return (
+                        <button
+                          key={item.member_id}
+                          className={state.selectedMember === item.member_id ? 'selected' : ''}
+                          onClick={() =>
+                            update((old) => ({
+                              ...old,
+                              selectedMember: item.member_id,
+                              selectedEdge: null
+                            }))
+                          }
+                        >
+                          <strong>{item.name}</strong>
+                          <span>
+                            {current?.error ||
+                              (current?.session_id
+                                ? sessionStatus(
+                                    sessions.find(
+                                      (value) => value.session_id === current.session_id
+                                    )
+                                  )
+                                : '待组建')}
+                          </span>
+                        </button>
+                      )
+                    })}
+                    {members.length === 0 && <p className="muted">添加成员开始配置团队。</p>}
+                  </div>
+                  <details className="space-relation-list">
+                    <summary>全部关系（{relations.length}）</summary>
+                    {relations.map((item) => (
+                      <button
+                        key={item.edge_id}
+                        onClick={() =>
+                          update((old) => ({
+                            ...old,
+                            selectedEdge: item.edge_id,
+                            selectedMember: null
+                          }))
+                        }
+                      >
+                        {members.find((value) => value.member_id === item.source_member_id)?.name} →{' '}
+                        {members.find((value) => value.member_id === item.target_member_id)?.name} ·{' '}
+                        {edgeLabels[item.kind]}
+                        {item.label ? ` · ${item.label}` : ''}
+                      </button>
+                    ))}
+                  </details>
+                </div>
+                {member && !newRelation && (
+                  <SpaceInspector
+                    key={member.member_id}
+                    title={`成员配置 · ${member.name}`}
+                    closeLabel="关闭成员编辑"
+                    onClose={() => update((old) => ({ ...old, selectedMember: null }))}
+                    actions={
+                      <button
+                        disabled={disabled}
+                        onClick={() => removeMembers(new Set([member.member_id]))}
+                      >
+                        移除成员配置（保留旧会话）
+                      </button>
+                    }
+                  >
+                    <fieldset disabled={disabled}>
+                      <div className="space-fields">
+                        <label>
+                          成员名称
+                          <input
+                            aria-label="成员名称"
+                            value={member.name}
+                            maxLength={256}
+                            onChange={(event) => editMember({ name: event.target.value })}
+                          />
+                        </label>
+                        <label>
+                          成员模型
+                          <select
+                            aria-label="成员模型"
+                            value={member.model_id}
+                            onChange={(event) =>
+                              editMember({
+                                model_id:
+                                  event.target.value === 'deepseek-v4.1-flash'
+                                    ? 'deepseek-v4.1-flash'
+                                    : 'glm-5.3-flash'
+                              })
+                            }
+                          >
+                            <option value="glm-5.3-flash">GLM-5.3-Flash</option>
+                            <option value="deepseek-v4.1-flash">DeepSeek V4.1 Flash</option>
+                          </select>
+                        </label>
+                      </div>
                       <label>
-                        成员名称
+                        成员职责
                         <input
-                          aria-label="成员名称"
-                          value={member.name}
-                          maxLength={256}
-                          onChange={(event) => editMember({ name: event.target.value })}
+                          aria-label="成员职责"
+                          value={member.role ?? ''}
+                          maxLength={4096}
+                          placeholder="例如：实现、调研、Review"
+                          onChange={(event) => editMember({ role: event.target.value })}
                         />
                       </label>
                       <label>
-                        成员模型
-                        <select
-                          aria-label="成员模型"
-                          value={member.model_id}
-                          onChange={(event) =>
-                            editMember({
-                              model_id:
-                                event.target.value === 'deepseek-v4.1-flash'
-                                  ? 'deepseek-v4.1-flash'
-                                  : 'glm-5.3-flash'
-                            })
-                          }
-                        >
-                          <option value="glm-5.3-flash">GLM-5.3-Flash</option>
-                          <option value="deepseek-v4.1-flash">DeepSeek V4.1 Flash</option>
-                        </select>
+                        成员工作范围
+                        <textarea
+                          aria-label="成员工作范围"
+                          value={member.scope ?? ''}
+                          maxLength={16000}
+                          rows={2}
+                          onChange={(event) => editMember({ scope: event.target.value })}
+                        />
                       </label>
-                    </div>
-                    <label>
-                      成员职责
-                      <input
-                        aria-label="成员职责"
-                        value={member.role ?? ''}
-                        maxLength={4096}
-                        placeholder="例如：实现、调研、Review"
-                        onChange={(event) => editMember({ role: event.target.value })}
-                      />
-                    </label>
-                    <label>
-                      成员工作范围
-                      <textarea
-                        aria-label="成员工作范围"
-                        value={member.scope ?? ''}
-                        maxLength={16000}
-                        rows={2}
-                        onChange={(event) => editMember({ scope: event.target.value })}
-                      />
-                    </label>
-                    <details>
-                      <summary>成员 Skill（{member.skill_ids?.length ?? 0}，可选）</summary>
-                      {catalogError && <p role="alert">{catalogError}</p>}
-                      {catalog?.issues?.map((issue) => (
-                        <p key={issue} className="muted">
-                          {issue}
-                        </p>
-                      ))}
-                      {(catalog?.items ?? [])
-                        .filter((item) => !item.shadowed_by)
-                        .map((item) => (
-                          <label className="space-skill" key={item.skill_id}>
-                            <input
-                              type="checkbox"
-                              checked={member.skill_ids?.includes(item.skill_id) ?? false}
-                              disabled={
-                                item.enabled === false && !member.skill_ids?.includes(item.skill_id)
-                              }
-                              onChange={(event) =>
-                                editMember({
-                                  skill_ids: event.target.checked
-                                    ? [...(member.skill_ids ?? []), item.skill_id]
-                                    : (member.skill_ids ?? []).filter((id) => id !== item.skill_id)
-                                })
-                              }
-                            />
-                            <span>
-                              {item.name}
-                              {item.enabled === false ? '（未启用）' : ''}
-                              <small>{item.description}</small>
-                            </span>
-                          </label>
+                      <details>
+                        <summary>成员 Skill（{member.skill_ids?.length ?? 0}，可选）</summary>
+                        {catalogError && <p role="alert">{catalogError}</p>}
+                        {catalog?.issues?.map((issue) => (
+                          <p key={issue} className="muted">
+                            {issue}
+                          </p>
                         ))}
-                      {(member.skill_ids ?? [])
+                        {(catalog?.items ?? [])
+                          .filter((item) => !item.shadowed_by)
+                          .map((item) => (
+                            <label className="space-skill" key={item.skill_id}>
+                              <input
+                                type="checkbox"
+                                checked={member.skill_ids?.includes(item.skill_id) ?? false}
+                                disabled={
+                                  item.enabled === false &&
+                                  !member.skill_ids?.includes(item.skill_id)
+                                }
+                                onChange={(event) =>
+                                  editMember({
+                                    skill_ids: event.target.checked
+                                      ? [...(member.skill_ids ?? []), item.skill_id]
+                                      : (member.skill_ids ?? []).filter(
+                                          (id) => id !== item.skill_id
+                                        )
+                                  })
+                                }
+                              />
+                              <span>
+                                {item.name}
+                                {item.enabled === false ? '（未启用）' : ''}
+                                <small>{item.description}</small>
+                              </span>
+                            </label>
+                          ))}
+                        {(member.skill_ids ?? [])
+                          .filter(
+                            (id) =>
+                              !catalog?.items.some(
+                                (item) => item.skill_id === id && !item.shadowed_by
+                              )
+                          )
+                          .map((id) => (
+                            <label className="space-skill" key={id}>
+                              <input
+                                type="checkbox"
+                                checked
+                                onChange={() =>
+                                  editMember({
+                                    skill_ids: (member.skill_ids ?? []).filter(
+                                      (value) => value !== id
+                                    )
+                                  })
+                                }
+                              />
+                              <span>目录中不可用：{id}</span>
+                            </label>
+                          ))}
+                        {catalog && catalog.items.length === 0 && (
+                          <p className="muted">尚无可选 Skill，可从左侧资源管理添加。</p>
+                        )}
+                      </details>
+                    </fieldset>
+                    <section className="space-member-relations" aria-label="成员关联关系">
+                      <h4>关联关系</h4>
+                      {relations
                         .filter(
-                          (id) =>
-                            !catalog?.items.some(
-                              (item) => item.skill_id === id && !item.shadowed_by
-                            )
+                          (edge) =>
+                            edge.source_member_id === member.member_id ||
+                            edge.target_member_id === member.member_id
                         )
-                        .map((id) => (
-                          <label className="space-skill" key={id}>
-                            <input
-                              type="checkbox"
-                              checked
-                              onChange={() =>
-                                editMember({
-                                  skill_ids: (member.skill_ids ?? []).filter(
-                                    (value) => value !== id
-                                  )
-                                })
-                              }
-                            />
-                            <span>目录中不可用：{id}</span>
-                          </label>
-                        ))}
-                      {catalog && catalog.items.length === 0 && (
-                        <p className="muted">尚无可选 Skill，可从左侧资源管理添加。</p>
-                      )}
-                    </details>
-                    <button onClick={() => removeMembers(new Set([member.member_id]))}>
-                      移除成员配置（保留旧会话）
-                    </button>
-                  </fieldset>
-                  <details className="space-binding">
-                    <summary>当前会话与历史</summary>
-                    <p className="muted">
-                      成员身份 {member.member_id}。更换会话保留成员职责与旧会话。
-                    </p>
-                    {binding?.error && <p role="alert">{binding.error}</p>}
-                    {binding?.session_id ? (
-                      <div className="space-session-row">
-                        <span>
-                          {sessionStatus(
-                            sessions.find((item) => item.session_id === binding.session_id)
-                          )}
-                        </span>
-                        <button
-                          onClick={() => {
-                            if (binding.session_id) openSession(binding.session_id)
-                          }}
-                        >
-                          打开成员会话
-                        </button>
-                      </div>
-                    ) : (
-                      <p className="muted">尚未绑定成员会话。</p>
-                    )}
-                    <label>
-                      绑定会话
-                      <select
-                        aria-label="绑定会话"
-                        value={bindingTarget}
-                        disabled={disabled || dirty}
-                        onChange={(event) => setBindingTarget(event.target.value)}
-                      >
-                        <option value="">新建成员会话</option>
-                        {sessions.map((item) => (
-                          <option key={item.session_id} value={item.session_id}>
-                            {item.title} · {item.session_id.slice(0, 8)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <button
-                      disabled={disabled || dirty || !state.space}
-                      onClick={() => void act('bind')}
-                    >
-                      {bindingTarget ? '绑定所选会话' : '新建并绑定成员会话'}
-                    </button>
-                    <div className="space-history">
-                      {(binding?.session_ids ?? [])
-                        .filter((id) => id !== binding?.session_id)
-                        .map((id) => (
-                          <button key={id} onClick={() => openSession(id)}>
-                            打开历史会话 ·{' '}
-                            {sessions.find((item) => item.session_id === id)?.title ??
-                              id.slice(0, 8)}
-                          </button>
-                        ))}
-                    </div>
-                  </details>
-                </details>
-              )}
-              {relation && (
-                <details className="space-editor" open key={relation.edge_id}>
-                  <summary>关系配置</summary>
-                  <button onClick={() => update((old) => ({ ...old, selectedEdge: null }))}>
-                    关闭关系编辑
-                  </button>
-                  <fieldset disabled={disabled}>
-                    <div className="space-fields">
-                      {(['source_member_id', 'target_member_id'] as const).map((field) => (
-                        <label key={field}>
-                          {field === 'source_member_id' ? '关系来源' : '关系目标'}
-                          <select
-                            aria-label={field === 'source_member_id' ? '关系来源' : '关系目标'}
-                            value={relation[field]}
-                            onChange={(event) =>
-                              editConfig((config) => ({
-                                ...config,
-                                edges: (config.edges ?? []).map((item) =>
-                                  item.edge_id === relation.edge_id
-                                    ? { ...item, [field]: event.target.value }
-                                    : item
-                                )
+                        .map((edge) => (
+                          <button
+                            key={edge.edge_id}
+                            onClick={() =>
+                              update((old) => ({
+                                ...old,
+                                selectedMember: null,
+                                selectedEdge: edge.edge_id
                               }))
                             }
                           >
+                            {members.find((item) => item.member_id === edge.source_member_id)?.name}{' '}
+                            →{' '}
+                            {members.find((item) => item.member_id === edge.target_member_id)?.name}{' '}
+                            · {edgeLabels[edge.kind]}
+                          </button>
+                        ))}
+                      <button disabled={disabled} onClick={beginRelation}>
+                        为此成员添加关系
+                      </button>
+                    </section>
+                    <details className="space-binding">
+                      <summary>当前会话与历史</summary>
+                      <p className="muted">
+                        成员身份 {member.member_id}。更换会话保留成员职责与旧会话。
+                      </p>
+                      {binding?.error && <p role="alert">{binding.error}</p>}
+                      {binding?.session_id ? (
+                        <div className="space-session-row">
+                          <span>
+                            {sessionStatus(
+                              sessions.find((item) => item.session_id === binding.session_id)
+                            )}
+                          </span>
+                          <button
+                            onClick={() => {
+                              if (binding.session_id) openSession(binding.session_id)
+                            }}
+                          >
+                            打开成员会话
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="muted">尚未绑定成员会话。</p>
+                      )}
+                      <label>
+                        绑定会话
+                        <select
+                          aria-label="绑定会话"
+                          value={bindingTarget}
+                          disabled={disabled || dirty}
+                          onChange={(event) => setBindingTarget(event.target.value)}
+                        >
+                          <option value="">新建成员会话</option>
+                          {sessions.map((item) => (
+                            <option key={item.session_id} value={item.session_id}>
+                              {item.title} · {item.session_id.slice(0, 8)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        disabled={disabled || dirty || !state.space}
+                        onClick={() => void act('bind')}
+                      >
+                        {bindingTarget ? '绑定所选会话' : '新建并绑定成员会话'}
+                      </button>
+                      <div className="space-history">
+                        {(binding?.session_ids ?? [])
+                          .filter((id) => id !== binding?.session_id)
+                          .map((id) => (
+                            <button key={id} onClick={() => openSession(id)}>
+                              打开历史会话 ·{' '}
+                              {sessions.find((item) => item.session_id === id)?.title ??
+                                id.slice(0, 8)}
+                            </button>
+                          ))}
+                      </div>
+                    </details>
+                  </SpaceInspector>
+                )}
+                {relation && !newRelation && (
+                  <SpaceInspector
+                    key={relation.edge_id}
+                    title="关系配置"
+                    closeLabel="关闭关系编辑"
+                    onClose={() => update((old) => ({ ...old, selectedEdge: null }))}
+                    actions={
+                      <button disabled={disabled} onClick={() => removeRelation(relation.edge_id)}>
+                        移除关系
+                      </button>
+                    }
+                  >
+                    <p className="muted">
+                      {members.find((item) => item.member_id === relation.source_member_id)?.name} →{' '}
+                      {members.find((item) => item.member_id === relation.target_member_id)?.name}
+                    </p>
+                    <fieldset disabled={disabled}>
+                      <div className="space-fields">
+                        {(['source_member_id', 'target_member_id'] as const).map((field) => (
+                          <label key={field}>
+                            {field === 'source_member_id' ? '关系来源' : '关系目标'}
+                            <select
+                              aria-label={field === 'source_member_id' ? '关系来源' : '关系目标'}
+                              value={relation[field]}
+                              onChange={(event) =>
+                                editConfig((config) => ({
+                                  ...config,
+                                  edges: (config.edges ?? []).map((item) =>
+                                    item.edge_id === relation.edge_id
+                                      ? { ...item, [field]: event.target.value }
+                                      : item
+                                  )
+                                }))
+                              }
+                            >
+                              {members.map((item) => (
+                                <option key={item.member_id} value={item.member_id}>
+                                  {item.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ))}
+                      </div>
+                      <label>
+                        关系类型
+                        <select
+                          aria-label="关系类型"
+                          value={relation.kind}
+                          onChange={(event) => {
+                            const kind: SpaceEdge['kind'] =
+                              event.target.value === 'result'
+                                ? 'result'
+                                : event.target.value === 'discuss'
+                                  ? 'discuss'
+                                  : event.target.value === 'feedback'
+                                    ? 'feedback'
+                                    : 'delegate'
+                            editConfig((config) => ({
+                              ...config,
+                              edges: (config.edges ?? []).map((item) =>
+                                item.edge_id === relation.edge_id ? { ...item, kind } : item
+                              )
+                            }))
+                          }}
+                        >
+                          {Object.entries(edgeLabels).map(([kind, label]) => (
+                            <option key={kind} value={kind}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        关系说明
+                        <input
+                          aria-label="关系说明"
+                          maxLength={4096}
+                          value={relation.label ?? ''}
+                          onChange={(event) =>
+                            editConfig((config) => ({
+                              ...config,
+                              edges: (config.edges ?? []).map((item) =>
+                                item.edge_id === relation.edge_id
+                                  ? { ...item, label: event.target.value }
+                                  : item
+                              )
+                            }))
+                          }
+                        />
+                      </label>
+                    </fieldset>
+                  </SpaceInspector>
+                )}
+                {newRelation && (
+                  <SpaceInspector
+                    title="添加关系"
+                    closeLabel="取消添加关系"
+                    onClose={() => setNewRelation(null)}
+                  >
+                    <fieldset disabled={disabled}>
+                      {(['source', 'target'] as const).map((field) => (
+                        <label key={field}>
+                          {field === 'source' ? '关系来源' : '关系目标'}
+                          <select
+                            aria-label={field === 'source' ? '关系来源' : '关系目标'}
+                            value={newRelation[field]}
+                            onChange={(event) =>
+                              setNewRelation({ ...newRelation, [field]: event.target.value })
+                            }
+                          >
+                            <option value="">选择成员</option>
                             {members.map((item) => (
                               <option key={item.member_id} value={item.member_id}>
                                 {item.name}
@@ -1268,109 +1536,104 @@ function SpaceEditor({ task, connected, onSelect, onChanged }: Props) {
                           </select>
                         </label>
                       ))}
-                    </div>
-                    <label>
-                      关系类型
-                      <select
-                        aria-label="关系类型"
-                        value={relation.kind}
-                        onChange={(event) => {
-                          const kind: SpaceEdge['kind'] =
-                            event.target.value === 'result'
-                              ? 'result'
-                              : event.target.value === 'discuss'
-                                ? 'discuss'
-                                : event.target.value === 'feedback'
-                                  ? 'feedback'
-                                  : 'delegate'
-                          editConfig((config) => ({
-                            ...config,
-                            edges: (config.edges ?? []).map((item) =>
-                              item.edge_id === relation.edge_id ? { ...item, kind } : item
+                      <label>
+                        关系类型
+                        <select
+                          aria-label="关系类型"
+                          value={newRelation.kind}
+                          onChange={(event) => {
+                            const kind = event.target.value
+                            if (
+                              kind === 'delegate' ||
+                              kind === 'result' ||
+                              kind === 'discuss' ||
+                              kind === 'feedback'
                             )
-                          }))
-                        }}
-                      >
-                        {Object.entries(edgeLabels).map(([kind, label]) => (
-                          <option key={kind} value={kind}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      关系说明
-                      <input
-                        aria-label="关系说明"
-                        maxLength={4096}
-                        value={relation.label ?? ''}
-                        onChange={(event) =>
-                          editConfig((config) => ({
-                            ...config,
-                            edges: (config.edges ?? []).map((item) =>
-                              item.edge_id === relation.edge_id
-                                ? { ...item, label: event.target.value }
-                                : item
-                            )
-                          }))
+                              setNewRelation({ ...newRelation, kind })
+                          }}
+                        >
+                          {Object.entries(edgeLabels).map(([kind, label]) => (
+                            <option key={kind} value={kind}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        关系说明
+                        <input
+                          aria-label="关系说明"
+                          value={newRelation.label}
+                          maxLength={4096}
+                          onChange={(event) =>
+                            setNewRelation({ ...newRelation, label: event.target.value })
+                          }
+                        />
+                      </label>
+                      <p className="muted">
+                        箭头从来源指向接收方。只有主动选择相同成员才会创建自环。
+                      </p>
+                      <button
+                        disabled={
+                          !members.some((item) => item.member_id === newRelation.source) ||
+                          !members.some((item) => item.member_id === newRelation.target)
                         }
-                      />
-                    </label>
-                    <button
-                      onClick={() =>
-                        editConfig((config) => ({
-                          ...config,
-                          edges: (config.edges ?? []).filter(
-                            (item) => item.edge_id !== relation.edge_id
+                        onClick={() =>
+                          addRelation(
+                            newRelation.source,
+                            newRelation.target,
+                            newRelation.kind,
+                            newRelation.label
                           )
-                        }))
-                      }
-                    >
-                      移除关系
-                    </button>
-                  </fieldset>
+                        }
+                      >
+                        创建关系
+                      </button>
+                    </fieldset>
+                  </SpaceInspector>
+                )}
+              </div>
+              {retired.length > 0 && (
+                <details className="space-binding">
+                  <summary>已移除成员的保留会话</summary>
+                  {retired.map((item) => (
+                    <div className="space-history" key={item.member_id}>
+                      <span className="muted">成员 {item.member_id.slice(0, 8)}</span>
+                      {(item.session_ids ?? []).map((id) => (
+                        <button key={id} onClick={() => openSession(id)}>
+                          打开历史会话 ·{' '}
+                          {sessions.find((value) => value.session_id === id)?.title ??
+                            id.slice(0, 8)}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
                 </details>
               )}
-            </div>
-            {retired.length > 0 && (
-              <details className="space-binding">
-                <summary>已移除成员的保留会话</summary>
-                {retired.map((item) => (
-                  <div className="space-history" key={item.member_id}>
-                    <span className="muted">成员 {item.member_id.slice(0, 8)}</span>
-                    {(item.session_ids ?? []).map((id) => (
-                      <button key={id} onClick={() => openSession(id)}>
-                        打开历史会话 ·{' '}
-                        {sessions.find((value) => value.session_id === id)?.title ?? id.slice(0, 8)}
-                      </button>
-                    ))}
-                  </div>
-                ))}
-              </details>
-            )}
-          </>
-        )}
-        <div className="space-footer">
-          <button disabled={disabled} onClick={() => void loadSpace(true)}>
-            重新载入空间（放弃未保存编辑）
-          </button>
-          <button disabled={!connected || sessionBusy} onClick={() => void loadSessions()}>
-            刷新会话状态
-          </button>
-          {sessionCursor && (
-            <button
-              disabled={!connected || sessionBusy}
-              onClick={() => void loadSessions(sessionCursor)}
-            >
-              加载更多可绑定会话
+            </>
+          )}
+          <div className="space-footer">
+            <button disabled={disabled} onClick={() => void loadSpace(true)}>
+              重新载入空间（放弃未保存编辑）
             </button>
+            <button disabled={!connected || sessionBusy} onClick={() => void loadSessions()}>
+              刷新会话状态
+            </button>
+            {sessionCursor && (
+              <button
+                disabled={!connected || sessionBusy}
+                onClick={() => void loadSessions(sessionCursor)}
+              >
+                加载更多可绑定会话
+              </button>
+            )}
+          </div>
+          {sessionError && (
+            <p role="alert" className="muted">
+              {sessionError}
+            </p>
           )}
         </div>
-        {sessionError && (
-          <p role="alert" className="muted">
-            {sessionError}
-          </p>
-        )}
       </div>
     </section>
   )

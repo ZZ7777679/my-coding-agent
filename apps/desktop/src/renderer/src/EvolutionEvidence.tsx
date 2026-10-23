@@ -1,6 +1,7 @@
 /** 从既有会话和诊断选材，并展示实际输入。 Select existing evidence and display accepted input. */
 import type { DiagnosticEvent, EvolutionInput, EvolutionSource } from '../../generated/protocol'
 import { EvolutionSourceBrowser, evidenceKey, sourceScope } from './EvolutionSourceBrowser'
+import { DiagnosticDetails } from './DiagnosticDetails'
 
 export interface SelectedEvidence {
   source: EvolutionSource
@@ -106,6 +107,7 @@ export function EvolutionEvidencePicker({
                 参考此异常记录
               </label>
               <pre>{d.frames?.map((f) => `${f.file}:${f.line} ${f.function}`).join('\n')}</pre>
+              <DiagnosticDetails id={d.diagnostic_id} />
               {d.source?.session_id && (
                 <button onClick={() => onTrace(d.source!)}>查看异常对应 Trace</button>
               )}

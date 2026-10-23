@@ -38,6 +38,19 @@ if TYPE_CHECKING:
     from my_agent.sessions.service import SessionService
 
 
+def automatic_recall_note(entry: MemoryEntry) -> str:
+    """说明历史能力自述为何仅供查找，保留用户显式选择。
+
+    Explain search-only historical capability claims while honoring explicit user choices.
+    """
+    if entry.category.casefold() == "capabilities" and entry.source != "user" and not entry.pinned:
+        return (
+            "历史模型能力自述仅供查找，不自动带入请求；当前能力以工具目录和实际调用为准。"
+            "可编辑纠正、手动加入提问，或固定后优先召回。"
+        )
+    return ""
+
+
 class MemoryService:
     """调用边界检索；后台整理不占用前台串行链。
 
@@ -95,6 +108,11 @@ class MemoryService:
             entries=selected,
             next_cursor=selected[-1].memory_id if len(entries) > query.limit else None,
             unavailable_count=unavailable,
+            recall_notes={
+                entry.memory_id: note
+                for entry in selected
+                if (note := automatic_recall_note(entry))
+            },
             state=state,
             totals=await self.sessions.worker.call(
                 usage_totals, self.sessions.store.path(session_id).parent / "memory-usage"
@@ -168,6 +186,10 @@ class MemoryService:
             (secondary, "任务目标 / 近期用户话题相关"),
         ):
             for entry in collection:
+                # 历史能力自述不能盖过当前工具事实；不删除条目，也不限制按需读取。
+                # Historical self-reports must not override live tools; retain explicit access.
+                if automatic_recall_note(entry):
+                    continue
                 normalized = " ".join(entry.content.split()).casefold()
                 if entry.memory_id in seen_ids or normalized in seen_contents:
                     continue

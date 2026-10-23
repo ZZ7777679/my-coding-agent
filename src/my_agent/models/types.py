@@ -6,11 +6,15 @@ Model contracts and complete turns; native continuation stays inside Python.
 from collections.abc import Awaitable, Callable
 from typing import Annotated, Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, PrivateAttr
 
+from my_agent.errors import AgentError
 from my_agent.runtime.settings import ModelLimits
 
 ModelId = Literal["glm-5.3-flash", "deepseek-v4.1-flash"]
+# 辅助接口有独立别名；保留历史身份，但不扩大主对话可选模型。
+# Auxiliary endpoints have their own alias; retain history without expanding chat choices.
+AuxiliaryModelId = ModelId | Literal["deepseek-flash"]
 type JsonObject = dict[str, JsonValue]
 type TextSink = Callable[[str], Awaitable[None]]
 
@@ -35,6 +39,9 @@ class ToolResult(ModelData):
     tool_call_id: str
     content: str
     is_error: bool
+    # 仅在内存中将原异常传给诊断边界，不能进入 JSON 或模型上下文。
+    # Carry the original exception to the diagnostic boundary in memory, never JSON or context.
+    _exception: AgentError | None = PrivateAttr(default=None)
 
 
 class TokenUsage(ModelData):

@@ -176,6 +176,10 @@ def build_sessions(
         Preserve process credentials, refresh other sources.
         """
         current = credential if credential.info.source == "process" else resolve_credential()
+        if sessions.diagnostics and current.secret:
+            value = current.secret.get_secret_value()
+            if value not in sessions.diagnostics.secrets:
+                sessions.diagnostics.secrets += (value,)
         return GoClient(current, str(MODEL_DEFAULTS["base_url"]), shared_http)
 
     async def sync_report(session_id: str, result_seq: int) -> tuple[str, int] | None:
@@ -307,7 +311,9 @@ def build_sessions(
     from my_agent.evolution.service import EvolutionService
     from my_agent.evolution.tools import EvolutionTools
 
-    sessions.diagnostics = DiagnosticStore(storage)
+    sessions.diagnostics = DiagnosticStore(
+        storage, secrets=(credential.secret.get_secret_value(),) if credential.secret else ()
+    )
     sessions.evolution = EvolutionService(sessions, sessions.diagnostics)
     evolution_service = sessions.evolution
     previous_tools = sessions.tool_factory

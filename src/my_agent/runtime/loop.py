@@ -55,6 +55,8 @@ async def run_loop(
     context_provider: Callable[[], Awaitable[SharedContext | None]] | None = None,
     terminal: Callable[[], bool] | None = None,
     yield_requested: Callable[[], bool] | None = None,
+    input_pending: Callable[[], bool] | None = None,
+    receive_input: Callable[[], Awaitable[list[JsonObject]]] | None = None,
     model_selector: Callable[[], ModelId] | None = None,
     prepare_tools: Callable[[], Awaitable[None]] | None = None,
     window_provider: Callable[
@@ -77,6 +79,8 @@ async def run_loop(
             raise asyncio.CancelledError
         if yield_requested is not None and yield_requested():
             return "yielded"
+        if receive_input is not None:
+            context.extend(await receive_input())
         if limits.max_requests is not None and requests >= limits.max_requests:
             raise AgentError("BUDGET_REQUESTS", "已达到模型请求预算，可调整预算后继续。")
         shared = await context_provider() if context_provider else None
@@ -194,18 +198,18 @@ async def run_loop(
                     limits.model_retry_max_delay_seconds,
                     limits.model_retry_delay_seconds * 2 ** min(retry_number - 1, 30),
                 )
-                await sink.commit(
-                    RequestFailed(
-                        message_id=message_id,
-                        code=exc.code,
-                        message=exc.message,
-                        cause_code=exc.cause_code,
-                        phase=exc.phase,
-                        retry_number=retry_number,
-                        retry_delay_seconds=delay,
-                        usage=exc.usage if isinstance(exc, ModelResponseError) else None,
-                    )
+                failure_fact = RequestFailed(
+                    message_id=message_id,
+                    code=exc.code,
+                    message=exc.message,
+                    cause_code=exc.cause_code,
+                    phase=exc.phase,
+                    retry_number=retry_number,
+                    retry_delay_seconds=delay,
+                    usage=exc.usage if isinstance(exc, ModelResponseError) else None,
                 )
+                failure_fact._exception = exc
+                await sink.commit(failure_fact)
                 await asyncio.sleep(delay)
                 if stop.is_set():
                     raise asyncio.CancelledError from None
@@ -222,6 +226,11 @@ async def run_loop(
         if yield_requested is not None and yield_requested():
             await skip_calls(sink, turn.tool_calls, "User input is waiting at a safe boundary.")
             return "yielded"
+        if input_pending is not None and input_pending():
+            context.extend(
+                await skip_calls(sink, turn.tool_calls, "New user input arrived; reconsider tools.")
+            )
+            continue
         if not turn.tool_calls:
             return "finished"
         for index, call in enumerate(turn.tool_calls):
@@ -241,6 +250,15 @@ async def run_loop(
             reported = terminal is not None and terminal()
             yielding = yield_requested is not None and yield_requested()
             failed = result.is_error and not recoverable_tool_error(call, result)
+            if not failed and not yielding and input_pending is not None and input_pending():
+                context.extend(
+                    await skip_calls(
+                        sink,
+                        turn.tool_calls[index + 1 :],
+                        "New user input arrived; reconsider tools.",
+                    )
+                )
+                break
             if failed or reported or yielding:
                 # 补齐未执行的调用结果，不运行后续副作用，也不伪造工具开始。
                 # Pair skipped calls without executing effects or inventing tool starts.
@@ -290,7 +308,8 @@ def recoverable_tool_error(call: ToolCall, result: ToolResult) -> bool:
     # 冲突尚未写入，历史读取没有写入动作；由模型决定后续工具，不自动重放。
     # Conflicts have not written and history reads are read-only; the model chooses the next call.
     return (
-        (call.name == "code_insight" and code in {"LSP_NOT_INSTALLED", "LSP_NOT_CONFIGURED"})
+        (call.name == "read_diagnostic" and code in {"DATA_UNAVAILABLE", "DATA_INVALID"})
+        or (call.name == "code_insight" and code in {"LSP_NOT_INSTALLED", "LSP_NOT_CONFIGURED"})
         or (
             call.name
             in {
@@ -305,6 +324,8 @@ def recoverable_tool_error(call: ToolCall, result: ToolResult) -> bool:
         or code
         in {
             "INVALID_TOOL_ARGUMENTS",
+            "WORKERS_DISABLED",
+            "WORKER_CONTEXT_UNSUPPORTED",
             "EDIT_NOT_FOUND",
             "EDIT_NOT_UNIQUE",
             "FILE_CHANGED",
@@ -368,6 +389,7 @@ def tool_failure(call: ToolCall, result: ToolResult) -> AgentError:
         cause_code=cause if isinstance(cause, str) else code if isinstance(code, str) else None,
         phase=phase if isinstance(phase, str) else "tool",
         diagnostic_id=diagnostic if isinstance(diagnostic, str) else None,
+        diagnostic_issue=error.get("diagnostic_issue") if isinstance(error, dict) else None,
         tool_call_id=call.tool_call_id,
         effect_state="not_executed"
         if effect == "not_executed"
@@ -379,13 +401,14 @@ def tool_failure(call: ToolCall, result: ToolResult) -> AgentError:
     )
 
 
-async def skip_calls(sink: RunSink, calls: list[ToolCall], reason: str) -> None:
+async def skip_calls(sink: RunSink, calls: list[ToolCall], reason: str) -> list[JsonObject]:
     """仅配对尚未开始的工具，不收费、不重放副作用。
 
     Pair only unstarted calls without charging execution or replaying side effects.
     """
+    messages: list[JsonObject] = []
     for call in calls:
-        await sink.commit(
+        fact = await sink.commit(
             ToolSkipped(
                 result=ToolResult(
                     tool_call_id=call.tool_call_id,
@@ -394,3 +417,5 @@ async def skip_calls(sink: RunSink, calls: list[ToolCall], reason: str) -> None:
                 )
             )
         )
+        messages.append(tool_result_message(fact))
+    return messages

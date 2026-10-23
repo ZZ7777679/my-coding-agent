@@ -75,6 +75,7 @@ class TraceItem(ModelData):
     goal_id: str | None = None
     tool_call_id: str | None = None
     usage: TokenUsage | None = None
+    diagnostic_ids: list[str] = Field(default_factory=list)
 
 
 class TracePage(ModelData):
@@ -284,6 +285,16 @@ def _rows(log: SessionLog) -> list[tuple[TraceItem, list[Fact]]]:
             item.title = "运行结束"
             item.status = data.status
             item.is_error = data.status in {"failed", "interrupted"}
+        for member in members:
+            diagnostic = getattr(member.data, "diagnostic_id", None)
+            if isinstance(member.data, ToolCompleted) and member.data.result.is_error:
+                try:
+                    result = json.loads(member.data.result.content)
+                    diagnostic = result.get("diagnostic_id") if isinstance(result, dict) else None
+                except ValueError:
+                    diagnostic = None
+            if isinstance(diagnostic, str) and diagnostic not in item.diagnostic_ids:
+                item.diagnostic_ids.append(diagnostic)
         rows.append((item, members))
     return rows
 

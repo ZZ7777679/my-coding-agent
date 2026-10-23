@@ -64,6 +64,8 @@ class TeamModel:
             await self.gate.wait()
         names = [item["function"]["name"] for item in kwargs["tools"]]
         actions = self.work_actions.get(kwargs["session_id"], [])
+        if actions and "manage_space_work" not in names:
+            return turn(call("discover_tools", names=["manage_space_work"]))
         if "manage_space_work" in names and actions:
             return turn(call("manage_space_work", **actions.pop(0)))
         if "save_team_draft" in names and not self.saved:
@@ -361,18 +363,22 @@ def test_three_organisations_routes_busy_queue_and_goal_stop(tmp_path):
                 )
             )
             request_id = queued.messages[-1].executions[0].request_id
-            assert request_id
+            # M8 同一接收成员的普通追加进入当前 Run，不再伪造另一个协作请求。
+            # M8 ordinary steering stays in the recipient Run rather than a new peer request.
+            assert request_id is None
+            snapshot = await app.sessions.view(bindings[first])
+            assert any(
+                item.text == "After current answer" and item.input_status == "queued"
+                for item in snapshot.entries
+            )
             model.hold = False
             model.gate.set()
             await finish(app, bindings[first])
-            for _ in range(100):
-                request = await app.worker.call(
-                    app.sessions.collaboration.store.request, request_id
-                )
-                if request.status == "completed":
-                    break
-                await asyncio.sleep(0.02)
-            assert request.status == "completed"
+            snapshot = await app.sessions.view(bindings[first])
+            assert any(
+                item.text == "After current answer" and item.input_status == "in_context"
+                for item in snapshot.entries
+            )
             model.hold = True
             model.gate.clear()
             model.entered.clear()
