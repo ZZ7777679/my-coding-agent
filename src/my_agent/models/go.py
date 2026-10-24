@@ -20,6 +20,7 @@ from my_agent.models.types import (
     ModelId,
     ModelTurn,
     ProgressSink,
+    RequestSink,
     TextSink,
     TokenUsage,
     ToolCall,
@@ -303,6 +304,7 @@ class GoClient:
         on_text: TextSink,
         on_progress: ProgressSink | None = None,
         on_reasoning: TextSink | None = None,
+        on_request: RequestSink | None = None,
     ) -> ModelTurn:
         """每次调用恰好一个请求，取消退出会关闭 HTTP 流。
 
@@ -310,9 +312,9 @@ class GoClient:
         """
         timing = RequestTiming(on_progress)
         headers = self.request_headers(session_id)
-        body = {
+        body: JsonObject = {
             "model": self.request_model_id or model_id,
-            "messages": messages,
+            "messages": [*messages],
             "stream": True,
             "stream_options": {"include_usage": True},
         }
@@ -323,7 +325,7 @@ class GoClient:
         # Go 的 DeepSeek 路由会挂起空 tools 数组；无工具时省略可选字段。
         # Go's DeepSeek route stalls on an empty tools array; omit the optional field when unused.
         if tools:
-            body["tools"] = tools
+            body["tools"] = [*tools]
 
         async def deliver_text(delta: str) -> None:
             """先记真实首字再交付，不等响应结束。 Time text before immediate delivery."""
@@ -350,6 +352,10 @@ class GoClient:
                 asyncio.timeout(limits.request_timeout_seconds),
                 self.http.borrow() as client,
             ):
+                if on_request is not None:
+                    # 只观察最终 JSON，不传递认证头或客户端私有状态。
+                    # Observe the final JSON only, without auth headers or private client state.
+                    await on_request(body)
                 async with client.stream(
                     "POST",
                     self.base_url + "/chat/completions",

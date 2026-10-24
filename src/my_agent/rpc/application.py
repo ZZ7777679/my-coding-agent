@@ -714,7 +714,9 @@ class RpcApplication:
         if method == "trace.detail":
             detail_options = TraceDetailParams.model_validate(params)
             log = await self.sessions._load(detail_options.session_id)
-            return await self.worker.call(trace_detail, log, detail_options)
+            return await self.worker.call(
+                trace_detail, log, detail_options, self.sessions.store.path(log.session_id).parent
+            )
         if method == "sessions.list":
             listing = ListSessionsParams.model_validate(params)
             return await self.sessions.list(listing.project_id, listing.cursor, listing.limit)

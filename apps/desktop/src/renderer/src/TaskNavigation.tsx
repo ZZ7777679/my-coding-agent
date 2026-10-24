@@ -64,15 +64,17 @@ function ProjectBranch({
       setError('')
       try {
         const params = { project_id: projectId, cursor, limit: 20 }
-        const [taskResult, sessionResult] = await Promise.all([
-          kind !== 'sessions' ? window.agent.listTasks(params) : null,
-          kind !== 'tasks' ? window.agent.listSessions(params) : null
-        ])
-        if (ticket !== epoch.current) return
-        const target = selection.current
-        if (target?.projectId === projectId) {
+        const notices: string[] = []
+        /** 任务返回即展示，不等待会话历史；选择变化仍由同一代次保护。
+         * Display tasks immediately without waiting for session history; retain generation checks. */
+        async function tasksPage(): Promise<void> {
+          if (kind === 'sessions') return
+          const taskResult = await window.agent.listTasks(params)
+          if (ticket !== epoch.current) return
+          const target = selection.current
           if (
-            taskResult?.ok &&
+            taskResult.ok &&
+            target?.projectId === projectId &&
             target.taskId &&
             !taskResult.data.tasks.some((task) => task.task_id === target.taskId)
           ) {
@@ -87,8 +89,28 @@ function ProjectBranch({
                 revision: detail.data.revision
               })
           }
+          if (taskResult.ok) {
+            setTasks((old) => [
+              ...new Map(
+                (cursor ? [...old, ...taskResult.data.tasks] : taskResult.data.tasks).map(
+                  (task) => [task.task_id, task]
+                )
+              ).values()
+            ])
+            setTaskCursor(taskResult.data.next_cursor)
+            if (taskResult.data.unavailable_count)
+              notices.push(`${taskResult.data.unavailable_count} 个任务记录不可读`)
+          } else notices.push(taskResult.error.message)
+        }
+        /** 会话页独立更新，保留分页与选中条目。 Update sessions independently with paging and selection. */
+        async function sessionsPage(): Promise<void> {
+          if (kind === 'tasks') return
+          const sessionResult = await window.agent.listSessions(params)
+          if (ticket !== epoch.current) return
+          const target = selection.current
           if (
-            sessionResult?.ok &&
+            sessionResult.ok &&
+            target?.projectId === projectId &&
             target.sessionId &&
             !sessionResult.data.sessions.some((session) => session.session_id === target.sessionId)
           ) {
@@ -100,34 +122,22 @@ function ProjectBranch({
             if (detail.ok && detail.data.summary.project_id === projectId)
               sessionResult.data.sessions.push(detail.data.summary)
           }
+          if (sessionResult.ok) {
+            setSessions((old) => [
+              ...new Map(
+                (cursor
+                  ? [...old, ...sessionResult.data.sessions]
+                  : sessionResult.data.sessions
+                ).map((session) => [session.session_id, session])
+              ).values()
+            ])
+            setSessionCursor(sessionResult.data.next_cursor)
+            if (sessionResult.data.unavailable_count)
+              notices.push(`${sessionResult.data.unavailable_count} 个会话记录不可读`)
+          } else notices.push(sessionResult.error.message)
         }
-        const notices: string[] = []
-        if (taskResult?.ok) {
-          setTasks((old) => [
-            ...new Map(
-              (cursor ? [...old, ...taskResult.data.tasks] : taskResult.data.tasks).map((task) => [
-                task.task_id,
-                task
-              ])
-            ).values()
-          ])
-          setTaskCursor(taskResult.data.next_cursor)
-          if (taskResult.data.unavailable_count)
-            notices.push(`${taskResult.data.unavailable_count} 个任务记录不可读`)
-        } else if (taskResult) notices.push(taskResult.error.message)
-        if (sessionResult?.ok) {
-          setSessions((old) => [
-            ...new Map(
-              (cursor ? [...old, ...sessionResult.data.sessions] : sessionResult.data.sessions).map(
-                (session) => [session.session_id, session]
-              )
-            ).values()
-          ])
-          setSessionCursor(sessionResult.data.next_cursor)
-          if (sessionResult.data.unavailable_count)
-            notices.push(`${sessionResult.data.unavailable_count} 个会话记录不可读`)
-        } else if (sessionResult) notices.push(sessionResult.error.message)
-        setError(notices.join('；'))
+        await Promise.all([tasksPage(), sessionsPage()])
+        if (ticket === epoch.current) setError(notices.join('；'))
       } catch {
         if (ticket === epoch.current) setError('列表读取失败，请重试。')
       } finally {

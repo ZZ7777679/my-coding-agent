@@ -17,6 +17,7 @@ from my_agent.goals.types import GoalBudget, GoalControl, GoalCreated, GoalCrite
 from my_agent.models.types import ModelTurn, TokenUsage, ToolCall, ToolResult
 from my_agent.runtime.settings import RunLimits
 from my_agent.sessions.projection import entries
+from my_agent.sessions.reading import SessionReader
 from my_agent.sessions.store import SessionLog, SessionStore
 from my_agent.sessions.types import (
     AssistantCommitted,
@@ -105,10 +106,12 @@ def start_run(sessions, log, task, goal=None, *, role="work"):
         current = states(log.facts)[goal.goal_id]
         used = usage(log.facts, goal.goal_id)
         if current.budget.max_active_seconds is not None:
-            time_limit = min(
-                float(DEFAULTS["run"]["max_seconds"]),
-                current.budget.max_active_seconds - used.active_seconds - used.reserved_seconds,
+            remaining = (
+                current.budget.max_active_seconds - used.active_seconds - used.reserved_seconds
             )
+            configured = DEFAULTS["run"]["max_seconds"]
+            # 不限 Run 仍遵守本用例显式 Goal 预算。 An unlimited Run keeps the explicit Goal budget.
+            time_limit = remaining if configured is None else min(float(configured), remaining)
     sessions.append(
         log,
         RunAccepted(
@@ -258,6 +261,7 @@ def test_ended_goal_is_history_for_followup_and_after_reload(records, terminal):
     assert len(historical) == 1
     assert historical[0].goal_result.status == terminal
     assert historical[0].goal_result.last_report == report
+    assert SessionReader(sessions).view(log.session_id, None, str(uuid4())).entries == page
     assert sessions.path(log.session_id).read_bytes() == original
 
 

@@ -11,10 +11,11 @@ from my_agent.errors import recovery_hint
 from my_agent.execution.types import ProgramView
 from my_agent.goals.state import TERMINAL_GOALS
 from my_agent.goals.state import views as goal_views
-from my_agent.goals.types import GoalControl, GoalCreated, GoalInputQueued, GoalSettled
+from my_agent.goals.types import GoalControl, GoalCreated, GoalInputQueued, GoalSettled, GoalView
 from my_agent.models.types import ModelId
 from my_agent.sessions.recovery_types import SessionRecovered
 from my_agent.sessions.store import SessionLog
+from my_agent.sessions.tool_presentation import tool_caption
 from my_agent.sessions.types import (
     AssistantCommitted,
     AuxiliaryCompleted,
@@ -43,6 +44,8 @@ from my_agent.web.types import WebPageResult, WebSearchResult
 WEB_RESULT: TypeAdapter[WebSearchResult | WebPageResult] = TypeAdapter(
     WebSearchResult | WebPageResult
 )
+HISTORY_PAGE_ENTRIES = 40
+HISTORY_PAGE_BYTES = 350000
 
 
 def selected_model(log: SessionLog) -> ModelId:
@@ -162,7 +165,7 @@ def summarize(log: SessionLog, *, active: bool = False, stopping: bool = False) 
             if any(fact.seq in synced for fact in tail)
             else "none",
         )
-    _, complete = log.context()
+    complete = log.context_complete()
     membership = next(
         (f.data for f in reversed(log.facts) if isinstance(f.data, SessionAssigned)), header
     )
@@ -204,15 +207,11 @@ def summarize(log: SessionLog, *, active: bool = False, stopping: bool = False) 
     )
 
 
-def entries(log: SessionLog, before_seq: int | None) -> tuple[list[ChatEntry], int | None]:
-    """按页倒选历史，限制字节数与条数，保持原顺序。
+def terminal_goal_entries(log: SessionLog) -> dict[int, GoalView]:
+    """定位已结束 Goal 的历史卡片；索引复用这份展示投影。
 
-    Page history by bytes/count in original order.
+    Locate ended-goal cards for both full history and the read index.
     """
-    result: list[ChatEntry] = []
-    effective = {fact.seq for fact in log.effective_facts()}
-    size = 0
-    cursor: int | None = None
     ended_goals = {
         goal.goal_id: goal for goal in goal_views(log.facts) if goal.status in TERMINAL_GOALS
     }
@@ -225,12 +224,33 @@ def entries(log: SessionLog, before_seq: int | None) -> tuple[list[ChatEntry], i
             goal = ended_goals.get(data.goal_id)
             if goal is not None and goal.status == "completed":
                 goal_anchors[data.goal_id] = fact.seq
-    terminal_entries = {
+    return {
         seq: ended_goals[identity]
         for identity, seq in goal_anchors.items()
         if identity in ended_goals
     }
+
+
+def entries(
+    log: SessionLog,
+    before_seq: int | None,
+    *,
+    selected_seqs: set[int] | None = None,
+    terminal_entries: dict[int, GoalView] | None = None,
+) -> tuple[list[ChatEntry], int | None]:
+    """按页倒选历史，附属事实只提供配对／回退信息，不扩大展示页。
+
+    Page by bytes/count; supporting facts inform pairing/rewinds without enlarging the page.
+    """
+    result: list[ChatEntry] = []
+    effective = {fact.seq for fact in log.effective_facts()}
+    size = 0
+    cursor: int | None = None
+    if terminal_entries is None:
+        terminal_entries = terminal_goal_entries(log)
     for fact in reversed(log.facts):
+        if selected_seqs is not None and fact.seq not in selected_seqs:
+            continue
         if before_seq is not None and fact.seq >= before_seq:
             continue
         data = fact.data
@@ -313,7 +333,12 @@ def entries(log: SessionLog, before_seq: int | None) -> tuple[list[ChatEntry], i
             )
         elif isinstance(data, ToolStarted):
             entry = ChatEntry.model_validate(
-                {**common, "kind": "tool.started", "call": data.call, "text": ""}
+                {
+                    **common,
+                    "kind": "tool.started",
+                    "call": data.call,
+                    "text": tool_caption(data.call),
+                }
             )
         elif isinstance(data, (ToolCompleted, ToolSkipped)):
             web_result = None
@@ -321,8 +346,9 @@ def entries(log: SessionLog, before_seq: int | None) -> tuple[list[ChatEntry], i
             started = next(
                 (
                     item.data
-                    for item in reversed(log.facts[: fact.seq - 1])
-                    if item.run_id == fact.run_id
+                    for item in reversed(log.facts)
+                    if item.seq < fact.seq
+                    and item.run_id == fact.run_id
                     and isinstance(item.data, ToolStarted)
                     and item.data.call.tool_call_id == data.result.tool_call_id
                 ),
@@ -358,7 +384,7 @@ def entries(log: SessionLog, before_seq: int | None) -> tuple[list[ChatEntry], i
                     "web_result": web_result,
                     "call": program_call,
                     "program_result": program_result,
-                    "text": "",
+                    "text": tool_caption(started.call) if started else "工具",
                 }
             )
         elif isinstance(data, SessionRecovered):
@@ -411,7 +437,7 @@ def entries(log: SessionLog, before_seq: int | None) -> tuple[list[ChatEntry], i
         if entry is None:
             continue
         length = len(entry.model_dump_json().encode("utf-8"))
-        if result and (len(result) >= 40 or size + length > 350000):
+        if result and (len(result) >= HISTORY_PAGE_ENTRIES or size + length > HISTORY_PAGE_BYTES):
             cursor = result[-1].seq
             break
         size += length

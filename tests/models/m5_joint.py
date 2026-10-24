@@ -26,6 +26,7 @@ from my_agent.models.types import (
     ModelId,
     ModelTurn,
     ProgressSink,
+    RequestSink,
     TextSink,
 )
 from my_agent.rpc.application import RpcApplication
@@ -107,6 +108,7 @@ async def check(
             on_text: TextSink,
             on_progress: ProgressSink | None = None,
             on_reasoning: TextSink | None = None,
+            on_request: RequestSink | None = None,
         ) -> ModelTurn:
             """发送前保存预算计数，失败不自动重试。
 
@@ -133,6 +135,7 @@ async def check(
                     on_text=on_text,
                     on_progress=on_progress,
                     on_reasoning=on_reasoning,
+                    on_request=on_request,
                 )
                 row.update(
                     status="completed",

@@ -21,7 +21,14 @@ from my_agent.errors import AgentError
 from my_agent.memory.types import MemorySettings
 from my_agent.models.go import GoClient
 from my_agent.models.http import ModelHttpPool
-from my_agent.models.types import JsonObject, ModelId, ModelTurn, ProgressSink, TextSink
+from my_agent.models.types import (
+    JsonObject,
+    ModelId,
+    ModelTurn,
+    ProgressSink,
+    RequestSink,
+    TextSink,
+)
 from my_agent.rpc.application import RpcApplication
 from my_agent.runtime.settings import RunLimits
 from my_agent.sessions.types import AssistantCommitted, ToolCompleted, ToolStarted
@@ -137,6 +144,7 @@ async def demonstrate(root: Path, request_limit: int, seconds_limit: int) -> Non
             on_text: TextSink,
             on_progress: ProgressSink | None = None,
             on_reasoning: TextSink | None = None,
+            on_request: RequestSink | None = None,
         ) -> ModelTurn:
             """在发送前计数，失败保留且不重试。
 
@@ -162,6 +170,7 @@ async def demonstrate(root: Path, request_limit: int, seconds_limit: int) -> Non
                     on_text=on_text,
                     on_progress=on_progress,
                     on_reasoning=on_reasoning,
+                    on_request=on_request,
                 )
                 row.update(
                     status="completed",

@@ -1,5 +1,7 @@
 /** 执行事实的按需视图，不参与运行控制。 On-demand facts, independent of execution control. */
 import { useEffect, useRef, useState } from 'react'
+import { TraceRequestBody } from './TraceRequestBody'
+import { TraceJson } from './TraceJson'
 import { EvolutionFeedbackButton } from './EvolutionFeedback'
 import { DiagnosticDetails } from './DiagnosticDetails'
 import type { EvolutionEntry } from './EvolutionQuick'
@@ -142,12 +144,15 @@ export function toolCaption(entry: ChatEntry, result?: ChatEntry): string {
     if (value && typeof value === 'object' && 'mcp_source' in value) {
       const source = value.mcp_source
       if (source && typeof source === 'object' && 'server_id' in source && 'tool_name' in source)
-        name = `${source.server_id}/${source.tool_name}`
+        return (
+          `${source.server_id}/${source.tool_name}` +
+          (target ? ` · ${String(target).slice(0, 140)}` : '')
+        )
     }
   } catch {
     /* 普通工具可以返回文本。 Ordinary tools may return plain text. */
   }
-  return name + (target ? ` · ${String(target).slice(0, 140)}` : '')
+  return entry.text || result?.text || name + (target ? ` · ${String(target).slice(0, 140)}` : '')
 }
 
 /** 保留展开状态并按需读取详情片段。 Preserve expansion and fetch detail chunks on demand. */
@@ -170,8 +175,11 @@ function TraceRow({
   const [detail, setDetail] = useState<TraceDetail | null>(null)
   const [error, setError] = useState('')
   const [part, setPart] = useState<TraceDetailParams['part']>(
-    item.tool_call_id ? 'result' : 'detail'
+    item.tool_call_id ? 'result' : item.kind === 'request.started' ? 'parameters' : 'detail'
   )
+  const [loadingAll, setLoadingAll] = useState(false)
+  const loadedDetail = useRef<string | null>(null)
+  const loadedPart = useRef(part)
   const row = useRef<HTMLDetailsElement>(null)
   const generation = useRef(0)
   useEffect(() => {
@@ -182,13 +190,34 @@ function TraceRow({
   }, [focus])
   useEffect(() => {
     const ticket = ++generation.current
+    setLoadingAll(false)
     if (!open || !visible) return
+    const key = `${sessionId}:${item.seq}:${item.updated_seq}:${part}`
+    if (loadedPart.current !== part) {
+      loadedPart.current = part
+      loadedDetail.current = null
+      setDetail(null)
+    }
+    if (loadedDetail.current === key)
+      return () => {
+        ++generation.current
+      }
     void window.agent
       .getTraceDetail({ session_id: sessionId, seq: item.seq, part })
       .then((result) => {
         if (ticket !== generation.current) return
         if (result.ok) {
-          setDetail(result.data)
+          loadedDetail.current = key
+          // 请求输入不随响应变化；保留已加载的后续分页，缺失快照仍可刷新。
+          // Preserve loaded input pages across response updates, while refreshing absent snapshots.
+          setDetail((previous) =>
+            part === 'parameters' &&
+            previous &&
+            previous.total_chars === result.data.total_chars &&
+            previous.text.startsWith(result.data.text)
+              ? previous
+              : result.data
+          )
           setError('')
         } else setError(result.error.message)
       })
@@ -217,14 +246,47 @@ function TraceRow({
       if (ticket === generation.current) setError('读取后续详情失败。')
     }
   }
+  /** 只有用户要求时才读取剩余全文；切换或关闭立即停止续读。
+   * Fetch all remaining text only on demand; switching or closing stops further reads.
+   */
+  async function loadAll() {
+    if (!detail || loadingAll) return
+    const ticket = generation.current
+    setLoadingAll(true)
+    let current = detail
+    try {
+      while (current.next_offset !== null) {
+        const result = await window.agent.getTraceDetail({
+          session_id: sessionId,
+          seq: item.seq,
+          part,
+          offset: current.next_offset
+        })
+        if (ticket !== generation.current) return
+        if (!result.ok) throw new Error(result.error.message)
+        current = { ...result.data, text: current.text + result.data.text }
+      }
+      setDetail(current)
+    } catch (exc) {
+      if (ticket === generation.current)
+        setError(exc instanceof Error ? exc.message : '读取全文失败。')
+    } finally {
+      if (ticket === generation.current) setLoadingAll(false)
+    }
+  }
   return (
     <details
       ref={row}
+      data-trace-seq={item.seq}
       className={'trace-row' + (item.is_error ? ' tool-error' : '')}
       open={open}
       onToggle={(e) => setOpen(e.currentTarget.open)}
     >
       <summary>
+        <time dateTime={item.at}>
+          {new Date(item.at).toLocaleString('zh-CN', { hour12: false })}
+        </time>
+        {' · '}
         {item.title} · {item.status}
         {item.duration_ms != null &&
           ` · ${item.kind === 'request.started' ? '请求跨度' : '调用跨度'} ${(item.duration_ms / 1000).toFixed(2)} 秒`}
@@ -263,20 +325,35 @@ function TraceRow({
               {item.usage?.cached_input_tokens ?? '未提供'}（属于输入，不另加总）
             </p>
           )}
-          {item.tool_call_id && (
+          {(item.tool_call_id || item.kind === 'request.started') && (
             <div>
               {(['detail', 'parameters', 'result'] as const).map((value) => (
                 <button key={value} disabled={part === value} onClick={() => setPart(value)}>
-                  {value === 'detail' ? '全部详情' : value === 'parameters' ? '参数' : '结果'}
+                  {item.kind === 'request.started'
+                    ? value === 'detail'
+                      ? '请求记录与材料清单'
+                      : value === 'parameters'
+                        ? '请求 JSON'
+                        : '模型响应'
+                    : value === 'detail'
+                      ? '全部详情'
+                      : value === 'parameters'
+                        ? '参数'
+                        : '结果'}
                 </button>
               ))}
             </div>
           )}
           {item.kind === 'request.started' && (
-            <p className="muted">
-              请求详情含实际材料清单与有界预览，不是完整原始请求。材料全文可由已有归档回读。
-              请求跨度为发出事实至响应提交或运行终态的墙钟时间，包含本地保存；工具调用单独计时。
-            </p>
+            <details className="trace-request-help">
+              <summary>请求范围与计量说明</summary>
+              <p className="muted">
+                请求 JSON 来自本次发送尝试的最终正文，含完整
+                messages、工具定义与请求参数，不含认证头。
+                旧记录未保存时明确提示；模型响应为已解析的回答、思考与工具调用，不是原始 SSE。
+                请求跨度为发出事实至响应提交或运行终态的墙钟时间，包含本地保存；工具调用单独计时。
+              </p>
+            </details>
           )}
           {error && <p role="alert">{error}</p>}
           {detail ? (
@@ -301,13 +378,38 @@ function TraceRow({
                   </summary>
                   <pre>{detail.text}</pre>
                 </details>
+              ) : item.kind === 'request.started' && part === 'parameters' ? (
+                <TraceRequestBody
+                  key={item.request_id}
+                  text={detail.text}
+                  complete={detail.next_offset === null}
+                  loading={loadingAll}
+                  onLoadAll={() => void loadAll()}
+                />
               ) : (
-                <pre>{detail.text}</pre>
+                <TraceJson
+                  key={`${item.seq}:${part}`}
+                  text={detail.text}
+                  label={
+                    part === 'result' && item.kind === 'request.started'
+                      ? '模型响应 JSON'
+                      : '记录 JSON'
+                  }
+                />
               )}
               {detail.next_offset !== null && (
-                <button onClick={() => void more()}>
-                  读取更多（共 {detail.total_chars} 字符）
-                </button>
+                <div>
+                  <small>
+                    已加载 {detail.text.length.toLocaleString()} /{' '}
+                    {detail.total_chars.toLocaleString()} 字符；下方可继续读完整正文。
+                  </small>
+                  <button disabled={loadingAll} onClick={() => void more()}>
+                    读取更多
+                  </button>
+                  <button disabled={loadingAll} onClick={() => void loadAll()}>
+                    {loadingAll ? '正在读取全文…' : '加载全部正文'}
+                  </button>
+                </div>
               )}
               {detail.links?.map((link) => (
                 <TraceArtifact
@@ -432,6 +534,7 @@ export function Trace({
       .then((result) => {
         if (disposed || ticket !== generation.current) return
         if (result.ok) {
+          setSelectedSeq((previous) => previous ?? result.data.items.at(-1)?.seq ?? null)
           setItems((previous) =>
             [
               ...new Map(
@@ -524,6 +627,18 @@ export function Trace({
       setBusy(false)
     }
   }
+  /** 定位当前筛选范围内最新记录，不让实时更新夺走旧记录的阅读位置。
+   * Jump to the latest matching record without live updates stealing the reading position.
+   */
+  function jumpToLatest() {
+    const seq = items.at(-1)?.seq
+    if (seq === undefined) return
+    setSelectedSeq(seq)
+    panel.current?.querySelector(`[data-trace-seq="${seq}"]`)?.scrollIntoView({ block: 'nearest' })
+    panel.current
+      ?.querySelector('.trace-timeline [data-trace-nav]:last-of-type')
+      ?.scrollIntoView({ block: 'nearest' })
+  }
   return (
     <aside
       ref={panel}
@@ -555,6 +670,7 @@ export function Trace({
           onChange={(e) => {
             setItems([])
             setCursor(null)
+            setSelectedSeq(null)
             setTool(e.target.value)
           }}
         />
@@ -565,23 +681,30 @@ export function Trace({
             onChange={(e) => {
               setItems([])
               setCursor(null)
+              setSelectedSeq(null)
               setErrors(e.target.checked)
             }}
           />
           仅失败
         </label>
       </div>
+      <div className="trace-order">
+        <span>从上到下：较早 → 最新</span>
+        <button disabled={!items.length} onClick={jumpToLatest}>
+          跳到最新{tool || errors ? '匹配记录' : '记录'}
+        </button>
+      </div>
       {error && <p role="alert">{error}</p>}
       <div className="trace-reading">
         <nav className="trace-timeline" aria-label="轨迹时间线">
-          <p className="muted">运行 → 请求 → 工具 · 选择记录阅读详情</p>
+          <p className="muted">按时间排列 · 请求内查看输入与响应</p>
           {!!cursor && (
             <button disabled={busy} onClick={() => void older()}>
               更早轨迹
             </button>
           )}
           {items.map((item, index) => (
-            <div key={item.seq}>
+            <div key={item.seq} data-trace-nav={item.seq}>
               {(index === 0 || items[index - 1].run_id !== item.run_id) && (
                 <small>运行 {item.run_id?.slice(0, 8) ?? '会话记录'}</small>
               )}
@@ -591,9 +714,13 @@ export function Trace({
               >
                 {item.title}
                 <small>
-                  #{item.seq} · {item.status}
+                  {new Date(item.at).toLocaleString('zh-CN', { hour12: false })} · #{item.seq} ·{' '}
+                  {item.status}
                   {item.duration_ms != null ? ` · ${(item.duration_ms / 1000).toFixed(1)} 秒` : ''}
                 </small>
+                {index === items.length - 1 && (
+                  <small>最新{tool || errors ? '匹配' : ''}记录 ↓</small>
+                )}
               </button>
             </div>
           ))}
@@ -641,6 +768,9 @@ export function Trace({
               {item.goal_id && (index === 0 || items[index - 1].run_id !== item.run_id) && (
                 <small>Goal {item.goal_id}</small>
               )}
+              {index === items.length - 1 && (
+                <small className="trace-latest">最新{tool || errors ? '匹配' : ''}记录 ↓</small>
+              )}
               {(index === 0 || items[index - 1].request_id !== item.request_id) &&
                 item.request_id && <small>请求 {item.request_id}</small>}
               <TraceRow
@@ -648,7 +778,7 @@ export function Trace({
                 item={item}
                 sessionId={sessionId}
                 projectId={projectId}
-                focus={item.seq === (expanded ? (selectedSeq ?? items.at(-1)?.seq) : focusSeq)}
+                focus={item.seq === selectedSeq}
                 visible={visible && (!expanded || item.seq === (selectedSeq ?? items.at(-1)?.seq))}
               />
             </div>

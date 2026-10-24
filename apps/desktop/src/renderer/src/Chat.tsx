@@ -1,5 +1,5 @@
 /** 项目对话：模式、快照、流式预览与工具证据。 Project chat with modes, snapshots and tool evidence. */
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ContextMemory, type KnowledgeUi } from './ContextMemory'
 import { Markdown } from './Markdown'
 import {
@@ -182,6 +182,7 @@ export function Chat({
   const [snapshot, setSnapshot] = useState<SessionView | null>(null)
   const [older, setOlder] = useState<ChatEntry[]>([])
   const [olderCursor, setOlderCursor] = useState<number | null>(null)
+  const [loadingOlder, setLoadingOlder] = useState(false)
   const [prompt, setPrompt] = useState('')
   useEffect(() => {
     /** 文件操作准备可编辑的请求，保留已有草稿及当前模式。
@@ -255,6 +256,28 @@ export function Chat({
   notifyRun.current = onRunChange
   const generation = useRef(0)
   const historyElement = useRef<HTMLDivElement>(null)
+  const historyAnchor = useRef<{
+    sessionId: string
+    seq: string | undefined
+    top: number
+    scrollTop: number
+    height: number
+  } | null>(null)
+
+  // 插入旧页后维持原消息的位置；浏览器自己的滚动锚定已生效时差值自然为零。
+  // Preserve the existing message after prepending; native anchoring yields a zero adjustment.
+  useLayoutEffect(() => {
+    const anchor = historyAnchor.current
+    const container = historyElement.current
+    historyAnchor.current = null
+    if (!anchor || !container || anchor.sessionId !== selected) return
+    const message = anchor.seq
+      ? container.querySelector<HTMLElement>(`[data-history-seq="${anchor.seq}"]`)
+      : null
+    if (message) container.scrollTop += message.getBoundingClientRect().top - anchor.top
+    else container.scrollTop = anchor.scrollTop + container.scrollHeight - anchor.height
+    followLatest.current = false
+  }, [older, selected])
   const retainedSnapshot = useRef(snapshot)
   retainedSnapshot.current = snapshot
   const followLatest = useRef(true)
@@ -267,6 +290,8 @@ export function Chat({
     ++generation.current
     setSnapshot(null)
     setOlder([])
+    setLoadingOlder(false)
+    historyAnchor.current = null
     setShowTrace(false)
     setTraceSeq(null)
     setPrompt('')
@@ -554,21 +579,36 @@ export function Chat({
   /** 历史页单独合并，实时快照仍保持最新水位。 Merge historical pages separately from live snapshots. */
   const loadOlder = async () => {
     const before = olderCursor ?? snapshot?.before_seq
-    if (!selected || !before || busy) return
+    if (!selected || !before || loadingOlder) return
     const sessionId = selected
+    const ticket = generation.current
     followLatest.current = false
-    setBusy(true)
+    setLoadingOlder(true)
     try {
       const result = await window.agent.getSession({ session_id: sessionId, before_seq: before })
-      if (currentSelection.current !== sessionId) return
+      if (currentSelection.current !== sessionId || ticket !== generation.current) return
       if (result.ok) {
+        const container = historyElement.current
+        if (container) {
+          const top = container.getBoundingClientRect().top
+          const message = [...container.querySelectorAll<HTMLElement>('[data-history-seq]')].find(
+            (element) => element.getBoundingClientRect().bottom > top && element.offsetHeight > 0
+          )
+          historyAnchor.current = {
+            sessionId,
+            seq: message?.dataset.historySeq,
+            top: message?.getBoundingClientRect().top ?? top,
+            scrollTop: container.scrollTop,
+            height: container.scrollHeight
+          }
+        }
         setOlder((previous) => [...result.data.entries, ...previous])
         setOlderCursor(result.data.before_seq ?? 0)
       } else setError(result.error.message)
     } catch {
-      setError('无法加载更早的历史。')
+      if (ticket === generation.current) setError('无法加载更早的历史。')
     } finally {
-      setBusy(false)
+      if (ticket === generation.current) setLoadingOlder(false)
     }
   }
 
@@ -658,8 +698,12 @@ export function Chat({
           }}
         >
           {(olderCursor ?? snapshot?.before_seq) ? (
-            <button className="text-button" disabled={busy} onClick={() => void loadOlder()}>
-              加载更早记录
+            <button
+              className="text-button"
+              disabled={loadingOlder}
+              onClick={() => void loadOlder()}
+            >
+              {loadingOlder ? '正在加载更早记录…' : '加载更早记录'}
             </button>
           ) : null}
           {!selected && (
@@ -678,7 +722,7 @@ export function Chat({
           {history.map((entry) => {
             if (entry.abandoned)
               return (
-                <details key={entry.seq} className="abandoned-entry">
+                <details key={entry.seq} data-history-seq={entry.seq} className="abandoned-entry">
                   <summary>
                     已放弃分支 · {entry.kind} · #{entry.seq}
                   </summary>
@@ -720,7 +764,7 @@ export function Chat({
               ).length
               const program = entry.call && programTools.has(entry.call.name)
               return (
-                <div key={`${entry.run_id}:${identity}`}>
+                <div key={`${entry.run_id}:${identity}`} data-history-seq={entry.seq}>
                   {finished && firstTool && (
                     <button
                       className="text-button"
@@ -735,22 +779,24 @@ export function Chat({
                     <div className={'tool-summary' + (failed ? ' tool-error' : '')}>
                       <button
                         className="text-button"
+                        title="查看此次调用详情"
                         onClick={() => {
                           setTraceSeq(entry.seq)
                           setShowTrace(true)
                           setShowChanges(false)
                         }}
                       >
-                        {toolCaption(entry, terminal)} ·{' '}
-                        {terminal
-                          ? failed
-                            ? '未完成'
-                            : '已返回'
-                          : run?.run_id === entry.run_id &&
-                              (run.status === 'running' || run.status === 'stopping')
-                            ? '正在执行'
-                            : '结果未确认'}{' '}
-                        · Trace
+                        <span className="tool-action">{toolCaption(entry, terminal)}</span>
+                        <span className="tool-state">
+                          {terminal
+                            ? failed
+                              ? '未完成'
+                              : '已返回'
+                            : run?.run_id === entry.run_id &&
+                                (run.status === 'running' || run.status === 'stopping')
+                              ? '正在执行'
+                              : '结果未确认'}
+                        </span>
                       </button>
                       {failed && <p role="alert">{terminal?.result?.content.slice(0, 240)}</p>}
                       {project && selected && entry.call && programTools.has(entry.call.name) && (
@@ -773,14 +819,15 @@ export function Chat({
               )
             }
             return (
-              <HistoryEntry
-                key={entry.seq}
-                entry={entry}
-                reasoningOpen={!foldedReasoning[entry.message_id ?? String(entry.seq)]}
-                onReasoningToggle={(open) =>
-                  toggleReasoning(entry.message_id ?? String(entry.seq), open)
-                }
-              />
+              <div key={entry.seq} data-history-seq={entry.seq}>
+                <HistoryEntry
+                  entry={entry}
+                  reasoningOpen={!foldedReasoning[entry.message_id ?? String(entry.seq)]}
+                  onReasoningToggle={(open) =>
+                    toggleReasoning(entry.message_id ?? String(entry.seq), open)
+                  }
+                />
+              </div>
             )
           })}
           {(snapshot?.stream_text || snapshot?.stream_reasoning) && (

@@ -25,6 +25,13 @@ test('old sessions coalesce slow refreshes and keep one composer per selection',
       if (event.type() === 'error') errors.push(event.text())
     })
     await expect(page.getByTestId('connection-status')).toHaveText('本地后端已连接')
+    await expect(page.locator('.program-card')).toHaveCount(20)
+    for (const output of await page.locator('.program-output').all())
+      await expect(output).toHaveText('展开后读取输出…')
+    const program = page.locator('.program-card').first()
+    await program.locator('summary').click()
+    await expect(program.locator('.program-output')).toContainText('Historical program output')
+    await program.locator('summary').click()
     await page.getByRole('button', { name: '展开项目 project', exact: true }).click()
     const old = page.locator(`[data-session-id="${ids[0]}"]`)
     const started = Date.now()
@@ -32,6 +39,40 @@ test('old sessions coalesce slow refreshes and keep one composer per selection',
     await expect(page.locator('.chat-history')).toContainText('History answer 179')
     await expect(page.getByTestId('workers')).toHaveCount(1)
     const openMs = Date.now() - started
+    await page.getByRole('button', { name: '项目文件', exact: true }).click()
+    await expect(page.getByRole('button', { name: '关闭工作台', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '关闭工作台', exact: true }).click()
+    // 旧页只向上补入，原首条消息维持在原位置；连续两页避免只在首次凑巧正确。
+    // Prepend older pages while preserving the old first message, twice rather than only once.
+    for (let index = 0; index < 2; index++) {
+      await page.getByTestId('chat-history').evaluate((element) => {
+        element.scrollTop = 0
+      })
+      const anchor = await page.getByTestId('chat-history').evaluate((element) => {
+        const message = [...element.querySelectorAll<HTMLElement>('[data-history-seq]')].find(
+          (item) => item.offsetHeight > 0
+        )
+        if (!message) throw new Error('Missing history anchor')
+        return {
+          seq: message.dataset.historySeq,
+          top: message.getBoundingClientRect().top,
+          count: element.querySelectorAll('[data-history-seq]').length
+        }
+      })
+      await page.getByRole('button', { name: '加载更早记录', exact: true }).click()
+      await expect
+        .poll(() => page.locator('.chat-history [data-history-seq]').count())
+        .toBeGreaterThan(anchor.count)
+      await expect
+        .poll(async () =>
+          Math.abs(
+            (await page
+              .locator(`.chat-history [data-history-seq="${anchor.seq}"]`)
+              .evaluate((element) => element.getBoundingClientRect().top)) - anchor.top
+          )
+        )
+        .toBeLessThan(3)
+    }
     const signal = await page.evaluate(async (sessionId) => {
       const view = await window.agent.getSession({ session_id: sessionId, before_seq: null })
       if (!view.ok) throw new Error(view.error.message)
@@ -148,6 +189,9 @@ test('old sessions coalesce slow refreshes and keep one composer per selection',
       JSON.stringify({ openMs, stats, errors }, null, 2)
     )
     expect(await readFile(path.join(data, 'sessions', ids[0], 'events.jsonl'))).toEqual(before)
+    expect(await readFile(path.join(data, 'logs', 'electron.log'), 'utf8')).not.toContain(
+      'BACKEND_BUSY'
+    )
   } finally {
     await app.close()
   }

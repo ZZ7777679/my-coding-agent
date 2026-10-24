@@ -58,6 +58,9 @@ const sharedReads = new Set([
   'config.get',
   'sessions.get',
   'sessions.list',
+  'tasks.list',
+  'programs.list',
+  'programs.get',
   'runs.active',
   'workers.list',
   'goals.list',
@@ -88,6 +91,7 @@ export class Backend {
   private processClosed = false
   private recovering: Promise<void> | undefined
   private sharedReads = new Map<string, Promise<unknown>>()
+  private workspaceLogged = false
 
   /** 后端实际退出并完成清理后，只恢复读取服务，不重放原请求。
    * Restore the read service only after actual process closure and cleanup; never replay work. */
@@ -112,6 +116,7 @@ export class Backend {
       this.processClosed = false
       this.launchId = randomUUID()
       this.sharedReads.clear()
+      this.workspaceLogged = false
       this.log('BACKEND_RECONNECTING')
       await this.start()
       this.log('BACKEND_RECONNECTED')
@@ -157,6 +162,7 @@ export class Backend {
    * Start the repository venv, send the private bootstrap, then negotiate compatibility.
    */
   private async connect(): Promise<InitializeResult> {
+    const started = performance.now()
     const python = path.join(
       this.root,
       '.venv',
@@ -244,7 +250,7 @@ export class Backend {
     }
     child.stdin.write(bootstrap)
     try {
-      return await this.call(
+      const result = await this.call(
         'initialize',
         {
           app_version: this.version,
@@ -253,6 +259,10 @@ export class Backend {
         },
         'InitializeResult'
       )
+      this.log(
+        `BACKEND_READY launch=${this.launchId} elapsed_ms=${Math.round(performance.now() - started)}`
+      )
+      return result
     } catch (cause) {
       // 配置需要修复不等于传输损坏，保留活跃服务供诊断使用。
       // Invalid stored configuration is not transport failure; keep the server for diagnostics.
@@ -283,10 +293,19 @@ export class Backend {
    * Read fresh projects and model settings instead of reusing stale initialization state.
    */
   async info(): Promise<InitializeResult> {
+    const started = performance.now()
     const initial = await this.start()
     this.assertHealthy()
     const projects = await this.call('projects.list', {}, 'ProjectsView')
     const config = await this.call('config.get', {}, 'PublicConfig')
+    // 每次连接仅记录首次工作区读取耗时，不记录项目、配置或凭据正文。
+    // Record the first workspace read once per connection, without project/config/secret bodies.
+    if (!this.workspaceLogged) {
+      this.workspaceLogged = true
+      this.log(
+        `WORKSPACE_READY launch=${this.launchId} elapsed_ms=${Math.round(performance.now() - started)}`
+      )
+    }
     return { ...initial, projects, config }
   }
 

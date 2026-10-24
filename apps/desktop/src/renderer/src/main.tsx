@@ -14,9 +14,7 @@ import type {
   SessionSummary
 } from '../../generated/protocol'
 import type { Result } from '../../shared/api'
-import { Settings } from './Settings'
 import { Chat } from './Chat'
-import { CodeWorkbench } from './CodeWorkbench'
 import type { KnowledgeUi } from './ContextMemory'
 import type { QuestionMaterial } from './KnowledgeDetails'
 import { TaskNavigation, type WorkspaceSelection } from './TaskNavigation'
@@ -33,6 +31,13 @@ import { EvolutionQuick, type EvolutionEntry } from './EvolutionQuick'
 import type { EvolutionDraftCache } from './EvolutionDrafts'
 import './style.css'
 import './appearance.css'
+
+/** 编辑器与设置按访问加载，首屏不解析 Monaco 等较重模块。
+ * Load editor/settings on access so startup does not parse heavy modules such as Monaco. */
+const CodeWorkbench = React.lazy(() =>
+  import('./CodeWorkbench').then((m) => ({ default: m.CodeWorkbench }))
+)
+const Settings = React.lazy(() => import('./Settings').then((m) => ({ default: m.Settings })))
 
 /**
  * 合并后端公开错误和修复说明，保留可操作的信息。
@@ -88,6 +93,10 @@ function App() {
   >('projects')
   const [workbenchOpen, setWorkbenchOpen] = useState(false)
   const [workbenchVisited, setWorkbenchVisited] = useState(false)
+  const [settingsVisited, setSettingsVisited] = useState(false)
+  useEffect(() => {
+    if (view === 'settings') setSettingsVisited(true)
+  }, [view])
   const [selection, setSelection] = useState<WorkspaceSelection | null>(null)
   const [treeRevision, setTreeRevision] = useState(0)
   const [renamedItem, setRenamedItem] = useState<NavigationItemName | null>(null)
@@ -95,7 +104,7 @@ function App() {
   const runGeneration = useRef(0)
   const generation = useRef(0)
   const occupied = useRef(false)
-  const infoPending = useRef(false)
+  const infoPending = useRef<Promise<Result<InitializeResult>> | null>(null)
   const runsPending = useRef(false)
   const mounted = useRef(true)
 
@@ -104,11 +113,15 @@ function App() {
    * Refresh current state, using generation tickets to prevent stale selection updates.
    */
   const refresh = useCallback(async () => {
-    if (occupied.current || infoPending.current) return
-    infoPending.current = true
+    if (occupied.current) return
     const ticket = ++generation.current
+    // 开发模式重挂载时复用请求，但让当前代次接纳结果，不能跳过后再空等轮询。
+    // Share the in-flight request across dev remounts while the current generation accepts it.
+    const pending = (infoPending.current ??= Promise.resolve().then(() =>
+      window.agent.getAppInfo()
+    ))
     try {
-      const result = await window.agent.getAppInfo()
+      const result = await pending
       if (!mounted.current || ticket !== generation.current) return
       if (result.ok) {
         setInfo(result.data)
@@ -141,7 +154,7 @@ function App() {
         }
       }
     } finally {
-      infoPending.current = false
+      if (infoPending.current === pending) infoPending.current = null
     }
   }, [])
 
@@ -709,13 +722,15 @@ function App() {
           </div>
           <div className="workbench-page" hidden={!workbenchOpen}>
             {project && workbenchVisited && (
-              <CodeWorkbench
-                key={project.project_id + '/' + (selection?.sessionId ?? '')}
-                projectId={project.project_id}
-                sessionId={selection?.sessionId ?? null}
-                visible={view === 'chat' && workbenchOpen}
-                onChat={() => setWorkbenchOpen(false)}
-              />
+              <React.Suspense fallback={<p role="status">正在加载编码工作台…</p>}>
+                <CodeWorkbench
+                  key={project.project_id + '/' + (selection?.sessionId ?? '')}
+                  projectId={project.project_id}
+                  sessionId={selection?.sessionId ?? null}
+                  visible={view === 'chat' && workbenchOpen}
+                  onChat={() => setWorkbenchOpen(false)}
+                />
+              </React.Suspense>
             )}
           </div>
         </div>
@@ -780,13 +795,17 @@ function App() {
             </section>
           ))}
         <div hidden={view !== 'settings'}>
-          <Settings
-            info={info}
-            connected={connected}
-            busy={busy}
-            onBusy={settingsBusy}
-            onConfig={updateConfig}
-          />
+          {(view === 'settings' || settingsVisited) && (
+            <React.Suspense fallback={<p role="status">正在加载设置…</p>}>
+              <Settings
+                info={info}
+                connected={connected}
+                busy={busy}
+                onBusy={settingsBusy}
+                onConfig={updateConfig}
+              />
+            </React.Suspense>
+          )}
         </div>
       </main>
     </div>

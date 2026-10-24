@@ -6,7 +6,7 @@ Single-writer JSONL storage with preserved corrupt tails.
 import json
 import os
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from threading import RLock
 
@@ -67,6 +67,47 @@ class SessionLog:
     session_id: str
     facts: list[Fact]
     issue: str | None = None
+    _pairing_state: tuple[int, frozenset[str], bool] = field(
+        default=(0, frozenset(), True), init=False, repr=False
+    )
+
+    def context_complete(self) -> bool:
+        """增量检查工具配对，不为状态判断组装模型消息；回退时重算有效历史。
+
+        Check pairing incrementally without constructing messages; rebuild after a rewind.
+        """
+        through = len(self.facts)
+        previous, pending_snapshot, valid = self._pairing_state
+        pending = set(pending_snapshot)
+        new = self.facts[previous:through]
+        if previous > through or any(isinstance(f.data, ConversationRestored) for f in new):
+            pending.clear()
+            valid = True
+            new = SessionLog(self.session_id, self.facts[:through]).effective_facts()
+        for fact in new:
+            data = fact.data
+            if isinstance(
+                data, (GoalCreated, RunAccepted, RunInputApplied, AssistantCommitted)
+            ) or (isinstance(data, GoalControl) and data.action == "answer"):
+                if pending:
+                    valid = False
+                if isinstance(data, AssistantCommitted):
+                    pending.update(c.tool_call_id for c in data.turn.tool_calls)
+            elif isinstance(data, (ToolCompleted, ToolSkipped, SessionRecovered)):
+                identities = (
+                    [item.tool_call_id for item in data.items]
+                    if isinstance(data, SessionRecovered)
+                    else [data.result.tool_call_id]
+                )
+                for identity in identities:
+                    if identity not in pending:
+                        valid = False
+                    pending.discard(identity)
+        # 一次发布不可变快照，后台读取与界面读取不共享正在修改的集合。
+        # Publish one immutable snapshot so background/UI reads never share a mutating set.
+        if through >= self._pairing_state[0]:
+            self._pairing_state = through, frozenset(pending), valid
+        return valid and not pending and self.issue is None
 
     def effective_facts(self) -> list[Fact]:
         """回退只改变模型有效历史，原始事实和当前项目／模型选择保持。
@@ -121,7 +162,8 @@ class SessionLog:
                             else "Inherited source material only. Do not continue the source's "
                             "goal or replay its tools; the new assignment below is your current "
                             "objective.\n"
-                        ) + data.inherited_context,
+                        )
+                        + data.inherited_context,
                     }
                 )
             if isinstance(data, ConversationRestored):
@@ -373,7 +415,7 @@ class SessionStore:
         if isinstance(fact.data, RunInputApplied):
             if not any(item.seq == fact.data.input_seq for item in log.pending_inputs()):
                 raise invalid
-            if not log.context()[1]:
+            if not log.context_complete():
                 raise invalid
             return
         if isinstance(fact.data, SessionRecovered):
@@ -445,7 +487,7 @@ class SessionStore:
         accepted = next((f for f in reversed(log.facts) if isinstance(f.data, RunAccepted)), None)
         if isinstance(fact.data, RunAccepted):
             validate_goal_run(log.facts, fact.data)
-            if not log.context()[1]:
+            if not log.context_complete():
                 raise AgentError("SESSION_READ_ONLY", "历史有未核对工具结果，不能自动重放或续跑。")
             if accepted and not any(
                 isinstance(f.data, RunFinished) for f in log.facts[accepted.seq :]
@@ -508,7 +550,7 @@ class SessionStore:
                     "BUDGET_REQUESTS", "本次运行的模型请求预算已用完（包含辅助搜索）。"
                 )
         if isinstance(fact.data, RunFinished) and fact.data.status == "completed":
-            if not log.context()[1] or (
+            if not log.context_complete() or (
                 tail and isinstance(tail[-1].data, (RequestStarted, ToolStarted))
             ):
                 raise AgentError(
@@ -596,7 +638,7 @@ class SessionStore:
         if isinstance(fact.data, RequestStarted):
             if tail and isinstance(tail[-1].data, (RequestStarted, ToolStarted)):
                 raise invalid
-            if not log.context()[1]:
+            if not log.context_complete():
                 raise invalid
             if any(
                 isinstance(item.data, RequestStarted)

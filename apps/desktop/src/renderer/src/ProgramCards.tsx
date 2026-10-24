@@ -164,7 +164,9 @@ function ProgramCard({
   const [afterSeq, setAfterSeq] = useState(0)
   const epoch = useRef(0)
   const displayed = view ?? initialView
-  const current = displayed?.summary ?? summary
+  // 父级已确认的终态优先，收起时无需再读日志来纠正旧启动快照。
+  // A confirmed terminal parent summary wins without fetching logs for a collapsed card.
+  const current = alive.has(summary.status) ? (displayed?.summary ?? summary) : summary
   const command =
     current.command.kind === 'powershell'
       ? current.command.script
@@ -191,14 +193,14 @@ function ProgramCard({
         if (generation === epoch.current) setError('无法读取程序状态。')
       }
     }
-    // 结果到达时即使卡片收起也更新，不能让启动中的旧快照盖住终态。
-    // Refresh collapsed cards on result arrival; a stale startup view must not mask completion.
-    if (visible) void refresh()
+    // 仅活跃程序持续更新；历史卡片展开后才读取日志，避免首屏并发加载所有输出。
+    // Poll live programs; read finished logs only when expanded, avoiding a startup request burst.
+    if (visible && (open || alive.has(summary.status))) void refresh()
     return () => {
       epoch.current++
       clearTimeout(timer)
     }
-  }, [summary.program_id, summary.status, afterSeq, visible])
+  }, [summary.program_id, summary.status, afterSeq, visible, open])
 
   /** 用户显式操作，失败显示且不自动重试。 Handle explicit controls without automatic retry. */
   async function control(action: 'stop' | 'open' | 'more'): Promise<void> {

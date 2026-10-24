@@ -20,7 +20,8 @@ export const python = path.join(desktop, '../../.venv/Scripts/python.exe')
 export async function launch(
   dataDir: string,
   projectDir = path.dirname(dataDir),
-  workspace?: string
+  workspace?: string,
+  rendererUrl?: string
 ): Promise<ElectronApplication> {
   const env: Record<string, string> = {}
   for (const [name, value] of Object.entries(process.env)) {
@@ -30,6 +31,7 @@ export async function launch(
   env.MY_AGENT_PROJECT_DIR = projectDir
   delete env.ELECTRON_RUN_AS_NODE
   delete env.ELECTRON_RENDERER_URL
+  if (rendererUrl) env.ELECTRON_RENDERER_URL = rendererUrl
   let entry = desktop
   if (workspace) {
     // 使用隔离工作区的真实构建与启动文件，不修改活动 Electron 的应用路径。

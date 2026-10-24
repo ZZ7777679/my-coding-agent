@@ -63,6 +63,7 @@ async def run_loop(
         [list[JsonObject], list[JsonObject], ModelId], Awaitable[PreparedWindow]
     ]
     | None = None,
+    record_request: Callable[[str, JsonObject], Awaitable[None]] | None = None,
 ) -> Literal["finished", "yielded"]:
     """检查预算再请求，完整事实落盘后串行执行工具。
 
@@ -178,8 +179,14 @@ async def run_loop(
                 """
                 await sink.reasoning(identifier, delta)
 
+            async def on_request(body: JsonObject, identifier: str = message_id) -> None:
+                """按真实请求身份交付最终输入。 Deliver final input under its actual request ID."""
+                if record_request is not None:
+                    await record_request(identifier, body)
+
             try:
                 turn = await model.complete(
+                    on_request=on_request,
                     model_id=request_model,
                     session_id=session_id,
                     messages=context,

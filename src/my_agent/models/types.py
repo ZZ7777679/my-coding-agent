@@ -17,6 +17,7 @@ ModelId = Literal["glm-5.3-flash", "deepseek-v4.1-flash"]
 AuxiliaryModelId = ModelId | Literal["deepseek-flash"]
 type JsonObject = dict[str, JsonValue]
 type TextSink = Callable[[str], Awaitable[None]]
+type RequestSink = Callable[[JsonObject], Awaitable[None]]
 
 
 class ModelData(BaseModel):
@@ -110,6 +111,7 @@ class ModelClient(Protocol):
         on_text: TextSink,
         on_progress: ProgressSink | None = None,
         on_reasoning: TextSink | None = None,
+        on_request: RequestSink | None = None,
     ) -> ModelTurn:
         """分别交付正文与可见思考，返回完整结果。 Stream text and visible reasoning separately."""
         ...

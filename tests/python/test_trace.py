@@ -9,6 +9,7 @@ from my_agent.context.types import ContextJob, ContextState
 from my_agent.models.failures import ModelResponseError
 from my_agent.models.types import TokenUsage, ToolResult
 from my_agent.sessions.store import SessionLog
+from my_agent.sessions.tool_presentation import tool_caption
 from my_agent.sessions.trace import TraceDetailParams, TraceParams, trace_detail, trace_page
 from my_agent.sessions.types import (
     AssistantCommitted,
@@ -20,6 +21,34 @@ from my_agent.sessions.types import (
 )
 from my_agent.storage import write_document
 from tests.python.test_goal_controller import app_at, call, create_session, turn
+
+
+@pytest.mark.parametrize(
+    "command, expected",
+    [
+        (
+            {"kind": "program", "program": "python", "arguments": ["app.py", "--port", "8000"]},
+            "运行 · python app.py --port 8000",
+        ),
+        (
+            {"kind": "powershell", "script": "Get-Location\nGet-Date"},
+            "运行 · PowerShell · Get-Location Get-Date",
+        ),
+        (
+            '{"kind":"program","program":"cmd.exe","arguments":["/c","dir"]}',
+            "运行 · cmd.exe /c dir",
+        ),
+    ],
+)
+def test_tool_summary_reads_nested_and_legacy_commands(command, expected):
+    """程序摘要读取真实嵌套参数，保留原调用不变。
+
+    Present nested/legacy command targets without changing the original call.
+    """
+    item = call("run_command", command=command)
+    original = item.model_dump_json()
+    assert tool_caption(item) == expected
+    assert item.model_dump_json() == original
 
 
 def test_trace_pairs_across_pages_and_does_not_expose_native(tmp_path):
@@ -60,6 +89,11 @@ def test_trace_pairs_across_pages_and_does_not_expose_native(tmp_path):
     assert watched.items[0].seq == 3 and watched.updates[0].status == "completed"
     result_detail = trace_detail(log, TraceDetailParams(session_id=sid, seq=2, part="result"))
     assert result_detail.text == "hello"
+    from my_agent.sessions.projection import entries
+
+    page_entries, _ = entries(log, None, selected_seqs={4})
+    assert page_entries[0].text == "读取 · hello.txt"
+    assert page_entries[0].call is None  # 不为摘要重复携带完整参数 / no duplicated arguments.
     state = ContextState(
         job=ContextJob(
             job_id=str(uuid4()),

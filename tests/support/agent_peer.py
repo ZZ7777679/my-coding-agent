@@ -40,6 +40,12 @@ class DesktopModel:
         Read fixtures, then stream or wait for cancel.
         """
         messages = kwargs["messages"]
+        if recorder := kwargs.get("on_request"):
+            # 受控界面样本；真实 HTTP 一致性另由 test_trace_requests 验证。
+            # Controlled UI sample; test_trace_requests checks actual HTTP equivalence.
+            await recorder(
+                {"model": kwargs["model_id"], "messages": messages, "tools": kwargs["tools"]}
+            )
         if any(tool["function"]["name"] == "read_team_design" for tool in kwargs["tools"]):
             from team_design_model import design_turn
 

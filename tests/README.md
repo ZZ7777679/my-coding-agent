@@ -169,7 +169,9 @@ npm.cmd --prefix apps/desktop run test:desktop -- workbench-runtime.spec.ts
 - `python/test_mcp_import.py`：`pytest tests/python/test_mcp_import.py -q` 实际连接 stdio／Streamable HTTP／旧 SSE／仅资源服务，每种分别使用 SDK auto／legacy；验证工具、资源、多认证头、环境值、DPAPI、重启与删除。全部本机隔离服务，不安装另一版本 SDK；证明协议模式互通，不宣称全量平台／版本兼容。`mcp-import-*` 共享契约分别经 Pydantic 和 Ajv 验证。
 - `fixtures/contracts.json` 的 `mcp-preset-*` 四项验证新增只写凭据与旧目录兼容；Python / Ajv 共用。可分别运行 `pytest tests/python/test_diagnostics_contracts.py -k mcp-preset` 与 `node --test --test-isolation=none --test-name-pattern=mcp-preset tests/contracts/schema.test.mjs`，无需完整契约回归。
 
-- `python/test_trace.py`：事件配对、分页、迟到结果、参数 / 结果详情及原生状态排除。
+- `python/test_trace.py`：事件配对、分页、迟到结果、跨页摘要、参数 / 结果详情及原生状态排除。
+- `python/test_trace_requests.py`：真实 Go 客户端＋模拟 HTTP 双回合，核对保存的请求 JSON、工具回传、分页、凭据排除和快照写失败不阻断任务；不调用线上模型。
+- `desktop/trace.spec.ts`：隔离 Electron，工具摘要、实际输入角色统计、完整请求／逐消息折叠、JSON 收起并恢复滚动位置、响应查看、时间线最新跳转、筛选及关闭后草稿保留。截图归 `.artifacts/tests/desktop-trace-*/`。
 - `python/test_skills.py`：来源覆盖、会话引用、版本归档、坏配置局部降级、资源库及项目导入（含附属文件）。
 - `python/test_workflow_templates.py`：模板快照、任务修改、报告保留及旧任务兼容；三个开源适配流程的阶段 Skill 实际装配、内置模板复制约定、零项目写入与重启恢复。
 - `desktop/workflow-presets.spec.ts`：真实 Electron 中查看 / 复制三个流程、新建任务选择、切换阶段和重启恢复；零模型 / 外网请求，截图与报告在 `.artifacts/tests/desktop-workflows-*`。运行 `npm.cmd --prefix apps/desktop run test:desktop -- workflow-presets.spec.ts`（先构建桌面）。
@@ -324,6 +326,12 @@ M8 的后续维护与新增入口见本文末尾，不将协议 v12 的历史说
 - `.venv/Scripts/python.exe tests/models/m7_evolution_live.py --enable-real-models`：明确启用网络后使用生产 OpenCode Go 客户端。GLM 和 DeepSeek 各生成规范／代码候选并接续一次，通常共 6 请求；隔离试验上限 8 请求／600 秒、单请求 90 秒，不写产品预算。真实代码检查及采用／恢复，报告 `.artifacts/tests/m7-live-*/report.json`。只发送隔离样本，不读取个人会话；不是每次开发必跑项。
 
 ## M8 稳定性与体验定向验证
+
+- 开发首屏：`npm.cmd --prefix apps/desktop run test:desktop -- startup-development.spec.ts`，真实 Vite 开发 renderer、React StrictMode 和 Electron／Python，在隔离目录观察首次成功返回到界面接纳的间隔，确认一次请求即可就绪；并覆盖首次错误及时展示和手动重新读取。生产构建不会重复执行开发 Effect，不能替代此项；产物 `.artifacts/tests/startup-development-*/`，无真实模型请求。3 秒断言只用于捕捉旧 10 秒轮询等待，不是产品超时。
+
+- 历史读取：`pytest tests/python/test_session_read_index.py tests/python/test_session_read_cache.py tests/python/test_goal_records.py -q`，检查重启后的偏移分页、缓存失效／损坏／写失败、跨页工具配对、回退、结束 Goal 展示及原始日志保留；不调用模型。恢复语义另复用 `test_m8_recovery.py`。
+- 构建后 `npm.cmd --prefix apps/desktop run test:desktop -- old-session.spec.ts`：真实 Electron、长历史样本和 20 条程序记录，验证近期页、连续向前翻页保持原位置、折叠程序按需读输出、编辑器按需加载、迟到读取／只读重试及无启动繁忙错误；不执行历史程序、不调用模型。产物在 `.artifacts/tests/desktop-old-session-*/`。
+- 可选计时：`.venv/Scripts/python.exe -X utf8 -m tests.support.profile_session_reads --output .artifacts/tests/history-profile`。约 19 MB 隔离样本比较首次建索引、重启后摘要／近期页／更早页；可加 `--source <已有 events.jsonl 的绝对路径>` 做一次只读冷读，原数据不写索引、不发送模型。计时是本地样本，不作为固定通过门槛。
 
 - 原生搜索别名变更复用 `pytest tests/python/test_web_tools.py -q`：核对 `deepseek-flash` 请求、辅助账本、主模型不变、取消与失败。真实单次探测用 `.venv/Scripts/python.exe -X utf8 tests/models/go_native_search.py --enable-real-models --production-client --timeout-seconds 60`，从集中 `WebSettings` 读取模型，仅发送公开 Python 文档查询，报告进入 `.artifacts/tests/go-native-search-*/`；不加入普通离线检查。
 

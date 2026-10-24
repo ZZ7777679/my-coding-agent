@@ -25,6 +25,7 @@ from my_agent.models.types import (
     ModelProgress,
     ModelTurn,
     ProgressSink,
+    RequestSink,
     TextSink,
     TokenUsage,
 )
@@ -159,6 +160,7 @@ async def check(root: Path, request_limit: int, time_limit_seconds: int) -> bool
             on_text: TextSink,
             on_progress: ProgressSink | None = None,
             on_reasoning: TextSink | None = None,
+            on_request: RequestSink | None = None,
         ) -> ModelTurn:
             """真实请求前保存计数，后续模拟只观察图片块数量。
 
@@ -212,6 +214,7 @@ async def check(root: Path, request_limit: int, time_limit_seconds: int) -> bool
                     on_text=on_text,
                     on_progress=observe,
                     on_reasoning=on_reasoning,
+                    on_request=on_request,
                 )
                 row.update(
                     status="completed",

@@ -89,8 +89,8 @@ function projectDialogDirectory(): string | undefined {
 }
 
 /**
- * 写入有界、仅包含公开错误码的日志，记录失败不得中断资源清理。
- * Write bounded public-code logs; logging failure must not interrupt cleanup.
+ * 写入有界的公开状态、错误码及必要时序，记录失败不得中断资源清理。
+ * Write bounded public status, error codes and timings without interrupting cleanup on failure.
  */
 function log(code: string): void {
   try {

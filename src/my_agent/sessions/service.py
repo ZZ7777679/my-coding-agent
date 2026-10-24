@@ -33,6 +33,7 @@ from my_agent.runtime.modes import RunMode, system_prompt
 from my_agent.runtime.settings import RunLimits, minimum_limit
 from my_agent.runtime.tools import ToolContext, ToolExecutor
 from my_agent.sessions.projection import entries, selected_model, summarize
+from my_agent.sessions.reading import SessionReader
 from my_agent.sessions.store import SessionLog, SessionStore
 from my_agent.sessions.types import (
     AssistantCommitted,
@@ -176,6 +177,7 @@ class SessionService:
         Inject components without runtime provider construction.
         """
         self.store = store
+        self.reader = SessionReader(store)
         from my_agent.checkpoints.store import CheckpointStore
 
         self.checkpoints = CheckpointStore(store.storage)
@@ -466,8 +468,10 @@ class SessionService:
         Snapshot watermark and preview consistently; callers subscribe first and deduplicate.
         """
         async with self.lock:
-            log = await self._load(session_id)
             active = self.active_for(session_id)
+            if active is None:
+                return await self.worker.call(self.reader.view, session_id, before_seq, self.epoch)
+            log = active.log
             page, cursor = entries(log, before_seq)
             summary = summarize(
                 log, active=active is not None, stopping=bool(active and active.cancel.is_set())
@@ -476,16 +480,7 @@ class SessionService:
                 summary = summary.model_copy(
                     update={"issue": active.fatal_error, "can_continue": False}
                 )
-            progress = active.progress_snapshot() if active else None
-            if active is None:
-                # 未结束的新请求不能继承上一请求的首字计时。
-                # An interrupted new request must not inherit the previous request's timing.
-                for fact in reversed(log.facts):
-                    if isinstance(fact.data, (RunAccepted, RequestStarted)):
-                        break
-                    if isinstance(fact.data, (RunFinished, AssistantCommitted)):
-                        progress = fact.data.model_progress
-                        break
+            progress = active.progress_snapshot()
             return SessionView(
                 summary=summary,
                 entries=page,
@@ -506,15 +501,15 @@ class SessionService:
         Page without letting one corrupt log block others.
         """
 
-        def load_page() -> tuple[list[SessionLog], str | None, int]:
-            """在业务线程扫描会话目录，不触发文件创建。
+        def load_page() -> tuple[list[SessionSummary], str | None, int]:
+            """在业务线程读摘要，必要时重建派生索引；不改原始日志。
 
-            Scan session directories without creating files.
+            Read summaries and rebuild derived indexes when needed, never changing source logs.
             """
             if not self.store.root.exists():
                 return [], None, 0
             candidates = sorted(path.name for path in self.store.root.iterdir() if path.is_dir())
-            logs: list[SessionLog] = []
+            summaries: list[SessionSummary] = []
             next_cursor: str | None = None
             unavailable = 0
             page_bytes = 0
@@ -522,42 +517,35 @@ class SessionService:
                 if cursor is not None and name <= cursor:
                     continue
                 try:
-                    log = self.store.load(name)
-                    header = log.facts[0].data if log.facts else None
-                    if not isinstance(header, SessionCreated):
-                        unavailable += 1
+                    header = self.reader.header(name)
                     if (
                         isinstance(header, SessionCreated)
                         and header.project_id == project_id
                         and header.worker_owner_session_id is None
                     ):
-                        size = len(summarize(log).model_dump_json().encode("utf-8"))
+                        active = self.active_for(name)
+                        summary = (
+                            summarize(active.log, active=True, stopping=active.cancel.is_set())
+                            if active
+                            else self.reader.index(name).summary
+                        )
+                        size = len(summary.model_dump_json().encode("utf-8"))
                         # 分页受传输帧容量约束，不限制可创建的会话数量。
                         # Bound page bytes for transport, never the number of available sessions.
-                        if len(logs) >= limit or (logs and page_bytes + size > 350000):
-                            next_cursor = logs[-1].session_id
+                        if len(summaries) >= limit or (summaries and page_bytes + size > 350000):
+                            next_cursor = summaries[-1].session_id
                             break
-                        logs.append(log)
+                        summaries.append(summary)
                         page_bytes += size
                 except AgentError:
                     # 单个不可读记录保留；其余会话仍可列出，已知 ID 可获得明确错误。
                     # Preserve unreadable logs; direct lookup still reports errors.
                     logging.getLogger(__name__).warning("SESSION_LIST_ENTRY_UNAVAILABLE")
                     unavailable += 1
-            return logs, next_cursor, unavailable
+            return summaries, next_cursor, unavailable
 
         async with self.lock:
-            logs, next_cursor, unavailable = await self.worker.call(load_page)
-            summaries: list[SessionSummary] = []
-            for log in logs:
-                active = self.active_for(log.session_id)
-                summaries.append(
-                    summarize(
-                        active.log if active else log,
-                        active=active is not None,
-                        stopping=bool(active and active.cancel.is_set()),
-                    )
-                )
+            summaries, next_cursor, unavailable = await self.worker.call(load_page)
             return SessionPage(
                 unavailable_count=unavailable,
                 sessions=summaries,
@@ -1062,6 +1050,7 @@ class SessionService:
                 Share budgets, cancellation and failure ownership.
                 """
                 result = await run_loop(
+                    record_request=sink.request,
                     model=model,
                     tools=request_tools,
                     sink=sink,
@@ -1376,6 +1365,20 @@ class ServiceSink:
         """
         self.service = service
         self.active = active
+
+    async def request(self, message_id: str, body: JsonObject) -> None:
+        """在存储线程保存按需检查的输入，不进入会话广播。
+
+        Save inspectable input on the storage worker, outside session broadcasts.
+        """
+        from my_agent.sessions.requests import save_request
+
+        await self.service.worker.call(
+            save_request,
+            self.service.store.path(self.active.log.session_id).parent,
+            message_id,
+            body,
+        )
 
     async def commit(self, data: FactData) -> Fact:
         """存储成功后发布并返回精确事实，取消期间仍等待存储。

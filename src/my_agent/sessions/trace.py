@@ -11,6 +11,7 @@ from pydantic import Field
 
 from my_agent.errors import AgentError
 from my_agent.models.types import JsonObject, ModelData, TokenUsage
+from my_agent.sessions.requests import read_request
 from my_agent.sessions.types import (
     AssistantCommitted,
     Fact,
@@ -115,6 +116,7 @@ def _public(fact: Fact) -> JsonObject:
             "model_id": data.model_id,
             "text": data.turn.text,
             "reasoning": data.turn.reasoning,
+            "tool_calls": [call.model_dump(mode="json") for call in data.turn.tool_calls],
             "usage": data.turn.usage.model_dump(mode="json"),
             "model_progress": data.model_progress.model_dump(mode="json")
             if data.model_progress
@@ -228,6 +230,8 @@ def _rows(log: SessionLog) -> list[tuple[TraceItem, list[Fact]]]:
             item.status = "failed" if item.is_error else "recorded"
         elif isinstance(data, RequestStarted):
             item.title = "模型请求 · " + (data.model_id or "未知模型")
+            if data.context is not None:
+                item.title += f" · 输入 {data.context.message_count} 条消息"
             reply = replies.get(data.message_id)
             item.status = "running" if fact.run_id not in finished else "unfinished"
             if reply:
@@ -422,7 +426,9 @@ def trace_search_records(log: SessionLog) -> list[tuple[TraceItem, str]]:
     ]
 
 
-def trace_detail(log: SessionLog, params: TraceDetailParams) -> TraceDetail:
+def trace_detail(
+    log: SessionLog, params: TraceDetailParams, directory: Path | None = None
+) -> TraceDetail:
     """只读取所选行正文，分段不改变保存结果。 Read selected detail without changing saved facts."""
     for item, facts in _rows(log):
         if item.seq != params.seq:
@@ -432,8 +438,13 @@ def trace_detail(log: SessionLog, params: TraceDetailParams) -> TraceDetail:
             "facts": [{"seq": f.seq, "at": f.at, "data": _public(f)} for f in facts],
         }
         if params.part == "parameters":
-            value = next(
-                (f.data.call.arguments for f in facts if isinstance(f.data, ToolStarted)), None
+            request = next((f.data for f in facts if isinstance(f.data, RequestStarted)), None)
+            value = (
+                read_request(directory, request.message_id)
+                if request
+                else next(
+                    (f.data.call.arguments for f in facts if isinstance(f.data, ToolStarted)), None
+                )
             )
         elif params.part == "result":
             value = next(
@@ -444,6 +455,12 @@ def trace_detail(log: SessionLog, params: TraceDetailParams) -> TraceDetail:
                 ),
                 None,
             )
+            if item.kind == "request.started":
+                value = [
+                    _public(f)
+                    for f in facts
+                    if isinstance(f.data, (AssistantCommitted, RequestFailed))
+                ] or {"_trace": "尚无完整保存的模型响应；请结合请求状态与错误记录查看。"}
         text = (
             value
             if isinstance(value, str)

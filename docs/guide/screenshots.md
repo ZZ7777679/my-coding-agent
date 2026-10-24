@@ -6,6 +6,8 @@
 
 ### M8 增量
 
+2026-10-24 Trace 请求与逐消息检查：`images/trace-messages.png` 原样复制自 `.artifacts/tests/desktop-trace-NGQsnP/messages-inspector.png`。真实 Electron／RPC／存储，离线模型样本，完整请求正文、角色统计、JSON 收起与滚动恢复、消息折叠、筛选和最新跳转均经过交互检查；请求 JSON 与 HTTP 请求对象的一致性另以真实 Go 客户端＋MockTransport 验证。图片已目视检查，未后期拼接；线上模型未调用。
+
 2026-10-22 会话内工作台与独立子 Agent 卡片：`images/conversation-editor.png`、`images/worker-cards.png` 分别原样复制自 `.artifacts/tests/conversation-workbench-mN5pbm/conversation-editor-wide.png`、`worker-cards.png`。实际 Electron、Monaco 编辑／保存与 PowerShell／CMD 执行；模型为离线样本，截图中的 HTTP 400 为故意注入的子任务失败，不是当前线上服务测量。宽屏、窄屏与卡片均已目视检查，未后期拼接；窄屏图保留在同一产物目录。第 04／13 篇使用新图，M8 旧图仍作历史采集记录。
 
 2026-10-21，M8／协议 v13 实际 Electron 截图来自 `.artifacts/tests/m8-experience-b8a7L4/`。复制 `workers-graphite.png`、`trace-graphite.png`、`memory-graphite.png`、`chat-经典浅色.png` 和 `workers-125.png` 到本目录 `images/m8-*.png`。子任务错误与正文为离线模型样本；状态、记忆保存、主题设置和 RPC 均真实运行。125% 图使用 Electron 原生截图并核对视口几何，未做后期裁切或拼接。

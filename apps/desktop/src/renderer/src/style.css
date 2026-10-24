@@ -2289,8 +2289,58 @@ h3 {
   padding: 4px 8px;
 }
 .tool-summary > button {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  max-width: 100%;
   text-align: left;
   overflow-wrap: anywhere;
+}
+.tool-action {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-state {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 0.85em;
+}
+.trace-order {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+.trace-row time {
+  color: var(--muted);
+  font-size: 0.85em;
+}
+.trace-latest {
+  color: var(--accent);
+}
+.trace-request-body > details {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.trace-json-content {
+  max-height: min(48vh, 32rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.trace-json-content > pre {
+  margin: 0;
+}
+.trace-input-counts {
+  margin: 8px 0;
 }
 .program-quick-controls {
   display: flex;
